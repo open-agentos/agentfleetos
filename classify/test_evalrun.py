@@ -78,6 +78,26 @@ class EvalTest(unittest.TestCase):
         self.assertIn("| Accuracy | 37.5% (3 of 8) |", text)
         self.assertIn("**Result: FAIL**", text)
 
+    def test_majority_prior_from_gold_dev_labels_is_named(self):
+        self.eval("--baseline", "majority")
+        self.assertIn("- **Prior:** dev split gold labels (8)", (self.tmp / "report.md").read_text())
+
+    def test_majority_prior_falls_back_to_dev_drafts_and_says_so(self):
+        # Every dev item a draft, and the draft majority (docs) isn't the first label listed.
+        d = self.copy_fixture()
+        data = d / "data" / "fixture.jsonl"
+        lines = [ln.replace('"labelled_by": "fixture"', '"labelled_by": "draft"')
+                 if '"dev"' in ln else ln for ln in data.read_text().splitlines()]
+        lines = [ln.replace('"label": "bug"', '"label": "docs"') if '"d1"' in ln else ln
+                 for ln in lines]
+        data.write_text("\n".join(lines) + "\n")
+        self.assertEqual(self.eval("--split", "test", "--baseline", "majority", dir=d), 1)
+        text = (self.tmp / "report.md").read_text()
+        self.assertIn("- **Prior:** dev split draft labels (8); no gold dev labels", text)
+        self.assertIn("| t1 | bug | docs ✗ |", text)
+        self.assertIn("| t2 | feature | docs ✗ |", text)
+        self.assertIn("| Accuracy | 0.0% (0 of 2) |", text)
+
     def test_draft_labels_are_never_scored(self):
         d = self.copy_fixture()
         data = d / "data" / "fixture.jsonl"
