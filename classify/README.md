@@ -16,7 +16,10 @@ login (`claude -p`), capped per run (GOV-0045). **No cost figures** go in any fi
 | `data/<name>.jsonl` | its labelled set |
 | `recordings/<name>/<model>.jsonl` | every reply a live run got, for replay |
 | `reports/<name>-<split>-<classifier>.md` | eval reports |
+| `reports/<name>.md` | majority, paths and the model side by side (#1012) |
+| `cache/effort.json` | each merged PR's label, which the Desk reads (#1012, GOV-0046) |
 | `effort_data.py` | builds the effort labelled set, drafts its labels and takes the owner's review (#1011) |
+| `effortrun.py` | `swarm classify run effort` and `swarm classify compare` (#1012) |
 | `review/<name>.md` | the file the owner edits to label a labelled set |
 | `testdata/` | the fixture label set, labelled set, recordings and expected report the tests use |
 
@@ -105,7 +108,10 @@ def paths(labelset, dev_items, item) -> Prediction: ...
 ```
 
 `majority` is built in: the dev split's most common gold label, with ties going to the label
-listed first.
+listed first. `paths` is built in too (#1012): it reads an item's `Paths touched` line, and the
+first rule that matches wins: `governance/` or `roles/` is governance; `research/`, or only
+Markdown, is knowledge; `dashboard/` is capability; anything else is upkeep. Its fix flag is a
+`Fixes #N` or `follow-up to #N` in the text.
 
 ## Running an eval
 
@@ -153,3 +159,35 @@ split 70/30, dev/test, stratified by draft label and merge month. In `review/eff
 owner sets each PR's `label`, `fix` and `hard`, and `reviewed: yes` makes the label gold
 (`labelled_by: owner`). A PR tagged `hard` moves to test, and a draft test PR with the same label
 moves to dev in its place. Every test item needs the owner's label before the set is done.
+
+## Comparing and running the effort classifier (#1012)
+
+```sh
+launcher/swarm classify compare effort            # writes reports/effort.md, no model calls
+launcher/swarm classify run effort --since 2026-11-14
+```
+
+`compare` scores majority, paths and the model (from its recordings only) on the test split and
+writes them side by side, each with its pass mark, per-label precision and recall, confusion
+matrix and share error by week. With no recordings it reports the model as not run. It says
+which classifier the cache uses: the model if its recorded replies pass the label set's pass
+mark on the test split, else paths. So the model is used only after a `swarm classify eval
+effort --split test --live` that passes.
+
+`run` labels the PRs merged on or after `--since` (UTC) into `cache/effort.json`, schema 1 as
+`dashboard/README.md#effort` documents it. Each entry's `hash` covers what the classifier reads
+(the label set's prompt and the PR's text); a PR already in the cache at the same hash, by the
+same classifier, is skipped, so a re-run with no new merges makes no model calls. `goal` is the
+open Goal or Area above the PR's closing issue when the entry is written, as `owner/repo#N` or
+null; it is stored and never re-resolved, and a changed goal never relabels (GOV-0046). A model
+run reuses recorded replies (`recordings/effort/`) and calls `claude -p` only for the rest,
+capped at $0.25 per PR (GOV-0045).
+
+A `kind:<label>` label on a PR is the owner's correction. The next run sets that entry's
+`label` and `labeller: owner`, with no model call for a PR already in the cache, and leaves `fix`
+and `goal` alone. A corrected PR not yet in `data/effort.jsonl` is appended there as a dev item,
+`labelled_by: owner`. Items already in the labelled set are left alone, so the test split the
+pass mark was set on doesn't move (GOV-0044).
+
+It exits 0 when every PR is labelled, 1 when a cap or model error stopped it (what it labelled is
+kept), and 2 when it can't run. The lead runs it by hand until it has run twice (#526 §5).
