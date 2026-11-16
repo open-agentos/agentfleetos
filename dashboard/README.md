@@ -19,7 +19,7 @@ One build writes eight pages, and the fonts, into the `--out` page's directory (
 
 | Page | What it shows |
 |---|---|
-| `bridge.html`, the **Bridge** | The owner's home, read-only, after the owner's "v5 · the bridge" mock-up ([the Bridge](#the-bridge), #926): status, decisions waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub. |
+| `bridge.html`, the **Bridge** | The owner's home, served at `/` on the live Desk (#1035), read-only, after the owner's "v5 · the bridge" mock-up ([the Bridge](#the-bridge), #926): status, decisions waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub. |
 | `commissions.html` | Each open Goal and Area, grouped by what it needs from the owner, with a focus drawer ([Commissions](#commissions), #931) |
 | `agents.html` | One row per role, working or idle, with a focus drawer ([Agents](#agents), #932) |
 | `index.html`, the **desk** | Today's report and the plan (#712), the trouble panel per Goal and Area (#903: `swarm trouble`'s report, built by `generate.py` without the owner-acts sync, so M4's acts criterion reads unmeasured here; no spend), [On the floor](#on-the-floor), [the wire](#the-wire), the [committee desk](#committee-desk) while a committee is open, [What the numbers say](#what-the-numbers-say), [How the questions went](#how-the-questions-went), [precedent in use](#precedent-in-use), a card per [past committee](#past-committees), and a one-line pointer to the other pages. #397's later issues add the desk's other panels here. |

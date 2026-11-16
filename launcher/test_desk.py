@@ -146,6 +146,7 @@ class HandleTest(unittest.TestCase):
         self.live = Path(self.tmp.name)
         (self.live / "index.html").write_text("<p>desk</p>")
         (self.live / "operations.html").write_text("<p>ops</p>")
+        (self.live / desk.HOME).write_text("<p>bridge</p>")
         (self.live / desk.STATE).write_text("{}")
         (self.live / "fonts").mkdir()
         (self.live / "fonts" / "a.woff2").write_bytes(b"font")
@@ -155,7 +156,7 @@ class HandleTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_serves_the_pages_state_and_fonts(self):
-        for path, ctype, body in (("/", "text/html", b"<p>desk</p>"),
+        for path, ctype, body in (("/", "text/html", b"<p>bridge</p>"),
                                   ("/index.html?t=1", "text/html", b"<p>desk</p>"),
                                   ("/operations.html", "text/html", b"<p>ops</p>"),
                                   ("/state.json?t=99", "application/json", b"{}"),
@@ -166,6 +167,13 @@ class HandleTest(unittest.TestCase):
             self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
             self.assertIn("noindex", headers["X-Robots-Tag"])
         self.assertEqual(desk.handle(self.live, "HEAD", "/")[0], 200)
+
+    def test_home_is_the_bridge_and_falls_back_to_the_desk(self):
+        self.assertEqual(desk.HOME, "bridge.html")
+        self.assertEqual(desk.handle(self.live, "GET", "/?t=1")[2], b"<p>bridge</p>")
+        self.assertEqual(desk.handle(self.live, "GET", "/index.html")[2], b"<p>desk</p>")
+        (self.live / desk.HOME).unlink()
+        self.assertEqual(desk.handle(self.live, "GET", "/")[2], b"<p>desk</p>")
 
     def test_no_write_route(self):
         for method in ("POST", "PUT", "PATCH", "DELETE", "OPTIONS"):
