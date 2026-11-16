@@ -12,7 +12,7 @@ import generate as g  # noqa: E402
 import layout  # noqa: E402
 import state  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 NOW = dt.datetime(2026, 11, 5, 10, 30, tzinfo=dt.timezone.utc)
 OWNER = "mattmcalister"
 BOT = "productswarm-builder[bot]"

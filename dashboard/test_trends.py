@@ -16,7 +16,7 @@ import questions as q  # noqa: E402
 import state  # noqa: E402
 import trends as t  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
 NOW = dt.datetime(2026, 11, 5, 12, 0, tzinfo=dt.timezone.utc)   # a Thursday
 DAYS = 14

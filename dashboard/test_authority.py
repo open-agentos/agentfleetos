@@ -10,7 +10,7 @@ sys.path.insert(0, str(HERE))
 import authority as a  # noqa: E402
 import governance as gv  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 TODAY = dt.date(2026, 11, 5)
 
 YML = """# Who may decide what.

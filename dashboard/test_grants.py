@@ -15,7 +15,7 @@ import live  # noqa: E402
 from layout import esc  # noqa: E402
 import state  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 BASE = f"https://github.com/{REPO}"
 NOW = dt.datetime(2026, 11, 9, 15, 0, tzinfo=dt.timezone.utc)
 SHA = "0123456789abcdef0123456789abcdef01234567"

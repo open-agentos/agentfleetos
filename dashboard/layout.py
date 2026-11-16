@@ -334,7 +334,7 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "") -> st
     """What's inside the page's <header>: the page name, the repo, the LIVE mark and build time,
     and `owner`, the owner's last act as HTML (#402). The desk's live refresh redraws it too
     (#411)."""
-    return (f'<span class="name">productswarm · {esc(dict(PAGES)[current])}</span>'
+    return (f'<span class="name">AgentFleetOS · {esc(dict(PAGES)[current])}</span>'
             f'<span class="muted">{esc(repo)}</span>{built_mark(built)}{owner}')
 
 

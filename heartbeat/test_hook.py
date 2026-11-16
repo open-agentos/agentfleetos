@@ -16,7 +16,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 HOOK = HERE / "hook.py"
 SID = "11111111-2222-3333-4444-555555555555"
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 
 sys.path.insert(0, str(HERE))
 import hook  # noqa: E402
@@ -30,7 +30,7 @@ if os.environ.get("FAKE_GH_FAIL"):
     print("boom", file=sys.stderr); sys.exit(1)
 a = sys.argv[1:]
 if a[:2] == ["issue", "create"]:
-    print("https://github.com/open-agentos/productswarm/issues/99")
+    print("https://github.com/open-agentos/agentfleetos/issues/99")
 elif a[:2] == ["pr", "view"]:
     print("3")
 """

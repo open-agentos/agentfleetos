@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/open-agentos/productswarm/heartbeat/event.schema.json",
-  "title": "productswarm heartbeat event",
+  "$id": "https://github.com/open-agentos/agentfleetos/heartbeat/event.schema.json",
+  "title": "AgentFleetOS heartbeat event",
   "description": "One event from one agent session, as written to the local spool. Events sent off the machine must also match #/$defs/remote. See heartbeat/SCHEMA.md, GOV-0002 and GOV-0003.",
   "type": "object",
   "additionalProperties": false,

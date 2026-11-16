@@ -29,7 +29,7 @@ def ago(minutes):
 
 def one_of_each():
     """One canned item per kind, in needs_you() order."""
-    sess = "https://github.com/open-agentos/productswarm/issues/50"
+    sess = "https://github.com/open-agentos/agentfleetos/issues/50"
     return [
         {"kind": "blocked", "ref": "#28", "title": "GOV-Q: someone waits", "url": "u28",
          "session_url": sess, "detail": "builder session s1 is blocked on it", "since": ago(50)},
@@ -62,10 +62,10 @@ class DigestTest(unittest.TestCase):
         self.assertIn("- #26 GOV-Q: unwaited: time to live 2026-11-09 · 10h ago", lines)
         # Session items have no #N reference, so they link to the tracking issue; no age (as needs_line).
         self.assertTrue(any(ln.startswith("- [builder session b-over](https://github.com/open-agentos/"
-                                          "productswarm/issues/50)") and ln.endswith("(GOV-0008)")
+                                          "agentfleetos/issues/50)") and ln.endswith("(GOV-0008)")
                             for ln in lines))
         self.assertEqual(lines[-1], "Updated 2026-11-02 12:00 UTC · dashboard: "
-                                    "https://open-agentos.github.io/productswarm/")
+                                    "https://open-agentos.github.io/agentfleetos/")
 
     def test_singular_count(self):
         self.assertTrue(d.render(one_of_each()[:1], NOW, REPO).startswith(

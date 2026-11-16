@@ -10,7 +10,7 @@ sys.path.insert(0, str(HERE))
 import live  # noqa: E402
 import plan  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
 PLANNER = {"login": "productswarm-planner", "__typename": "Bot"}
 ME = {"login": OWNER, "__typename": "User"}
