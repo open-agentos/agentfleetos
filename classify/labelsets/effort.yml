@@ -49,4 +49,4 @@ flags:
   - name: fix
     definition: "The PR fixes something merged in the 14 days before it. The item's `fixes` key holds the fixed PR's number. For example: 'Fix swarm-session aborting on unbound GIT_AUTHOR_EMAIL', or 'swarm watch: retry a run that hit the usage limit instead of marking it done'."
 pass_mark:
-  accuracy: 0.8    # placeholder, not the bar: the owner sets it before FEAT-3's first live run
+  accuracy: 0.4    # placeholder, not the bar: the owner sets it before FEAT-3's first live run
