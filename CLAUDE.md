@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-productswarm is built by a swarm of manually started agent sessions. Read `PRODUCT.md` for what we're building, then your role prompt in `roles/` if you were given a role. Sessions are started with `ops/swarm-session <role>` (see `ops/README.md`).
+AgentFleetOS is built by a swarm of manually started agent sessions. Read `PRODUCT.md` for what we're building, then your role prompt in `roles/` if you were given a role. Sessions are started with `ops/swarm-session <role>` (see `ops/README.md`).
 
 ## Working rules
 

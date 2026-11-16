@@ -65,7 +65,7 @@ The schema enforces the length limit and, via `#/$defs/remote`, the absence of `
 Local spool line:
 
 ```json
-{"schema_version":1,"ts":"2026-11-01T18:42:10Z","session_id":"0b6c2f0e-3d1a-4c55-9a7e-5f1d2b8e9c41","repo":"open-agentos/productswarm","role":"builder","model":"claude-opus-5-5","event":"pr_opened","issue":2,"pr":16,"cost_usd":1.84,"token_counts":{"input":41200,"output":9800,"cache_read":512000,"cache_creation":38000},"tools":["Bash","Write"]}
+{"schema_version":1,"ts":"2026-11-01T18:42:10Z","session_id":"0b6c2f0e-3d1a-4c55-9a7e-5f1d2b8e9c41","repo":"open-agentos/agentfleetos","role":"builder","model":"claude-opus-5-5","event":"pr_opened","issue":2,"pr":16,"cost_usd":1.84,"token_counts":{"input":41200,"output":9800,"cache_read":512000,"cache_creation":38000},"tools":["Bash","Write"]}
 ```
 
 A full session is in [`examples/session.jsonl`](examples/session.jsonl) (local spool) and [`examples/tracking-comment.md`](examples/tracking-comment.md) (what reaches GitHub).
