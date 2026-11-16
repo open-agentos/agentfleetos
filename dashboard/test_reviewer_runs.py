@@ -15,7 +15,7 @@ sys.path.insert(0, str(HERE))
 import generate as g  # noqa: E402
 import reviewer_runs as rr  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 NOW = dt.datetime(2026, 11, 4, 12, 0, tzinfo=dt.timezone.utc)
 A, B, C = "a" * 40, "b" * 40, "c" * 40
 

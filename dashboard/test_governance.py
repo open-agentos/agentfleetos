@@ -9,7 +9,7 @@ sys.path.insert(0, str(HERE))
 import generate as g  # noqa: E402
 import governance as gv  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 NOW = dt.datetime(2026, 11, 4, 12, 0, tzinfo=dt.timezone.utc)
 TODAY = NOW.date()
 
@@ -126,7 +126,7 @@ class PageTest(unittest.TestCase):
                                question(6, labels=["gov:lapsed"])]))["decisions.html"]
         self.assertNotIn("<h2>Open gov questions</h2>", page)
         self.assertIn("<h2>Governance</h2>", page)
-        self.assertIn('href="https://github.com/open-agentos/productswarm/blob/main/governance/'
+        self.assertIn('href="https://github.com/open-agentos/agentfleetos/blob/main/governance/'
                       'decisions/GOV-0010-d.md">GOV-0010</a>', page)
         self.assertLess(page.index("GOV-0010"), page.index("GOV-0003"))
         self.assertIn("review date passed", page)

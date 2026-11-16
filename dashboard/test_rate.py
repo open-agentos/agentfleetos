@@ -22,7 +22,7 @@ import digest as d  # noqa: E402
 import generate as g  # noqa: E402
 import ghql  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 NOW = dt.datetime(2026, 11, 4, 21, 0, tzinfo=dt.timezone.utc)
 SHA = "a" * 40
 NUDGE = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_TRIGGERING_ACTOR": "github-actions[bot]"}

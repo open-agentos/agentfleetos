@@ -18,7 +18,7 @@ sys.path.insert(0, str(HERE))
 import generate as g  # noqa: E402
 import live  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 NOW = dt.datetime(2026, 11, 2, 12, 0, tzinfo=dt.timezone.utc)
 IDLE = dt.timedelta(minutes=15)
 BOT = "productswarm-builder[bot]"
@@ -294,7 +294,7 @@ class EndToEndTest(unittest.TestCase):
             self.assertIn("#4 Dashboard generator", page)
             self.assertIn("s-active", page)
             self.assertIn("<h2>v3 progress</h2>", page)
-            self.assertIn("(<a href=\"https://github.com/open-agentos/productswarm/issues/331\">#331</a>): not run", page)
+            self.assertIn("(<a href=\"https://github.com/open-agentos/agentfleetos/issues/331\">#331</a>): not run", page)
             self.assertIn("not started: no reds count until", page)
             st = json.loads((d / "out" / "state.json").read_text())   # beside the page (#400)
             self.assertEqual((st["schema"], st["repo"]), (1, REPO))

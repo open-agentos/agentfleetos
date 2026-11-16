@@ -20,10 +20,10 @@ import committees as c  # noqa: E402
 import generate as g    # noqa: E402
 import live  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
-DURL = "https://github.com/open-agentos/productswarm/discussions/314"
-QURL = "https://github.com/open-agentos/productswarm/issues/311"
+DURL = "https://github.com/open-agentos/agentfleetos/discussions/314"
+QURL = "https://github.com/open-agentos/agentfleetos/issues/311"
 COST = "Cost: about $2.89 across the six posts."
 
 MEMBERS = """## Members
@@ -133,7 +133,7 @@ def post(rnd, seat, minute, reco, model=None, login=None, day=4, hour=14, positi
 def discussion(number=314, title="Committee for #311: when should the reviewer request changes?",
                body=BODY_314, comments=None):
     return {"id": f"D_{number}", "number": number, "title": title, "body": body,
-            "url": f"https://github.com/open-agentos/productswarm/discussions/{number}",
+            "url": f"https://github.com/open-agentos/agentfleetos/discussions/{number}",
             "createdAt": at(4), "author": {"login": OWNER},
             "comments": [post(*p) for p in POSTS_314] if comments is None else comments}
 
@@ -449,7 +449,7 @@ class RenderTest(Fixture):
 
     def test_unparsed_discussion(self):
         html = self.page([discussion(), discussion(number=400, title="Committee chat", body="Anyone may post.")])
-        self.assertIn('<p class="muted">Unparsed: <a href="https://github.com/open-agentos/productswarm/'
+        self.assertIn('<p class="muted">Unparsed: <a href="https://github.com/open-agentos/agentfleetos/'
                       'discussions/400">#400 Committee chat</a></p>', html)
         self.assertNotIn("#400: unparsed", html)
 

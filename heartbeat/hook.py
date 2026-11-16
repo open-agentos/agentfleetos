@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Heartbeat hook for productswarm agent sessions.
+"""Heartbeat hook for AgentFleetOS agent sessions.
 
 Claude Code runs this on session and tool events (see heartbeat/install.py):
 

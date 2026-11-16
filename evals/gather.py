@@ -38,7 +38,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "data" / "sample.json"
-DEFAULT_REPO = "open-agentos/productswarm"
+DEFAULT_REPO = "open-agentos/agentfleetos"
 REVIEWER = "productswarm-reviewer"
 V1_ISSUES = frozenset(range(47, 53))
 CAP = 20

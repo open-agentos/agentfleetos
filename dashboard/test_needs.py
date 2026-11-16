@@ -63,8 +63,8 @@ class NeedsYouTest(unittest.TestCase):
     def test_details_and_links(self):
         items = {i["ref"]: i for i in g.needs_you(model())}
         b = items["#29"]
-        self.assertEqual(b["url"], "https://github.com/open-agentos/productswarm/issues/29")
-        self.assertEqual(b["session_url"], "https://github.com/open-agentos/productswarm/issues/50")
+        self.assertEqual(b["url"], "https://github.com/open-agentos/agentfleetos/issues/29")
+        self.assertEqual(b["session_url"], "https://github.com/open-agentos/agentfleetos/issues/50")
         self.assertEqual(b["detail"], "builder session blocked- is blocked on it (working on #4)")
         self.assertEqual(items["#27"]["detail"], "no time to live given")
         self.assertEqual(items["PR #30"]["detail"], "changes requested")
@@ -128,7 +128,7 @@ class ReviewerStateTest(unittest.TestCase):
 
     def detail(self, reviews, author="app/productswarm-builder"):
         p = {**pr(40, 30, closes=[4]), "headRefOid": self.HEAD, "author": {"login": author}}
-        m = g.build({"repo": "open-agentos/productswarm", "issues": [issue(4, "x")], "comments": {},
+        m = g.build({"repo": "open-agentos/agentfleetos", "issues": [issue(4, "x")], "comments": {},
                      "prs": [p], "reviews": {40: reviews}}, NOW, g.dt.timedelta(minutes=15))
         (item,) = g.needs_you(m)
         return m["prs"][0]["reviewer"], item["detail"]
@@ -195,7 +195,7 @@ class UnreviewedHeadTest(unittest.TestCase):
     def details(self, reviews, author="app/productswarm-builder", draft=False, decision=""):
         p = {**pr(40, 30, draft=draft, review=decision, closes=[4]), "headRefOid": self.HEAD,
              "author": {"login": author}}
-        m = g.build({"repo": "open-agentos/productswarm", "issues": [issue(4, "x")], "comments": {},
+        m = g.build({"repo": "open-agentos/agentfleetos", "issues": [issue(4, "x")], "comments": {},
                      "prs": [p], "reviews": {40: reviews}}, NOW, g.dt.timedelta(minutes=15))
         return [i["detail"] for i in g.needs_you(m) if i["kind"] == "pr"]
 
@@ -297,7 +297,7 @@ class PageTest(unittest.TestCase):
         shown = [html.unescape(re.sub(r"<[^>]+>", "", li)).split(" · session")[0]
                  for li in re.findall(r"<li[^>]*>(.*?)</li>", section)]
         self.assertEqual(shown, [g.needs_line(i, m["now"]) for i in g.needs_you(m)])
-        self.assertIn('<a href="https://github.com/open-agentos/productswarm/issues/50">session</a>', section)
+        self.assertIn('<a href="https://github.com/open-agentos/agentfleetos/issues/50">session</a>', section)
 
 
 if __name__ == "__main__":

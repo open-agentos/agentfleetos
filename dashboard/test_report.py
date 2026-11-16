@@ -9,7 +9,7 @@ sys.path.insert(0, str(HERE))
 import live  # noqa: E402
 import report  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 UTC = dt.timezone.utc
 AT = dt.time(8, 30)
 MON = dt.datetime(2026, 11, 9, 11, 0, tzinfo=UTC)   # a Monday, after the 10:00 cut-off

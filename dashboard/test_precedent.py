@@ -16,7 +16,7 @@ NOW = dt.datetime(2026, 11, 5, 12, 0, tzinfo=UTC)
 OWNER = "mattmcalister"
 BUILDER = "productswarm-builder[bot]"
 REVIEWER = "productswarm-reviewer[bot]"
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 
 
 def day(d, h=9):
