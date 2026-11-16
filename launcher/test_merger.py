@@ -15,7 +15,7 @@ sys.path.insert(0, str(HERE))
 import merger  # noqa: E402
 import swarm  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
 AGENTS = frozenset({"productswarm-builder[bot]", "productswarm-reviewer[bot]",
                     "productswarm-docs[bot]"})

@@ -18,7 +18,7 @@ import statedb  # noqa: E402
 import swarm  # noqa: E402
 import watch  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 UTC = dt.timezone.utc
 NOW = dt.datetime(2026, 11, 10, 15, 0, tzinfo=UTC)
 

@@ -32,7 +32,7 @@ def setUpModule():
 from test_swarm import Fake, FakeGit, runtime  # noqa: E402
 
 G = swarm.dashboard()
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
 NOW = dt.datetime(2026, 11, 3, 12, 0, tzinfo=dt.timezone.utc)
 ROLES = {"builder", "docs", "planner", "reviewer"}
@@ -1204,7 +1204,7 @@ class OtherReposTest(unittest.TestCase):
         self.assertIn(f"[build] {SCRATCH}#5 go under Goal {REPO}#686 (GOV-0031) -> would start "
                       f"builder on {SCRATCH}#5", self.lines)
         cmd = next(x for x in self.lines if "working in" in x and "work on issue #5" in x)
-        self.assertIn(f"You are the builder for productswarm, working in {SCRATCH}", cmd)
+        self.assertIn(f"You are the builder for AgentFleetOS, working in {SCRATCH}", cmd)
         self.assertIn("--append-system-prompt", cmd)
         self.assertIn(("build", "#49"), self.kinds(got))          # this repo's work as before
 
@@ -1459,7 +1459,7 @@ class RespondTest(unittest.TestCase):
         [t] = self.watcher().tick(NOW)
         self.assertEqual((t.kind, t.role, t.issue, t.pr), ("respond", "analyst", 73, 72))
         self.assertEqual(self.started(), [("analyst-pr-72", "analyst", "m-analyst", 73, "watch")])
-        self.assertIn("You are the analyst for productswarm. Read CLAUDE.md, PRODUCT.md and "
+        self.assertIn("You are the analyst for AgentFleetOS. Read CLAUDE.md, PRODUCT.md and "
                       "roles/analyst.md, then respond to the requested changes on PR #72",
                       self.fake.commands[0])
         self.exit("analyst-pr-72")

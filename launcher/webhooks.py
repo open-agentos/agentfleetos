@@ -145,7 +145,7 @@ def handle(store: Store, secret: bytes, nudge_path: Path, method: str, path: str
 
 def make_handler(store: Store, secret: bytes, nudge_path: Path):
     class Handler(http.server.BaseHTTPRequestHandler):
-        server_version = "productswarm"
+        server_version = "AgentFleetOS"
         sys_version = ""
 
         def _answer(self, method: str) -> None:

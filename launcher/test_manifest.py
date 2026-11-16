@@ -493,8 +493,8 @@ class OrgReposTest(Base):
             self.assertTrue(any(p.startswith(problem) for p in self.problems(session() + "[org]\n" + org)))
 
     def test_others_drops_home_and_other_orgs(self):
-        keep, why = m.others(("open-agentos/productswarm", "open-agentos/scratch", "else/x"),
-                             "open-agentos/productswarm")
+        keep, why = m.others(("open-agentos/agentfleetos", "open-agentos/scratch", "else/x"),
+                             "open-agentos/agentfleetos")
         self.assertEqual(keep, ["open-agentos/scratch"])
         self.assertEqual(why, ["else/x isn't in the open-agentos org, so it is left out "
                                "(GOV-0031 covers one org)"])
@@ -513,14 +513,14 @@ class OrgPausedTest(Base):
         for text in (session(), session() + '[org]\nrepos = ["open-agentos/scratch"]\n'):
             paused, problems = self.load(text)
             self.assertEqual((paused, problems), (frozenset(), []))
-            self.assertFalse(m.is_paused("open-agentos/productswarm", paused))
+            self.assertFalse(m.is_paused("open-agentos/agentfleetos", paused))
 
     def test_a_list_pauses_those_repos_only(self):
         text = session() + '[org]\nrepos = ["open-agentos/scratch"]\npaused = ["Open-Agentos/Scratch"]\n'
         paused, problems = self.load(text)
         self.assertEqual(problems, [])
         self.assertTrue(m.is_paused("open-agentos/scratch", paused))
-        self.assertFalse(m.is_paused("open-agentos/productswarm", paused))
+        self.assertFalse(m.is_paused("open-agentos/agentfleetos", paused))
         self.assertEqual(m.load_repos(self.dir / "swarm.toml"), (("open-agentos/scratch",), []))
         self.assertEqual(len(self.parse(text)), 1)          # still a valid manifest
 

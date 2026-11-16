@@ -26,7 +26,7 @@ def sign(body: bytes, secret: bytes = SECRET) -> str:
 
 
 def payload(**kw) -> bytes:
-    p = {"action": "labeled", "repository": {"full_name": "open-agentos/productswarm"},
+    p = {"action": "labeled", "repository": {"full_name": "open-agentos/agentfleetos"},
          "issue": {"number": 651}}
     p.update(kw)
     return json.dumps(p).encode()
@@ -54,7 +54,7 @@ class Handle(unittest.TestCase):
         self.assertEqual(self.post(payload()), (202, "accepted"))
         self.assertTrue(self.nudge.exists())
         self.assertEqual(self.store.rows(),
-                         [("d-1", "issues", "labeled", "open-agentos/productswarm", 651)])
+                         [("d-1", "issues", "labeled", "open-agentos/agentfleetos", 651)])
 
     def test_bad_signature_is_refused_without_a_trace(self):
         self.assertEqual(self.post(payload(), sig=sign(payload(), b"other")), (401, "bad signature"))
