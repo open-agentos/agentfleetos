@@ -6,7 +6,7 @@
 # vote_eligible: identities whose votes count (shapes: committee-with-vote, vote)
 # default_shape: a hint; GOVERNANCE.md §3's ordering still applies
 #
-# productswarm runs Phase 0 with manually started Claude Code sessions. Each session is
+# agentfleetos runs Phase 0 with manually started Claude Code sessions. Each session is
 # launched with `ops/swarm-session <role>` and acts on GitHub as that role's GitHub App,
 # so the identities below are verified by GitHub. Authority still comes only from merges
 # by humans.owner (GOVERNANCE.md §6); CODEOWNERS requires the owner's review on every PR.
