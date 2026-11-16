@@ -1065,7 +1065,7 @@ fix: no
 hard: brief-for-capability
 reviewed: yes
 
-# Dev split: 178 PRs, 178 reviewed
+# Dev split: 178 PRs, 0 reviewed
 
 ## pr-7 · dev · 2026-W44
 
@@ -1079,7 +1079,7 @@ Draft: governance, fix no. "The governance kit from agent-governance PR #2: `GOV
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-9 · dev · 2026-W44
 
@@ -1093,7 +1093,7 @@ Draft: capability, fix no. "Each role (planner, builder, reviewer, docs) becomes
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-11 · dev · 2026-W44
 
@@ -1107,7 +1107,7 @@ Draft: upkeep, fix yes. "Removes `ops/__pycache__/create-apps.cpython-314.pyc`, 
 label: upkeep
 fix: #9
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-13 · dev · 2026-W44
 
@@ -1121,7 +1121,7 @@ Draft: upkeep, fix yes. "Computes the bot email once and assigns both variables 
 label: upkeep
 fix: yes
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-16 · dev · 2026-W45
 
@@ -1135,7 +1135,7 @@ Draft: knowledge, fix no. "Adds `heartbeat/` with:"
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-20 · dev · 2026-W45
 
@@ -1149,7 +1149,7 @@ Draft: knowledge, fix no. "Adds the first two rows to the observation log (#14 a
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-22 · dev · 2026-W45
 
@@ -1163,7 +1163,7 @@ Draft: knowledge, fix no. "Replaces the "H5 test pending" note with the result, 
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-30 · dev · 2026-W45
 
@@ -1177,7 +1177,7 @@ Draft: capability, fix no. "The dashboard now shows estimated spend:"
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-34 · dev · 2026-W45
 
@@ -1191,7 +1191,7 @@ Draft: capability, fix no. "Title: Dashboard: scheduled regeneration and hosting
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-35 · dev · 2026-W45
 
@@ -1205,7 +1205,7 @@ Draft: capability, fix yes. "It now shows a PR only when the event that carried 
 label: capability
 fix: #27
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-38 · dev · 2026-W45
 
@@ -1219,7 +1219,7 @@ Draft: knowledge, fix no. "Adds rows for #26, #28, #31, #32, #33 (answered by ow
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-55 · dev · 2026-W45
 
@@ -1233,7 +1233,7 @@ Draft: governance, fix no. "Adds GOV-0006, the record for the owner's answer on 
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-58 · dev · 2026-W45
 
@@ -1247,7 +1247,7 @@ Draft: governance, fix no. "Adds GOV-0007, the record for the owner's answer on 
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-61 · dev · 2026-W45
 
@@ -1261,7 +1261,7 @@ Draft: governance, fix no. "Points the working rules and every role prompt at GO
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-62 · dev · 2026-W45
 
@@ -1275,7 +1275,7 @@ Draft: governance, fix no. "Adds the v1 launcher section to `PRODUCT.md`, per GO
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-65 · dev · 2026-W45
 
@@ -1289,7 +1289,7 @@ Draft: capability, fix no. "`swarm up [--dry-run]` opens one Terminal window per
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-70 · dev · 2026-W45
 
@@ -1303,7 +1303,7 @@ Draft: capability, fix no. "`launcher/swarm launch <role> --issue N [--model M] 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-72 · dev · 2026-W45
 
@@ -1317,7 +1317,7 @@ Draft: upkeep, fix no. "I added a comment saying it's on by default and where it
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-74 · dev · 2026-W45
 
@@ -1331,7 +1331,7 @@ Draft: capability, fix no. "- **`swarm ls`:** a new SPEND (EST.) column shows `$
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-77 · dev · 2026-W45
 
@@ -1345,7 +1345,7 @@ Draft: knowledge, fix no. "Fills in #36 and adds rows for #41, #43–#46, #54 an
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-85 · dev · 2026-W45
 
@@ -1359,7 +1359,7 @@ Draft: upkeep, fix no. "Now every new session sweeps this machine's other sessio
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-86 · dev · 2026-W45
 
@@ -1373,7 +1373,7 @@ Draft: knowledge, fix no. "Title: Docs: top-level README and v1 catch-up"
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-92 · dev · 2026-W45
 
@@ -1387,7 +1387,7 @@ Draft: governance, fix no. "Adds `governance/decisions/GOV-0009-v2-wake-up-loop.
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-94 · dev · 2026-W45
 
@@ -1401,7 +1401,7 @@ Draft: capability, fix no. "`launcher/swarm watch --dry-run [--interval MINUTES]
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-95 · dev · 2026-W45
 
@@ -1415,7 +1415,7 @@ Draft: upkeep, fix no. "Sessions get their own worktree; hooks run from a pinned
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-100 · dev · 2026-W45
 
@@ -1429,7 +1429,7 @@ Draft: knowledge, fix no. "Status line: `v0 (swarm dashboard) done · v1 (local 
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-103 · dev · 2026-W45
 
@@ -1443,7 +1443,7 @@ Draft: knowledge, fix no. "Adds `## v2: wake-up loop` after v1 in `PRODUCT.md`, 
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-120 · dev · 2026-W45
 
@@ -1457,7 +1457,7 @@ Draft: capability, fix no. "Adds GOV-0011's fifth `swarm watch` trigger, `[respo
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-144 · dev · 2026-W45
 
@@ -1471,7 +1471,7 @@ Draft: capability, fix no. "`start_tick` calls it for `[build]` triggers only, a
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-152 · dev · 2026-W45
 
@@ -1485,7 +1485,7 @@ Draft: upkeep, fix no. "Runs that `swarm watch` starts (`by="watch"`) get a Stop
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-153 · dev · 2026-W45
 
@@ -1499,7 +1499,7 @@ Draft: capability, fix no. "Runs that `swarm watch` starts (`by="watch"`) are no
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-156 · dev · 2026-W45
 
@@ -1513,7 +1513,7 @@ Draft: capability, fix no. ""swarm inbox" adds a "swarm watch runs that ended at
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-158 · dev · 2026-W45
 
@@ -1527,7 +1527,7 @@ Draft: governance, fix no. "Adds `governance/decisions/GOV-0014-one-shot-loop-ru
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-161 · dev · 2026-W45
 
@@ -1541,7 +1541,7 @@ Draft: knowledge, fix no. "Adds today's governance evidence to `governance/PHASE
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-164 · dev · 2026-W45
 
@@ -1555,7 +1555,7 @@ Draft: governance, fix no. "drops the "in #90's scope" notes, records the answer
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-169 · dev · 2026-W45
 
@@ -1569,7 +1569,7 @@ Draft: governance, fix no. "Adds `governance/decisions/GOV-0015-v3-scope-staged.
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-181 · dev · 2026-W45
 
@@ -1583,7 +1583,7 @@ Draft: upkeep, fix no. "`evals/gather.py` (stdlib + `gh`, read-only) picks the e
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-188 · dev · 2026-W45
 
@@ -1597,7 +1597,7 @@ Draft: capability, fix no. "`needs_you()` and `swarm inbox` list the PR for the 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-191 · dev · 2026-W45
 
@@ -1611,7 +1611,7 @@ Draft: capability, fix no. "The Stop hook now lets a `[build]` (or `[record]`) r
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-197 · dev · 2026-W45
 
@@ -1625,7 +1625,7 @@ Draft: knowledge, fix no. "Adds `evals/README.md`. It holds the rubric #174 scor
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-200 · dev · 2026-W45
 
@@ -1639,7 +1639,7 @@ Draft: knowledge, fix no. "`evals/results.md` scores all 20 PRs in `evals/data/s
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-202 · dev · 2026-W45
 
@@ -1653,7 +1653,7 @@ Draft: knowledge, fix no. "Adds a "Calibration" section to `evals/results.md`. N
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-220 · dev · 2026-W45
 
@@ -1667,7 +1667,7 @@ Draft: governance, fix no. "Adds `governance/decisions/GOV-0016-actions-reviewer
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-223 · dev · 2026-W45
 
@@ -1681,7 +1681,7 @@ Draft: governance, fix no. "Ruling PR for #206 (per GOV-0007). The owner added `
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-229 · dev · 2026-W45
 
@@ -1695,7 +1695,7 @@ Draft: governance, fix no. "Ruling PR for #209, per GOV-0007. The owner added `g
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-233 · dev · 2026-W45
 
@@ -1709,7 +1709,7 @@ Draft: capability, fix no. "`dashboard/digest.py --print` renders the needs-you 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-236 · dev · 2026-W45
 
@@ -1723,7 +1723,7 @@ Draft: capability, fix no. "the event is `pull_request`, or `workflow_dispatch` 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-239 · dev · 2026-W45
 
@@ -1737,7 +1737,7 @@ Draft: capability, fix no. "Builds the `swarm.toml` switch from GOV-0019 (the ow
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-240 · dev · 2026-W45
 
@@ -1751,7 +1751,7 @@ Draft: capability, fix no. "runs one reviewer pass on PR N inside an Actions job
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-243 · dev · 2026-W45
 
@@ -1765,7 +1765,7 @@ Draft: governance, fix no. "Adds `## v3: evals, digest and Actions` to `PRODUCT.
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-247 · dev · 2026-W45
 
@@ -1779,7 +1779,7 @@ Draft: capability, fix no. "`python3 dashboard/digest.py --update --repo OWNER/R
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-250 · dev · 2026-W45
 
@@ -1793,7 +1793,7 @@ Draft: upkeep, fix no. "Title: Create digest.yml"
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-263 · dev · 2026-W45
 
@@ -1807,7 +1807,7 @@ Draft: upkeep, fix no. "Turns `review_in_actions` back off. No issue: an owner c
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-269 · dev · 2026-W45
 
@@ -1821,7 +1821,7 @@ Draft: capability, fix no. "`launcher/actions_review.py plan [--pr N] [--manifes
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-275 · dev · 2026-W45
 
@@ -1835,7 +1835,7 @@ Draft: capability, fix no. "so a sweep doesn't restart a review that hit its bud
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-284 · dev · 2026-W45
 
@@ -1849,7 +1849,7 @@ Draft: upkeep, fix no. "`actions_review.py check` and its `pull_request` path ar
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-293 · dev · 2026-W45
 
@@ -1863,7 +1863,7 @@ Draft: capability, fix no. "Title: swarm watch: [answer] reads the asker from th
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-295 · dev · 2026-W45
 
@@ -1877,7 +1877,7 @@ Draft: upkeep, fix no. "Lock the launcher state file; unique temp file per write
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-300 · dev · 2026-W45
 
@@ -1891,7 +1891,7 @@ Draft: capability, fix no. "A second watcher prints `swarm watch: refused: anoth
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-301 · dev · 2026-W45
 
@@ -1905,7 +1905,7 @@ Draft: upkeep, fix yes. "Closes #278"
 label: upkeep
 fix: #70
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-326 · dev · 2026-W45
 
@@ -1919,7 +1919,7 @@ Draft: governance, fix no. "Ruling PR for #311, per GOV-0007. The owner added `g
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-335 · dev · 2026-W45
 
@@ -1933,7 +1933,7 @@ Draft: upkeep, fix no. "Rubric text only, with no code changes. `python3 -m unit
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-336 · dev · 2026-W45
 
@@ -1947,7 +1947,7 @@ Draft: governance, fix no. "ratified as recommended, option 3 as 3c+E"
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-344 · dev · 2026-W45
 
@@ -1961,7 +1961,7 @@ Draft: capability, fix yes. "`needs_you()` now marks a non-draft PR opened by th
 label: capability
 fix: #275
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-366 · dev · 2026-W45
 
@@ -1975,7 +1975,7 @@ Draft: upkeep, fix yes. "Closes #307 Actions reviewer runs leave empty [heartbea
 label: upkeep
 fix: yes
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-368 · dev · 2026-W45
 
@@ -1989,7 +1989,7 @@ Draft: governance, fix no. "Owner amendment (§9, §10). No issue: only the owne
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-372 · dev · 2026-W45
 
@@ -2003,7 +2003,7 @@ Draft: capability, fix no. "Adds the dashboard's governance section (part 3 of #
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-378 · dev · 2026-W45
 
@@ -2017,7 +2017,7 @@ Draft: capability, fix no. "Adds `dashboard/reviewer_runs.py`, called from `gene
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-379 · dev · 2026-W45
 
@@ -2031,7 +2031,7 @@ Draft: capability, fix no. "Adds the v3 progress section to the dashboard (part 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-383 · dev · 2026-W45
 
@@ -2045,7 +2045,7 @@ Draft: capability, fix no. "- `render()` adds `<meta http-equiv="refresh" conten
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-388 · dev · 2026-W45
 
@@ -2059,7 +2059,7 @@ Draft: capability, fix no. "Adds a **Committees** section to the page, drawn by 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-391 · dev · 2026-W45
 
@@ -2073,7 +2073,7 @@ Draft: upkeep, fix no. "so a reviewer misled by a prompt injection can't open an
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-394 · dev · 2026-W45
 
@@ -2087,7 +2087,7 @@ Draft: upkeep, fix no. "One rebuild against this repo now makes 23 REST calls an
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-416 · dev · 2026-W45
 
@@ -2101,7 +2101,7 @@ Draft: capability, fix no. "Dashboard: new look, and split the page into desk, o
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-418 · dev · 2026-W45
 
@@ -2115,7 +2115,7 @@ Draft: capability, fix no. "The desk now opens with **On the floor** (`dashboard
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-421 · dev · 2026-W45
 
@@ -2129,7 +2129,7 @@ Draft: capability, fix no. "`committees.desk()` draws each open committee at the
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-425 · dev · 2026-W45
 
@@ -2143,7 +2143,7 @@ Draft: capability, fix no. "- **`dashboard/trends.py` (new)** fills the template
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-428 · dev · 2026-W45
 
@@ -2157,7 +2157,7 @@ Draft: capability, fix no. "**`dashboard/precedent.py` (new)**, shown on the des
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-433 · dev · 2026-W45
 
@@ -2171,7 +2171,7 @@ Draft: capability, fix no. "Adds **How the questions went** to the desk, right a
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-434 · dev · 2026-W45
 
@@ -2185,7 +2185,7 @@ Draft: capability, fix no. "Every page's masthead now shows a red **LIVE** mark,
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-437 · dev · 2026-W45
 
@@ -2199,7 +2199,7 @@ Draft: capability, fix no. "Adds `authority.html`, linked from every page's foot
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-438 · dev · 2026-W45
 
@@ -2213,7 +2213,7 @@ Draft: capability, fix no. "An open desk now redraws itself from `state.json` ev
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-463 · dev · 2026-W45
 
@@ -2227,7 +2227,7 @@ Draft: capability, fix no. "Adds `roles/designer.md`, shaped like the other role
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-477 · dev · 2026-W45
 
@@ -2241,7 +2241,7 @@ Draft: capability, fix no. "Rewrites `roles/designer.md` so the designer owns th
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-493 · dev · 2026-W45
 
@@ -2255,7 +2255,7 @@ Draft: governance, fix no. "Ruling PR for #480, per GOV-0007. The owner answered
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-494 · dev · 2026-W45
 
@@ -2269,7 +2269,7 @@ Draft: capability, fix no. "`roles/planner.md` gains a "Questions the owner rais
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-497 · dev · 2026-W45
 
@@ -2283,7 +2283,7 @@ Draft: capability, fix no. "open one unlabelled issue for each stage that can st
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-500 · dev · 2026-W45
 
@@ -2297,7 +2297,7 @@ Draft: governance, fix no. "Records the owner's answer on #498 ("Confirmed, go w
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-503 · dev · 2026-W45
 
@@ -2311,7 +2311,7 @@ Draft: capability, fix no. "`watch.needs_record(body, comments, owner)` also ret
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-505 · dev · 2026-W45
 
@@ -2325,7 +2325,7 @@ Draft: governance, fix no. "Adds `governance/decisions/GOV-0024-every-swarm-app-
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-508 · dev · 2026-W45
 
@@ -2339,7 +2339,7 @@ Draft: upkeep, fix no. "`plan` no longer uses a hard-coded `AUTHORS` set (planne
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-511 · dev · 2026-W45
 
@@ -2353,7 +2353,7 @@ Draft: capability, fix no. "each tick prints every problem, prefixed `swarm.toml
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-513 · dev · 2026-W45
 
@@ -2367,7 +2367,7 @@ Draft: capability, fix no. "`swarm watch` (real) lists it in `swarm inbox` as a 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-523 · dev · 2026-W45
 
@@ -2381,7 +2381,7 @@ Draft: upkeep, fix no. "drops the `idle` kind."
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-534 · dev · 2026-W45
 
@@ -2395,7 +2395,7 @@ Draft: governance, fix no. "Each row says which ruling it still needs."
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-539 · dev · 2026-W45
 
@@ -2409,7 +2409,7 @@ Draft: capability, fix no. "Adds GOV-0023's `[call-in]` trigger to `swarm watch`
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-544 · dev · 2026-W45
 
@@ -2423,7 +2423,7 @@ Draft: capability, fix no. "Heartbeat comments now name their issue in prose abo
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-546 · dev · 2026-W45
 
@@ -2437,7 +2437,7 @@ Draft: capability, fix no. "`swarm watch` now writes `watch-public.json` beside 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-555 · dev · 2026-W45
 
@@ -2451,7 +2451,7 @@ Draft: capability, fix no. "`launcher/swarm status` prints what `swarm watch` is
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-564 · dev · 2026-W45
 
@@ -2465,7 +2465,7 @@ Draft: governance, fix no. "Ruling record for #451, written from the owner's ans
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-566 · dev · 2026-W45
 
@@ -2479,7 +2479,7 @@ Draft: capability, fix no. "The floor now has a "The watcher" block under the ca
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-569 · dev · 2026-W45
 
@@ -2493,7 +2493,7 @@ Draft: governance, fix no. "Paths touched (1): GOVERNANCE.md"
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-598 · dev · 2026-W45
 
@@ -2507,7 +2507,7 @@ Draft: knowledge, fix no. "Adds `PLAN.md` as #574 specifies: a header with the g
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-603 · dev · 2026-W45
 
@@ -2521,7 +2521,7 @@ Draft: capability, fix no. "Adds `launcher/merger.py plan [--pr N] [--manifest P
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-605 · dev · 2026-W45
 
@@ -2535,7 +2535,7 @@ Draft: governance, fix no. "Records the owner's answer on #601 ("Confirmed. Opti
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-607 · dev · 2026-W45
 
@@ -2549,7 +2549,7 @@ Draft: capability, fix no. "Adds `python3 launcher/merger.py run [--dry-run]`: s
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-612 · dev · 2026-W45
 
@@ -2563,7 +2563,7 @@ Draft: upkeep, fix no. "Accommodate the new merger agent"
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-613 · dev · 2026-W45
 
@@ -2577,7 +2577,7 @@ Draft: knowledge, fix no. "remove reference to dead repo"
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-615 · dev · 2026-W45
 
@@ -2591,7 +2591,7 @@ Draft: capability, fix no. "Stage 2 of GOV-0026: `swarm watch` starts `[build]` 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-618 · dev · 2026-W45
 
@@ -2605,7 +2605,7 @@ Draft: governance, fix no. "Ruling record for #577: GOV-0029, option 2 (all four
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-620 · dev · 2026-W45
 
@@ -2619,7 +2619,7 @@ Draft: capability, fix no. "Builds `[daily]` per GOV-0029 (#577, option 2)."
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-631 · dev · 2026-W45
 
@@ -2633,7 +2633,7 @@ Draft: upkeep, fix no. "Closes https://github.com/open-agentos/productswarm/issu
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-636 · dev · 2026-W45
 
@@ -2647,7 +2647,7 @@ Draft: capability, fix no. "`triggers()` still counts the owner's `ready` issues
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-638 · dev · 2026-W45
 
@@ -2661,7 +2661,7 @@ Draft: governance, fix no. "All three are in force now, so this PR updates the b
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-640 · dev · 2026-W45
 
@@ -2675,7 +2675,7 @@ Draft: capability, fix no. "Kicking off the auto-generating reports"
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-643 · dev · 2026-W45
 
@@ -2689,7 +2689,7 @@ Draft: governance, fix no. "Ruling record for #526, transcribed from the owner's
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-645 · dev · 2026-W45
 
@@ -2703,7 +2703,7 @@ Draft: upkeep, fix no. "docs fix (as the issue says)"
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-646 · dev · 2026-W45
 
@@ -2717,7 +2717,7 @@ Draft: upkeep, fix no. "Reverts open-agentos/productswarm#640"
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-653 · dev · 2026-W45
 
@@ -2731,7 +2731,7 @@ Draft: upkeep, fix no. "Adds `PLAN.md` to `PROTECTED_FILES` in `launcher/merger.
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-655 · dev · 2026-W46
 
@@ -2745,7 +2745,7 @@ Draft: governance, fix no. "Records the owner's ruling on #651 ("Confirmed. Opti
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-666 · dev · 2026-W46
 
@@ -2759,7 +2759,7 @@ Draft: capability, fix no. "Adds `swarm webhooks`, the receiver for GitHub App w
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-668 · dev · 2026-W46
 
@@ -2773,7 +2773,7 @@ Draft: governance, fix no. "Adds GOV-0031, the separate ruling #651 names for re
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-670 · dev · 2026-W46
 
@@ -2787,7 +2787,7 @@ Draft: governance, fix no. "Records the owner's answer on #656 ("Option 1 for no
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-672 · dev · 2026-W46
 
@@ -2801,7 +2801,7 @@ Draft: upkeep, fix no. "The meaning is unchanged. This is the second step of the
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-675 · dev · 2026-W46
 
@@ -2815,7 +2815,7 @@ Draft: capability, fix no. "`swarm watch --serve` is the always-on watcher for t
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-677 · dev · 2026-W46
 
@@ -2829,7 +2829,7 @@ Draft: upkeep, fix no. "Title: ops/vps: provisioning, Caddy and systemd units fo
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-679 · dev · 2026-W46
 
@@ -2843,7 +2843,7 @@ Draft: capability, fix no. "`swarm watch --container IMAGE` starts each run in i
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-689 · dev · 2026-W46
 
@@ -2857,7 +2857,7 @@ Draft: capability, fix no. "`swarm desk` serves the Desk on 127.0.0.1:8080, wher
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-699 · dev · 2026-W46
 
@@ -2871,7 +2871,7 @@ Draft: governance, fix no. "Records the owner's ruling on #696 as `governance/de
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-718 · dev · 2026-W46
 
@@ -2885,7 +2885,7 @@ Draft: capability, fix no. "`launcher/swarm daily` prints, for each of the last 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-724 · dev · 2026-W46
 
@@ -2899,7 +2899,7 @@ Draft: capability, fix no. "`launcher/swarm daily` (#707) now ends with two more
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-729 · dev · 2026-W46
 
@@ -2913,7 +2913,7 @@ Draft: capability, fix no. "Two new desk panels from #711's spec (`dashboard/REA
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-732 · dev · 2026-W46
 
@@ -2927,7 +2927,7 @@ Draft: capability, fix no. "**`swarm spent`** prints:"
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-745 · dev · 2026-W46
 
@@ -2941,7 +2941,7 @@ Draft: capability, fix no. "Title: merger: enqueue instead of merging when main 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-770 · dev · 2026-W46
 
@@ -2955,7 +2955,7 @@ Draft: governance, fix no. "Per GOV-0035, the goal's readiness review is for the
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-782 · dev · 2026-W46
 
@@ -2969,7 +2969,7 @@ Draft: capability, fix no. "a new Enqueued group."
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-785 · dev · 2026-W46
 
@@ -2983,7 +2983,7 @@ Draft: capability, fix no. "`swarm acts [--day YYYY-MM-DD] [--json]` prints the 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-787 · dev · 2026-W46
 
@@ -2997,7 +2997,7 @@ Draft: capability, fix no. "An optional `[org]` table in `swarm.toml` lists the 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-793 · dev · 2026-W46
 
@@ -3011,7 +3011,7 @@ Draft: upkeep, fix no. "Before this change, a container run got the role App's t
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-796 · dev · 2026-W46
 
@@ -3025,7 +3025,7 @@ Draft: capability, fix no. "swarm watch: [ruling] starts the builder on the owne
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-810 · dev · 2026-W46
 
@@ -3039,7 +3039,7 @@ Draft: capability, fix no. "The daily report gets a 7th item, **Trouble**: the M
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-813 · dev · 2026-W46
 
@@ -3053,7 +3053,7 @@ Draft: capability, fix no. "`swarm trouble [--json] [--hours 24]` (`launcher/tro
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-816 · dev · 2026-W46
 
@@ -3067,7 +3067,7 @@ Draft: capability, fix no. "`swarm daily` adds a section listing each open closi
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-817 · dev · 2026-W46
 
@@ -3081,7 +3081,7 @@ Draft: capability, fix no. "after `launcher/swarm daily`, the planner runs `laun
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-824 · dev · 2026-W46
 
@@ -3095,7 +3095,7 @@ Draft: governance, fix no. "Ruling record for #820, from the owner's answer"
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-825 · dev · 2026-W46
 
@@ -3109,7 +3109,7 @@ Draft: governance, fix no. "Ruling PR for #821 (per GOV-0007). The owner added `
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-834 · dev · 2026-W46
 
@@ -3123,7 +3123,7 @@ Draft: upkeep, fix no. "A bare `N`, `#N`, and this repo's own `owner/name#N` (an
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-839 · dev · 2026-W46
 
@@ -3137,7 +3137,7 @@ Draft: governance, fix no. "Ruling record for #731, transcribed from the owner's
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-856 · dev · 2026-W46
 
@@ -3151,7 +3151,7 @@ Draft: capability, fix no. "`swarm launch --issue owner/name#N` still refuses** 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-861 · dev · 2026-W46
 
@@ -3165,7 +3165,7 @@ Draft: governance, fix no. "Ruling record for #854: the owner answered "Option 1
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-869 · dev · 2026-W46
 
@@ -3179,7 +3179,7 @@ Draft: governance, fix no. "Records the owner's ruling on #867 (Option 1, `Recor
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-878 · dev · 2026-W46
 
@@ -3193,7 +3193,7 @@ Draft: governance, fix no. "Ruling record for #812: the owner answered "Option 2
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-881 · dev · 2026-W46
 
@@ -3207,7 +3207,7 @@ Draft: governance, fix no. "Title: PRODUCT.md: the goal is done when each Goal's
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-884 · dev · 2026-W46
 
@@ -3221,7 +3221,7 @@ Draft: capability, fix no. "`swarm acts` prints each day's count and, as reporte
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-896 · dev · 2026-W46
 
@@ -3235,7 +3235,7 @@ Draft: upkeep, fix no. "Under Goal M1 (#683). Per GOV-0040, a Goal's capability 
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-905 · dev · 2026-W46
 
@@ -3249,7 +3249,7 @@ Draft: capability, fix no. "`swarm.toml`'s `[org]` table now takes an optional `
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-907 · dev · 2026-W46
 
@@ -3263,7 +3263,7 @@ Draft: capability, fix no. "A new `swarm watch` trigger, `[conflict]`."
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-915 · dev · 2026-W46
 
@@ -3277,7 +3277,7 @@ Draft: capability, fix no. "An `[org]` repo now inherits the home repo's passed 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-917 · dev · 2026-W46
 
@@ -3291,7 +3291,7 @@ Draft: capability, fix no. "**`swarm launch --issue owner/name#N`** no longer re
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-923 · dev · 2026-W46
 
@@ -3305,7 +3305,7 @@ Draft: knowledge, fix no. "Adds `evals/drills.md` with the M2 criterion 4 drill.
 label: knowledge
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-925 · dev · 2026-W46
 
@@ -3319,7 +3319,7 @@ Draft: capability, fix no. "Desk: serve the trouble panel under the plan (#903)"
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-929 · dev · 2026-W46
 
@@ -3333,7 +3333,7 @@ Draft: capability, fix no. "`swarm desk` now serves `bridge.html`, the Bridge fr
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-933 · dev · 2026-W46
 
@@ -3347,7 +3347,7 @@ Draft: capability, fix no. "Desk: the Commissions page, read-only, with a focus 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-934 · dev · 2026-W46
 
@@ -3361,7 +3361,7 @@ Draft: capability, fix no. "`agents.html` is the Agents page from the owner's "v
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-945 · dev · 2026-W46
 
@@ -3375,7 +3375,7 @@ Draft: upkeep, fix no. "No backend, network or `swarm` subcommand."
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-947 · dev · 2026-W46
 
@@ -3389,7 +3389,7 @@ Draft: capability, fix no. "`launcher/specs/fake.py` adds `FakeSource(path)`, a 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-962 · dev · 2026-W46
 
@@ -3403,7 +3403,7 @@ Draft: upkeep, fix no. "`append(kind, goal, feature, **fields)`: writes one JSON
 label: upkeep
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-963 · dev · 2026-W46
 
@@ -3417,7 +3417,7 @@ Draft: capability, fix no. "`launcher/specs/snapshot.py`: pure string functions 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-964 · dev · 2026-W46
 
@@ -3431,7 +3431,7 @@ Draft: capability, fix no. "`launcher/specs/notion.py`, the `notion` `SpecSource
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-974 · dev · 2026-W46
 
@@ -3445,7 +3445,7 @@ Draft: governance, fix no. "Transcribes the owner's ruling (option 1, `Record: y
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-975 · dev · 2026-W46
 
@@ -3459,7 +3459,7 @@ Draft: governance, fix no. "Transcribes the owner's ruling on #943 (Part A optio
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-982 · dev · 2026-W46
 
@@ -3473,7 +3473,7 @@ Draft: capability, fix no. "`[specs]` is now an allowed top-level table."
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-984 · dev · 2026-W46
 
@@ -3487,7 +3487,7 @@ Draft: capability, fix no. "Features. For Ready + unlinked + pullable it opens a
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-993 · dev · 2026-W46
 
@@ -3501,7 +3501,7 @@ Draft: capability, fix no. "Adds `swarm specs push <goal>` against the `fake` ba
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-994 · dev · 2026-W46
 
@@ -3515,7 +3515,7 @@ Draft: capability, fix no. "**`launcher/swarm.py`:** `swarm specs diff [<goal>] 
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-1000 · dev · 2026-W46
 
@@ -3529,7 +3529,7 @@ Draft: governance, fix no. "Transcribes the owner's ruling on #991 (option 1, `R
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-1001 · dev · 2026-W46
 
@@ -3543,7 +3543,7 @@ Draft: governance, fix no. "Ruling record transcribed from the owner's answer on
 label: governance
 fix: no
 hard:
-reviewed: yes
+reviewed: no
 
 ## pr-1009 · dev · 2026-W46
 
@@ -3557,4 +3557,4 @@ Draft: capability, fix no. "- `launcher/specs/config.py`: `source()` returns `No
 label: capability
 fix: no
 hard:
-reviewed: yes
+reviewed: no
