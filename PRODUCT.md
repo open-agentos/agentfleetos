@@ -1,4 +1,4 @@
-# Product brief: productswarm
+# Product brief: AgentFleetOS
 
 **Owner:** @mattmcalister · **Status:** goal set: the department that reports to you (#526), done test per GOV-0040 · Q2–Q4 in force (GOV-0031, GOV-0027, GOV-0029), outside project unnamed (GOV-0035), Q5 to come · v0–v3 shipped or in progress (History)
 

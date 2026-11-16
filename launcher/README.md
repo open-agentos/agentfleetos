@@ -751,7 +751,7 @@ To add a repo:
 
 What changes once a repo is listed:
 
-- **`swarm watch`** reads each listed repo on every check, as it reads this one, and works out `[review]`, `[build]`, `[respond]`, `[ruling]`, `[record]`, `[answer]` and `[call-in]` there. A Task there under the owner's open Goal or Area here is go (GOV-0031). Its refs name the repo (`[build] open-agentos/scratch#5 go under Goal open-agentos/productswarm#686 (GOV-0031)`). `[daily]`, `[ask]`, `[research]` and `swarm:halt` stay with this repo's report issue. A real check starts sessions there too (#912), after this repo's, as described in "A session in another repo" above:
+- **`swarm watch`** reads each listed repo on every check, as it reads this one, and works out `[review]`, `[build]`, `[respond]`, `[ruling]`, `[record]`, `[answer]` and `[call-in]` there. A Task there under the owner's open Goal or Area here is go (GOV-0031). Its refs name the repo (`[build] open-agentos/scratch#5 go under Goal open-agentos/agentfleetos#686 (GOV-0031)`). `[daily]`, `[ask]`, `[research]` and `swarm:halt` stay with this repo's report issue. A real check starts sessions there too (#912), after this repo's, as described in "A session in another repo" above:
   - The same limits apply: one `max_live` ceiling covers every repo (GOV-0010), and the usage-limit and halt holds apply everywhere.
   - A trigger there is held only by live sessions on the same repo plus number: that repo's heartbeat and the launcher's entries for that repo. A session on `open-agentos/scratch#5` doesn't hold this repo's `#5`.
   - Each repo gets its own reviewer pass (`reviewer-<name>-watch`).

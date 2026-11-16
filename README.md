@@ -1,4 +1,4 @@
-# productswarm
+# AgentFleetOS
 
 A swarm of agent sessions building tools for running agent swarms.
 
@@ -14,7 +14,7 @@ Each session is a Claude Code session with one role: planner, builder, reviewer,
 | `swarm.toml` | The swarm manifest: which roles to run, how many of each, their model and an optional spend cap | [launcher/README.md](launcher/README.md#the-swarm-manifest) |
 | `ops/` | Role identities: one GitHub App per role, and `ops/swarm-session`, which starts a session as that App | [ops/README.md](ops/README.md) |
 | `roles/` | The prompt each role starts from | |
-| `research/` | The analyst's record of the landscape outside productswarm: similar and adjacent products, and platform changes | [research/landscape.md](research/landscape.md) |
+| `research/` | The analyst's record of the landscape outside AgentFleetOS: similar and adjacent products, and platform changes | [research/landscape.md](research/landscape.md) |
 | `GOVERNANCE.md`, `governance/` | Who decides what, the rulings so far (`governance/INDEX.md`) and the Phase 0 log | [GOVERNANCE.md](GOVERNANCE.md) |
 
 Everything is Python stdlib plus the `gh` CLI. The launcher needs Python 3.11+ (for `tomllib`) and macOS Terminal.
@@ -28,7 +28,7 @@ Everything is Python stdlib plus the `gh` CLI. The launcher needs Python 3.11+ (
 5. **See what's happening.**
    - `launcher/swarm inbox`: one ordered list of what's waiting on you (blocked sessions, open `gov:question`s, PRs to merge, idle sessions, sessions over their spend cap).
    - `launcher/swarm ls`: every live session, with its status, current issue, last activity and spend.
-   - The dashboard: <https://open-agentos.github.io/productswarm/>, rebuilt every 15 minutes. To build it locally, run `python3 dashboard/generate.py`. It opens with the same "Needs you" list.
+   - The dashboard: <https://open-agentos.github.io/agentfleetos/>, rebuilt every 15 minutes. To build it locally, run `python3 dashboard/generate.py`. It opens with the same "Needs you" list.
 6. **Hand a session an issue.** `launcher/swarm launch builder --issue N` starts a session on #N. It refuses if the owner hasn't labelled #N `ready`, or if a live session is already working on it.
 7. **Stop a session.** `launcher/swarm stop builder-1`. Sessions never stop on their own, even when they go over a spend cap (GOV-0008). If you close a session's window instead, the next session of that role records it as stopped.
 
