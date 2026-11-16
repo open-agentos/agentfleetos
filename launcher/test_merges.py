@@ -112,7 +112,7 @@ class MergesTextTest(unittest.TestCase):
 
     def test_unreviewed_revert(self):
         out = self.text([pr(646, OWNER, title='Revert "Update swarm.toml"',
-                            body="Reverts open-agentos/productswarm#640\n\n"), pr(1, OWNER)])
+                            body="Reverts open-agentos/agentfleetos#640\n\n"), pr(1, OWNER)])
         self.assertIn("Reverts: 1, 1 unreviewed", out)
         self.assertIn(f"#646 reverts #640, merged by @{OWNER}: not reviewed", out)
 

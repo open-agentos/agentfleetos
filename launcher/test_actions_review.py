@@ -16,7 +16,7 @@ sys.path.insert(0, str(HERE))
 import actions_review  # noqa: E402
 import watch  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
 SHA1, SHA2 = "a" * 40, "b" * 40
 T0 = 1793793600.0          # 2026-11-04T12:00:00Z
@@ -254,11 +254,11 @@ class Plan(unittest.TestCase):
         self.assertEqual([r for r in self.reads if r[0] == "reviews"], [])   # decided before reading reviews
 
     def test_fork_head_is_out(self):
-        self.open_prs = [pr(70, head_repo="someone/productswarm"), pr(71, head_repo=None)]
+        self.open_prs = [pr(70, head_repo="someone/agentfleetos"), pr(71, head_repo=None)]
         code, prs, any_ = self.run_plan()
         self.assertEqual((code, prs, any_), (0, [], "false"))
-        self.assertIn("not in open-agentos/productswarm", self.lines[0])
-        self.assertIn("not in open-agentos/productswarm", self.lines[1])
+        self.assertIn("not in open-agentos/agentfleetos", self.lines[0])
+        self.assertIn("not in open-agentos/agentfleetos", self.lines[1])
 
     def test_draft_is_out(self):
         self.open_prs = [pr(70, draft=True)]
@@ -295,7 +295,7 @@ class Plan(unittest.TestCase):
 
     def test_pr_arg_out_under_the_same_rules(self):
         for bad in (pr(71, draft=True), pr(71, state="closed"), pr(71, author="someone-else"),
-                    pr(71, head_repo="someone/productswarm")):
+                    pr(71, head_repo="someone/agentfleetos")):
             with self.subTest(pr=bad):
                 self.prs[71] = bad
                 code, prs, any_ = self.run_plan(pr_arg=71)

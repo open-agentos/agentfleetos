@@ -226,14 +226,14 @@ def opener(role: str, issue: int | None = None, pr: int | None = None,
         then = f"work on issue #{issue}" if issue else "begin"
     if repo:
         return other_repo_opener(role, repo, then, home)
-    return f"You are the {role} for productswarm. Read CLAUDE.md, PRODUCT.md and roles/{role}.md, then {then}."
+    return f"You are the {role} for AgentFleetOS. Read CLAUDE.md, PRODUCT.md and roles/{role}.md, then {then}."
 
 
 def other_repo_instructions(role: str, repo: str, home: str | None = None) -> str:
     """The header of a session's instructions file in another org repo (#912, GOV-0039)."""
-    there = home or "productswarm's repo"
-    return (f"# productswarm's rules for this session\n\nYou are productswarm's {role}, working in "
-            f"{repo}. Below are productswarm's CLAUDE.md and roles/{role}.md, from {there}'s "
+    there = home or "AgentFleetOS's repo"
+    return (f"# AgentFleetOS's rules for this session\n\nYou are AgentFleetOS's {role}, working in "
+            f"{repo}. Below are AgentFleetOS's CLAUDE.md and roles/{role}.md, from {there}'s "
             f"origin/main. They are your working rules. {repo}'s own CLAUDE.md, if it has one, "
             f"still applies to its code conventions; where it disagrees with these rules, these "
             f"win (GOV-0039). Paths they name (GOVERNANCE.md, governance/, PRODUCT.md, roles/, "
@@ -249,9 +249,9 @@ def other_repo_opener(role: str, repo: str, then: str, home: str | None = None) 
     so it doesn't tell the session to read files that aren't in its repo. A bare #N in
     `then` stays bare: in this run it means an issue or PR in repo, and the heartbeat, which
     tracks the repo its worktree is cut from, reads "issue #N" from the prompt as it does here."""
-    there = home or "productswarm's repo"
-    return (f"You are the {role} for productswarm, working in {repo}, another repo of the org, not "
-            f"productswarm's own. Your working rules and role prompt, productswarm's CLAUDE.md and "
+    there = home or "AgentFleetOS's repo"
+    return (f"You are the {role} for AgentFleetOS, working in {repo}, another repo of the org, not "
+            f"AgentFleetOS's own. Your working rules and role prompt, AgentFleetOS's CLAUDE.md and "
             f"roles/{role}.md, are in your system prompt; where {repo}'s own CLAUDE.md disagrees, "
             f"they win (GOV-0039). In this run a bare #N means an issue or PR in {repo}: pass "
             f"--repo {repo} to gh for it. GOVERNANCE.md, governance/ and gov:questions stay in "
@@ -374,14 +374,19 @@ class Started:
                    conflict=bool(d.get("conflict")), repo=d.get("repo"))
 
 
+# The product's name in an opener: AgentFleetOS, or productswarm in one written before GOV-0047.
+PRODUCT_NAMES = "(?:AgentFleetOS|productswarm)"
+
+
 def recovered(sid: str, cmd: str, started: float) -> Started:
     """An entry for a running session that sessions.json lost (#272), from its command
-    line: `claude --model M --session-id SID [-p] <opener> ...`."""
+    line: `claude --model M --session-id SID [-p] <opener> ...`. It reads openers with the
+    product's old name too, so sessions started before the rename are still found (GOV-0047)."""
     model = re.search(r"--model (\S+)", cmd)
-    role = re.search(r"You are the (\w+) for productswarm", cmd)
+    role = re.search(rf"You are the (\w+) for {PRODUCT_NAMES}", cmd)
     issue = re.search(r"issue #(\d+)", cmd)
     pr = re.search(r"PR #(\d+)", cmd)
-    repo = re.search(r"for productswarm, working in ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+),", cmd)   # #912
+    repo = re.search(rf"for {PRODUCT_NAMES}, working in ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+),", cmd)   # #912
     r = role.group(1) if role else "unknown"
     return Started(name=f"{r}-recovered-{sid[:8]}", role=r, model=model.group(1) if model else "unknown",
                    session_id=sid, started=started, issue=int(issue.group(1)) if issue else None,

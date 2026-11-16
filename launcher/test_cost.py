@@ -14,7 +14,7 @@ sys.path.insert(0, str(HERE))
 import swarm  # noqa: E402
 import watch  # noqa: E402
 
-REPO = "open-agentos/productswarm"
+REPO = "open-agentos/agentfleetos"
 
 
 def run(kind, ref, cost, started="2026-11-01T10:00:00+00:00", ended="2026-11-01T11:00:00+00:00"):

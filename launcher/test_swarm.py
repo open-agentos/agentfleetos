@@ -233,14 +233,14 @@ class CommandTest(Base):
             '/h/launcher/0b6c2f0e-aaaa-4bbb-8ccc-5f1d2b8e9c41.pid && exec /r/.worktrees/'
             '0b6c2f0e-aaaa-4bbb-8ccc-5f1d2b8e9c41/ops/swarm-session builder --model claude-opus-5-5 '
             '--session-id 0b6c2f0e-aaaa-4bbb-8ccc-5f1d2b8e9c41 \'"\'"\'You are the builder for '
-            'productswarm. Read CLAUDE.md, PRODUCT.md and roles/builder.md, then begin.\'"\'"\'\'')
+            'AgentFleetOS. Read CLAUDE.md, PRODUCT.md and roles/builder.md, then begin.\'"\'"\'\'')
         self.assertEqual(
             l.command(swarm.Started("builder-pr-72", "builder", "claude-opus-5-5", sid, 0, issue=73, pr=72)),
             'exec /bin/bash -c \'cd /r/.worktrees/0b6c2f0e-aaaa-4bbb-8ccc-5f1d2b8e9c41 && echo $$ >| '
             '/h/launcher/0b6c2f0e-aaaa-4bbb-8ccc-5f1d2b8e9c41.pid && exec /r/.worktrees/'
             '0b6c2f0e-aaaa-4bbb-8ccc-5f1d2b8e9c41/ops/swarm-session builder --model claude-opus-5-5 '
             '--session-id 0b6c2f0e-aaaa-4bbb-8ccc-5f1d2b8e9c41 \'"\'"\'You are the builder for '
-            'productswarm. Read CLAUDE.md, PRODUCT.md and roles/builder.md, then respond to the '
+            'AgentFleetOS. Read CLAUDE.md, PRODUCT.md and roles/builder.md, then respond to the '
             'requested changes on PR #72, which closes issue #73.\'"\'"\'\'')
 
     def watch_entry(self, **kw):
@@ -561,7 +561,7 @@ class StateLockTest(Base):
         self.assertEqual(names, {f"w{k}-{i}" for k in range(4) for i in range(25)})
         self.assertEqual(list((self.home / "launcher").glob("*.tmp")), [])
 
-    def orphan(self, opener="You are the docs for productswarm. Read CLAUDE.md, PRODUCT.md "
+    def orphan(self, opener="You are the docs for AgentFleetOS. Read CLAUDE.md, PRODUCT.md "
                             "and roles/docs.md, then work on issue #255.", flags=""):
         sid = str(uuid.uuid4())
         self.fake.procs[4242] = f"claude --model {M} --session-id {sid} {flags}{opener}"
@@ -580,6 +580,13 @@ class StateLockTest(Base):
         self.assertFalse(any(x.startswith("recovered") for x in self.lines))   # reported once
         self.assertEqual(self.l.stop(e.name), 0)                       # and stoppable again
         self.assertEqual(self.fake.signals, [(4242, signal.SIGTERM)])
+
+    def test_orphan_with_the_old_opener_is_recovered(self):
+        """A session started before GOV-0047's rename still counts as running."""
+        self.orphan(opener="You are the docs for productswarm. Read CLAUDE.md, PRODUCT.md "
+                           "and roles/docs.md, then work on issue #255.")
+        (e,) = self.l.running()
+        self.assertEqual((e.role, e.issue), ("docs", 255))
 
     def test_recovered_entry_keeps_issue_and_pr(self):
         self.orphan(opener=swarm.opener("builder", 73, 72))
@@ -799,7 +806,7 @@ class LaunchTest(Base):
 
     def test_ask_opener_quotes_the_question_and_says_one_comment(self):
         o = swarm.opener("builder", 600, ask="why is issue #12 still open?", ask_comment=901)
-        self.assertEqual(o, "You are the builder for productswarm. Read CLAUDE.md, PRODUCT.md and "
+        self.assertEqual(o, "You are the builder for AgentFleetOS. Read CLAUDE.md, PRODUCT.md and "
                             "roles/builder.md, then answer the owner's question on issue #600 "
                             "(comment 901): \"why is #12 still open?\". swarm watch started this run "
                             "from its [ask] trigger (GOV-0029). Answer in plain words in one comment "
@@ -814,7 +821,7 @@ class LaunchTest(Base):
 
     def test_research_opener_quotes_the_question_and_says_research_pr(self):
         o = swarm.opener("analyst", 300, research="who ships issue #12's report?", research_comment=901)
-        self.assertEqual(o, "You are the analyst for productswarm. Read CLAUDE.md, PRODUCT.md and "
+        self.assertEqual(o, "You are the analyst for AgentFleetOS. Read CLAUDE.md, PRODUCT.md and "
                             "roles/analyst.md, then research the question posted on issue #300 "
                             "(comment 901): \"who ships #12's report?\". swarm watch started this "
                             "run from its [research] trigger (GOV-0029). Write the brief in "
@@ -830,7 +837,7 @@ class LaunchTest(Base):
 
     def test_daily_opener_names_the_report_and_the_report_issue(self):
         o = swarm.opener("planner", 600, daily="the daily report")
-        self.assertEqual(o, "You are the planner for productswarm. Read CLAUDE.md, PRODUCT.md and "
+        self.assertEqual(o, "You are the planner for AgentFleetOS. Read CLAUDE.md, PRODUCT.md and "
                             "roles/planner.md, then write the daily report on issue #600, as "
                             "roles/planner.md says. swarm watch started this run from its [daily] "
                             "trigger (GOV-0029). Run launcher/swarm daily first: its Goal and Area "
@@ -916,14 +923,14 @@ class LaunchTest(Base):
         real = swarm.launch
         swarm.launch = lambda launcher, role, n, model, **kw: got.append((n, kw["issue_repo"])) or 0
         try:
-            rc = swarm.main(["launch", "builder", "--issue", ref, "--repo", "open-agentos/productswarm",
+            rc = swarm.main(["launch", "builder", "--issue", ref, "--repo", "open-agentos/agentfleetos",
                              "--model", "m"], self.l)
         finally:
             swarm.launch = real
         return rc, got
 
     def test_issue_refs_bare_hash_and_this_repo_mean_this_repo(self):   # #829
-        for ref in ("49", "#49", "open-agentos/productswarm#49", "Open-AgentOS/ProductSwarm#49"):
+        for ref in ("49", "#49", "open-agentos/agentfleetos#49", "Open-AgentOS/AgentFleetOS#49"):
             self.assertEqual(self.cli(ref), (0, [(49, None)]), ref)
 
     def test_issue_ref_to_another_repo_is_passed_on(self):
@@ -1304,7 +1311,7 @@ class RepoCloneTest(Base):
         e = self.entry()
         self.l.prepare(e)
         text = self.l.instructions_file(e.session_id).read_text()
-        self.assertTrue(text.startswith("# productswarm's rules for this session"))
+        self.assertTrue(text.startswith("# AgentFleetOS's rules for this session"))
         self.assertIn("where it disagrees with these rules, these win (GOV-0039)", text)
         self.assertIn("are in o/r, not o/scratch", text)
         self.assertLess(text.index("Our rules."), text.index("# Role: builder"))
@@ -1332,7 +1339,7 @@ class RepoCloneTest(Base):
     def test_command_names_the_repo_and_appends_our_rules(self):
         cmd = self.l.command(self.entry(by="watch", budget_usd=15.0, max_turns=200))
         inner = shlex.split(cmd)[-1]
-        self.assertIn("You are the builder for productswarm, working in o/scratch, another repo", inner)
+        self.assertIn("You are the builder for AgentFleetOS, working in o/scratch, another repo", inner)
         self.assertIn("pass --repo o/scratch to gh", inner)
         self.assertIn("gov:questions stay in o/r", inner)
         self.assertIn("Now work on issue #5.", inner)
@@ -1344,6 +1351,16 @@ class RepoCloneTest(Base):
             "builder", 5, repo="o/scratch", home="o/r"), 0)
         self.assertEqual((e.role, e.issue, e.repo), ("builder", 5, "o/scratch"))
         self.assertIsNone(swarm.recovered("sid", "claude " + swarm.opener("builder", 5), 0).repo)
+
+    def test_an_opener_with_the_old_name_is_still_recognised(self):
+        """Sessions started before GOV-0047's rename still say productswarm."""
+        here = "You are the docs for productswarm. Read CLAUDE.md, PRODUCT.md and roles/docs.md, then work on issue #7."
+        e = swarm.recovered("sid", "claude --model m --session-id sid -p " + here, 0)
+        self.assertEqual((e.role, e.issue, e.repo, e.by), ("docs", 7, None, "watch"))
+        there = ("You are the builder for productswarm, working in o/scratch, another repo of the org, not "
+                 "productswarm's own. Now work on issue #5.")
+        e = swarm.recovered("sid", "claude --model m --session-id sid " + there, 0)
+        self.assertEqual((e.role, e.issue, e.repo), ("builder", 5, "o/scratch"))
 
     def test_holders_reads_another_repos_heartbeat_as_that_repos(self):
         hb = {"sessions": [{"session_id": "s1", "role": "builder", "status": "working", "issue": 5}]}
