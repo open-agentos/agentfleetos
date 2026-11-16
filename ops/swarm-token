@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Print a GitHub installation token for a role's App, minting a new one when the
-# cached token has under 10 minutes left. Tokens last an hour and are scoped to productswarm.
+# cached token has under 10 minutes left. Tokens last an hour and are scoped to this repo
+# and the scratch repo.
 #
 #   ops/swarm-token <role>              print the token
 #   ops/swarm-token --git <role> get    act as a git credential helper
@@ -14,7 +15,7 @@ if [[ $git_mode == 1 ]]; then
   cat >/dev/null                       # drain git's request
 fi
 
-repo="${PRODUCTSWARM_REPO:-open-agentos/productswarm}"
+repo="${PRODUCTSWARM_REPO:-open-agentos/agentfleetos}"
 dir="${PRODUCTSWARM_APPS_DIR:-$HOME/.config/productswarm/apps}"
 conf="$dir/$role.json" key="$dir/$role.pem" cache="$dir/$role.token.json"
 [[ -f $conf && -f $key ]] || { echo "swarm-token: no App credentials for '$role' in $dir (run ops/create-apps.py)" >&2; exit 1; }
@@ -35,7 +36,7 @@ else
     || { echo "swarm-token: productswarm-$role is not installed on $repo" >&2; exit 1; }
   umask 077
   api -X POST "https://api.github.com/app/installations/$inst/access_tokens" \
-    -d '{"repositories":["productswarm","productswarm-scratch"]}' | jq '{token, expires_at}' > "$cache.tmp"
+    -d "{\"repositories\":[\"${repo#*/}\",\"productswarm-scratch\"]}" | jq '{token, expires_at}' > "$cache.tmp"
   mv "$cache.tmp" "$cache"
   token=$(jq -r .token "$cache")
 fi
