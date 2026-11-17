@@ -363,7 +363,9 @@
     var found = st.selected === null ? null : findRow(st.selected);
     if (!found) { st.selected = null; emptyPanel(box); return; }
     var r = found.row, here = found.here;
-    var w = here ? r : { cost: 0, tokens: 0, lines: 0, outcomes: 0, baseline: r.baseline, unpriced_tokens: 0 };
+    // An idle issue has nothing this window. Its row is another window's, so that row's baseline
+    // is a usual for a window of another length: don't show it as this window's usual.
+    var w = here ? r : { cost: 0, tokens: 0, lines: 0, outcomes: 0, baseline: null, unpriced_tokens: 0 };
     var idle = !here || (!(w.tokens > 0) && !(w.cost > 0) && !w.outcomes);
     box.classList.remove("wm-sel-empty");
     setText("wm-sel-ref", r.ref === "unattributed" ? "unattributed" : r.ref);
