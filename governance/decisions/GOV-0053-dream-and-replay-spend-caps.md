@@ -1,5 +1,5 @@
 ---
-id: GOV-0052
+id: GOV-0053
 title: The nightly dream and lesson replays run on the engine's key under per-run caps only
 status: in-force
 kind: ruling
