@@ -17,8 +17,8 @@ date: 2026-11-17
 review_by: 2027-02-28
 supersedes: []
 applies_to:
-  paths: ["memory/**"]
-  roles: [librarian, planner, merger]
+  paths: []
+  roles: []
   situations:
     - the librarian opens a PR that touches only `memory/`
     - the librarian sees a pattern in its dream and wonders whether to open a gov:question
@@ -35,6 +35,8 @@ applies_to:
 ## Applies when / does not apply when
 
 - Applies when: the PR's changed files are all under `memory/`, and its author is the librarian.
+- Applies when (Ruling 2): the librarian's dream sees a pattern that meets the maturity rules and it drafts a `gov:question`.
+- Applies when (Ruling 3): any role reads the owner model, or anyone proposes a change to it.
 - Does not apply when: a PR touches anything outside `memory/`. It goes the usual way: builder authors under GOV-0022, any other author waits for the owner.
 - Does not apply when: a question would be raised from a lesson that doesn't meet the maturity rules in 2. Those stay in the dream report.
 - Does not apply to adopting anything a draft proposes. Only merged records are rulings (GOV-0006).
