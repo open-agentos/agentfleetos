@@ -8,6 +8,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import crewdraw  # noqa: E402
 import generate as g  # noqa: E402
 import spend  # noqa: E402
 from test_generate import NOW, IDLE, ev, tracking, comment, build  # noqa: E402
@@ -65,8 +66,10 @@ class PageTest(unittest.TestCase):
         self.assertNotIn("spend", m)   # no spend per day or total (#1113, GOV-0033)
 
     def test_crew_states_method_and_figures(self):
-        page = g.render(self.model())["crew.html"]
-        self.assertIn("$24.00", page)
+        m = self.model()
+        page = g.render(m)["crew.html"]
+        if crewdraw.NODE:   # crew.js writes the figure (#1139) from state.json's own (#1153)
+            self.assertIn('<td class="num">$24.00</td>', crewdraw.page(m))
         self.assertIn("API list-price equivalent", page)
         self.assertIn(spend.PRICES_AS_OF, page)
         for gone in ("spent today", "Spend per day", "Left out of totals"):

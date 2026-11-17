@@ -13,14 +13,15 @@ model calls and no API calls of its own. The cache, schema 1:
 `repo` defaults to the desk's repo, and a bare `goal` number means an issue in it. An item
 without a known label or a merge time is left out and counted as unreadable.
 
-What it draws:
-  - the desk's Effort panel: a stacked bar per open Goal (this window, the one before; the fix
-    share hatched) and the capability share across all merged PRs by week, each segment
-    linking to its PRs on effort.html;
+What it gives:
+  - Crew's Effort panel, as state()'s plain fields: a stacked bar per open Goal (this window,
+    the one before; the fix share hatched) and the capability share across all merged PRs by
+    week, each segment linking to its PRs on effort.html. crew.js draws it (#1139);
+  - effort.html, the PRs behind each segment (page_body);
   - `swarm daily`'s upkeep risk line (risks): upkeep is more than half of a Goal's merged PRs
     in the last WINDOW days.
 
-Colours are layout.py's, by class (no new colours). Stdlib only, no script.
+Colours are layout.py's, by class (no new colours). Stdlib only.
 """
 from __future__ import annotations
 
@@ -189,95 +190,13 @@ def anchor(ref: str, w: str, label: str) -> str:
     return "e-" + re.sub(r"[^A-Za-z0-9]+", "-", ref).strip("-") + f"-{w}-{label}"
 
 
-def _pct(n: int, of: int) -> str:
-    return f"{round(100 * n / of, 2):g}%"
-
-
-def bar_html(row: dict, w: str, scale: int) -> str:
-    """One window's stacked bar: a link per label segment to its PRs, the fix share hatched."""
-    c = row[w + "_counts"]
-    segs = []
-    for lb in LABELS:
-        n, fixes = c["by"][lb], c["fix_by"][lb]
-        if not n:
-            continue
-        tip = f"{n} {lb}" + (f", {fixes} fixing recent work" if fixes else "")
-        inner = ""
-        if fixes:
-            inner = f'<span class="ef-fix" style="width:{_pct(fixes, n)}"></span>'
-        segs.append(f'<a class="ef-seg ef-{lb}" style="width:{_pct(n, scale)}" '
-                    f'href="{FILE}#{anchor(row["ref"], w, lb)}" title="{esc(tip)}" '
-                    f'aria-label="{esc(tip)}">{inner}</a>')
-    body = "".join(segs) if segs else '<span class="ef-none"></span>'
-    word = dict(WINDOWS)[w]
-    total = c["total"]
-    return (f'<div class="ef-row"><span class="ef-when muted">{esc(word)}</span>'
-            f'<span class="ef-bar">{body}</span>'
-            f'<span class="ef-n mono">{total}</span></div>')
-
-
-def legend_html() -> str:
-    keys = "".join(f'<span><span class="ef-key ef-{lb}"></span>{lb}</span>' for lb in LABELS)
-    return (f'<div class="ef-legend muted">{keys}'
-            '<span><span class="ef-key ef-capability"><span class="ef-fix" style="width:100%"></span></span>'
-            'fixes recent work</span></div>')
-
-
-def trend_html(e: dict) -> str:
-    """Capability share by week across all merged PRs in the cache: a line and a sentence."""
-    t = e["trend"]
-    w, h, pad = 240, 48, 4
-    step = (w - 2 * pad) / max(len(t) - 1, 1)
-    pts = [(pad + i * step, pad + (h - 2 * pad) * (1 - x["capability"] / x["total"]))
-           for i, x in enumerate(t) if x["total"]]
-    marks = "".join(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5"></circle>' for x, y in pts)
-    line = (f'<polyline points="{" ".join(f"{x:.1f},{y:.1f}" for x, y in pts)}"></polyline>'
-            if len(pts) > 1 else "")
-    now = t[-1]
-    said = (f'This week {_share(now)} of {now["total"]} merged PRs were capability'
-            if now["total"] else "No PRs merged this week yet")
-    prev = next((x for x in reversed(t[:-1]) if x["total"]), None)
-    if prev:
-        said += f'; the week of {prev["week"].day} {prev["week"]:%b}, {_share(prev)} of {prev["total"]}'
-    label = f"Capability share by week, the last {len(t)} weeks"
-    return (f'<div class="ef-trend"><h3>Capability share by week</h3>'
-            f'<svg class="ef-line" role="img" aria-label="{esc(label)}" width="{w}" height="{h}" '
-            f'viewBox="0 0 {w} {h}"><title>{esc(label)}</title>{line}{marks}</svg>'
-            f'<p class="muted">{esc(said)}. All merged PRs in the cache, by week from Monday '
-            f'(UTC), from the week of {t[0]["week"].day} {t[0]["week"]:%b}.</p></div>')
-
-
-def _share(x: dict) -> str:
-    return f'{round(100 * x["capability"] / x["total"])}%'
-
-
-def render(e: dict | None) -> str:
-    """The desk's Effort panel."""
-    head = '<h2>Effort</h2>'
+def note(e: dict | None) -> str:
+    """effort.html's line when there are no labels to list: the cache is missing or unreadable.
+    Crew's Effort panel says the same, drawn by crew.js (#1139)."""
     if not e or e["status"] == "missing":
-        return (f'<section class="effort">{head}<p class="muted">No effort labels yet: '
-                f'<code>classify/cache/effort.json</code> isn\'t there. '
-                f'<code>swarm classify run effort</code> writes it (#1012).</p></section>')
-    if e["status"] == "error":
-        return f'<section class="effort">{head}<p class="muted">Effort labels couldn\'t be read: {esc(e["error"])}</p></section>'
-    rows = e["goals"]
-    scale = max([1, *(r[w + "_counts"]["total"] for r in rows for w, _ in WINDOWS)])
-    goals = []
-    for r in rows:
-        lead = f'<span class="mono">{esc(r["lead"])}</span> ' if r.get("lead") else ""
-        name = f'<a href="{esc(r["url"])}">{esc(r["title"])}</a>' if r.get("url") else esc(r["title"])
-        goals.append(f'<div class="ef-goal"><div class="ef-name">{lead}{name}</div>'
-                     + "".join(bar_html(r, w, scale) for w, _ in WINDOWS) + "</div>")
-    by = ("the model classifier" if e.get("classifier") == "model" else
-          "the paths baseline" if e.get("classifier") == "paths" else "the classifier")
-    upd = e.get("updated_at")
-    note = (f'Merged PRs per open Goal, by kind of work, from {by}'
-            + (f', labels updated {upd:%Y-%m-%d %H:%M} UTC' if upd else "")
-            + (f'; {e["unreadable"]} cache entries left out as unreadable' if e.get("unreadable") else "")
-            + '. A segment opens its PRs.')
-    body = "".join(goals) if goals else '<p class="muted">No open Goal.</p>'
-    return (f'<section class="effort">{head}<p class="muted">{esc(note)}</p>{legend_html()}'
-            f'{body}{trend_html(e)}</section>')
+        return ('<p class="muted">No effort labels yet: <code>classify/cache/effort.json</code> isn\'t '
+                'there. <code>swarm classify run effort</code> writes it (#1012).</p>')
+    return f'<p class="muted">Effort labels couldn\'t be read: {esc(e["error"])}</p>'
 
 
 def page_body(e: dict | None, repo: str) -> str:
@@ -287,7 +206,7 @@ def page_body(e: dict | None, repo: str) -> str:
            'from <code>classify/cache/effort.json</code>. A PR marked fix fixes something merged '
            'in the 14 days before it.</p>']
     if not e or e["status"] != "ok":
-        out.append(render(e))
+        out.append(note(e))
         return "\n".join(out)
     for r in e["goals"]:
         lead = f'{r["lead"]}: ' if r.get("lead") else ""
@@ -327,13 +246,20 @@ def _parts(title: str | None) -> tuple[str, str]:
     return (m.group(1), m.group(2)) if m else ("", title or "")
 
 
+def _rfc3339(t: dt.datetime | None) -> str | None:
+    return t.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if t else None
+
+
 def state(e: dict | None) -> dict | None:
-    """state.json's "effort": counts only, no HTML."""
+    """state.json's "effort": counts and each Goal's name, no HTML. crew.js draws Crew's
+    Effort bars and trend from it (#1139)."""
     if not e:
         return None
     if e["status"] != "ok":
         return {"status": e["status"], "error": e.get("error")}
-    return {"status": "ok", "classifier": e.get("classifier"),
-            "goals": [{"ref": r["ref"], **{w: r[w + "_counts"] for w, _ in WINDOWS}} for r in e["goals"]],
+    return {"status": "ok", "classifier": e.get("classifier"), "updated_at": _rfc3339(e.get("updated_at")),
+            "unreadable": e.get("unreadable") or 0,
+            "goals": [{"ref": r["ref"], "lead": r.get("lead") or "", "title": r["title"], "url": r.get("url"),
+                       **{w: r[w + "_counts"] for w, _ in WINDOWS}} for r in e["goals"]],
             "trend": [{"week": x["week"].isoformat(), "capability": x["capability"], "total": x["total"]}
                       for x in e["trend"]]}
