@@ -1,12 +1,14 @@
 """Tests for dashboard/state.py (#400). Run: python3 -m unittest discover -s dashboard"""
 import datetime as dt
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import crewpage  # noqa: E402
 import generate as g  # noqa: E402
 import state as st  # noqa: E402
 from test_generate import NOW, IDLE, REPO, ev, tracking, comment, issue, ts  # noqa: E402
@@ -45,21 +47,6 @@ def keys(x, path=""):
             yield from keys(v, f"{path}[{i}]")
 
 
-class Recording(dict):
-    """A dict that notes which keys were read."""
-    def __init__(self, d, seen):
-        super().__init__(d)
-        self.seen = seen
-
-    def __getitem__(self, k):
-        self.seen.add(k)
-        return super().__getitem__(k)
-
-    def get(self, k, default=None):
-        self.seen.add(k)
-        return super().get(k, default)
-
-
 class StateTest(unittest.TestCase):
     def setUp(self):
         self.m = model()
@@ -85,11 +72,12 @@ class StateTest(unittest.TestCase):
         self.assertNotIn("$", json.dumps(self.s))
 
     def test_session_fields_are_ones_the_page_renders(self):
-        seen = set()
-        g.session_rows(self.m, [Recording(s, seen) for s in self.m["sessions"]])
+        # crew.js draws Crew's sessions table from these (#1139): it reads every one.
+        js = crewpage.JS.read_text(encoding="utf-8")
+        seen = set(re.findall(r"\bx\.([a-z_]+)", js[js.index("function sessionRows"):js.index("function sessions(")]))
         for s in self.s["sessions"]:
             self.assertLessEqual(set(s), seen)
-        self.assertEqual(set(self.s["sessions"][0]), set(st.SESSION_FIELDS))
+        self.assertEqual(set(self.s["sessions"][0]), {*st.SESSION_FIELDS, "issue_title"})
 
     def test_no_html(self):
         self.assertNotIn("<", json.dumps(self.s))

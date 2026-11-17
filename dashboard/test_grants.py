@@ -9,10 +9,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "launcher"))
-import generate as g  # noqa: E402
+import crewdraw  # noqa: E402
+import crewpage  # noqa: E402
 import grants  # noqa: E402
-import live  # noqa: E402
-from layout import esc  # noqa: E402
 import state  # noqa: E402
 
 REPO = "open-agentos/agentfleetos"
@@ -47,6 +46,15 @@ def enqueued(kind="standing grant"):
 
 def left(reason):
     return f"Left for the owner at {SHA}: {reason}.\n\n-- merger"
+
+
+def render(g_, repo=REPO) -> str:
+    """The panel as crew.js draws it from state.json's `grants` (#1139)."""
+    d = crewdraw.base(repo=repo, grants=state.plain(grants.state(g_)))
+    return crewdraw.draw(d)["grants"]
+
+
+needs_node = unittest.skipUnless(crewdraw.NODE, "node isn't installed")
 
 
 def built(comments, titles=None, mode="shadow", merged=()):
@@ -102,6 +110,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(grants.build({"comments": [], "mode": "sideways"}, NOW)["mode"], None)
 
 
+@needs_node
 class QueueTest(unittest.TestCase):
     """#746: under a merge queue the merger enqueues and GitHub merges later."""
 
@@ -110,15 +119,14 @@ class QueueTest(unittest.TestCase):
         g_ = built(cs, mode="live")
         self.assertEqual([(x["number"], x["group"]) for x in g_["calls"]],
                          [(702, "enqueued"), (701, "enqueued")])
-        html = grants.render(g_, REPO)
+        html = render(g_)
         self.assertIn('<h3 class="enqueued">Enqueued</h3>', html)
         self.assertIn("enqueued under approved ask, ", html)
-        live.tree(html)
 
         g_ = built(cs, mode="live", merged=[701])
         self.assertEqual([(x["number"], x["group"], x["queued"]) for x in g_["calls"]],
                          [(702, "enqueued", True), (701, "merged", True)])
-        html = grants.render(g_, REPO)
+        html = render(g_)
         self.assertIn("merged under standing grant via the queue, ", html)
         self.assertLess(html.index('<h3 class="merged">'), html.index('<h3 class="enqueued">'))
         self.assertIs(grants.state(g_)["calls"][1]["queued"], True)
@@ -126,7 +134,7 @@ class QueueTest(unittest.TestCase):
     def test_a_direct_merge_isnt_marked_queued(self):
         g_ = built([comment(701, merged(), 60)], merged=[701])
         self.assertFalse(g_["calls"][0]["queued"])
-        self.assertNotIn("via the queue", grants.render(g_, REPO))
+        self.assertNotIn("via the queue", render(g_))
 
     def test_fetch_reads_whether_closed_prs_merged(self):
         def gh_json(_api, path):
@@ -142,13 +150,14 @@ class QueueTest(unittest.TestCase):
         self.assertEqual(groups, {701: "merged", 702: "enqueued", 703: "enqueued"})
 
 
+@needs_node
 class RenderTest(unittest.TestCase):
     def test_lines_groups_and_links(self):
         g_ = built([comment(701, merged(), 60, cid=11),
                     comment(702, would(), 30, cid=12),
                     comment(653, left("touches ops/ & needs <you>"), 120, cid=13)],
                    titles={701: "Desk panel"}, mode="live")
-        html = grants.render(g_, REPO)
+        html = render(g_)
         self.assertIn("<h2>Grants in use</h2>", html)
         self.assertIn(grants.MODES["live"], html)
         self.assertIn(f'<a href="{BASE}/pull/701">#701</a> Desk panel: '
@@ -162,19 +171,18 @@ class RenderTest(unittest.TestCase):
                                          "<h3 class=\"would\">Would merge (shadow)</h3>",
                                          "<h3 class=\"left\">Left for you</h3>")]
         self.assertEqual(order, sorted(order))
-        live.tree(html)   # stays inside the live refresh's allow lists
 
     def test_states(self):
-        quiet = grants.render(built([]), REPO)
+        quiet = render(built([]))
         self.assertIn(grants.MODES["shadow"], quiet)
         self.assertIn("No merger calls in the last 24 hours.", quiet)
-        unread = grants.render(grants.build({"comments": None, "mode": "off"}, NOW), REPO)
+        unread = render(grants.build({"comments": None, "mode": "off"}, NOW))
         self.assertIn("The merger is off.", unread)
-        self.assertIn(esc(grants.UNREADABLE), unread)
-        self.assertNotIn(grants.NONE, unread)
-        self.assertIn(esc(grants.UNKNOWN_MODE),
-                      grants.render(grants.build({"comments": [], "mode": None}, NOW), REPO))
-        self.assertEqual(grants.render(None, REPO), "")
+        self.assertIn("Couldn't read the merger's calls.", unread)
+        self.assertNotIn("No merger calls", unread)
+        self.assertIn(grants.UNKNOWN_MODE,
+                      render(grants.build({"comments": [], "mode": None}, NOW)))
+        self.assertEqual(render(None), "")
 
 
 class FetchTest(unittest.TestCase):
@@ -211,19 +219,17 @@ class FetchTest(unittest.TestCase):
 
 
 class CrewTest(unittest.TestCase):
-    def test_on_crew_after_the_floor_and_in_state(self):
+    def test_on_crew_after_the_reviewer_and_in_state(self):
         m = {"repo": REPO, "grants": built([comment(701, would(), 60)])}
-        m.update({k: None for k in ("floor", "watcher", "wire", "trends", "questions_went",
-                                    "precedent")})
-        m["committees"] = None
-        m["effort"] = None
-        names = list(g.crew_panels(m))   # #1113
-        self.assertEqual(names.index("grants"), names.index("floor") + 1)
+        names = list(crewpage.SECTIONS)   # #1113
+        self.assertEqual(names.index("grants"), names.index("reviewer") + 1)
+        self.assertIn("grants", crewpage.KEYS)
         s = state.plain({"grants": grants.state(m["grants"])})
         self.assertEqual(json.loads(json.dumps(s)), s)
         self.assertEqual(s["grants"]["calls"][0]["number"], 701)
         self.assertEqual(s["grants"]["calls"][0]["time"], "2026-11-09T14:00:00Z")
         self.assertTrue(re.match(r"https://", s["grants"]["calls"][0]["link"]))
+        self.assertEqual(s["grants"]["mode_text"], grants.MODES["shadow"])
 
 
 if __name__ == "__main__":

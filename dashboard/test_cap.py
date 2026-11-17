@@ -9,6 +9,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import crewdraw  # noqa: E402
 import generate as g  # noqa: E402
 from test_generate import NOW, IDLE, REPO, ev, tracking, comment  # noqa: E402
 
@@ -74,8 +75,9 @@ class OverCapTest(unittest.TestCase):
 
     def test_page_marks_over_cap(self):
         m, _ = self.sessions({"builder": 15, "reviewer": 5})
-        page = g.render(m)["crew.html"]   # the sessions table moved to Crew (#1113)
-        self.assertIn('<span class="pill s-blocked">over cap $15.00</span>', page)
+        self.assertIn('"over_cap":"$15.00"', g.render(m)["crew.html"])   # in the page's own block (#1139)
+        if crewdraw.NODE:   # the sessions table moved to Crew (#1113), drawn by crew.js (#1139)
+            self.assertIn('<span class="pill s-blocked">over cap $15.00</span>', crewdraw.page(m))
 
 
 class LoadCapsTest(unittest.TestCase):
