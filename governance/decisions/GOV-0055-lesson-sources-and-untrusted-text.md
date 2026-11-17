@@ -1,7 +1,7 @@
 ---
 id: GOV-0055
 title: A lesson needs two independent episodes, one an engine-recorded signal, from trusted authors only; session notes strip secrets; the validator rejects lessons that instruct changes to permissions, credentials, tools or governance
-status: proposed
+status: in-force
 kind: ruling
 question: "#1151"
 domain: security
@@ -12,7 +12,7 @@ classification:
   nature: values
   knowledge: shared
 decided_by: humans.owner
-ratified_by:
+ratified_by: humans.owner
 date: 2026-11-17
 review_by: 2026-12-01
 supersedes: []
