@@ -31,6 +31,17 @@ REPORT = """**Daily report, Mon 2026-11-09: you adopted operating model v2 (#651
 """
 FRIDAY = "**Daily report, Fri 2026-11-06: M1 started today.** First report.\n\n**5. Asks**\n1. **Q:** yes?\n"
 CHECKIN = "**Monday check-in, week of 2026-11-09: M1 moved; M2 at risk.** First check-in.\n"
+BRIEFING = """**Briefing, Mon 2026-11-09**
+
+**The Desk (M3).** The Bridge is now your home page.
+It shows what waits on you.
+
+**Readiness review (M4).** This has stalled.
+
+9 decisions wait on the Bridge.
+
+-- planner (claude-opus-5-5)
+"""
 
 
 def comment(body, when, login=report.PLANNER, cid=1):
@@ -142,6 +153,42 @@ class StatesTest(unittest.TestCase):
         s = report.state(build([comment(REPORT, dt.datetime(2026, 11, 9, 8, 34))]))
         self.assertEqual(s["daily_at"], "08:30")
         self.assertEqual(s["state"], "posted")
+
+
+class BriefingTest(unittest.TestCase):
+    def test_reads_todays_briefing_whole_without_the_signature(self):
+        r = build([comment(REPORT, dt.datetime(2026, 11, 9, 8, 34), cid=1),
+                   comment(BRIEFING, dt.datetime(2026, 11, 9, 8, 36), cid=2)])
+        b = r["briefing"]
+        self.assertEqual(b["day"], dt.date(2026, 11, 9))
+        self.assertEqual(b["line"], "Briefing, Mon 2026-11-09")
+        self.assertEqual(b["url"][-1], "2")
+        self.assertEqual(b["paragraphs"], [
+            "**The Desk (M3).** The Bridge is now your home page.\nIt shows what waits on you.",
+            "**Readiness review (M4).** This has stalled.",
+            "9 decisions wait on the Bridge."])
+        self.assertEqual(r["report"]["url"][-1], "1")   # the briefing isn't taken for the report
+
+    def test_the_newest_briefing_wins_and_keeps_its_own_day(self):
+        older = BRIEFING.replace("Mon 2026-11-09", "Fri 2026-11-06")
+        r = build([comment(older, dt.datetime(2026, 11, 6, 21, 0), cid=1),
+                   comment(BRIEFING.replace("Mon 2026-11-09", "Mon 2026-11-09 (late)"),
+                           dt.datetime(2026, 11, 9, 8, 0), cid=2)],
+                  now=dt.datetime(2026, 11, 10, 9, 0, tzinfo=UTC))
+        self.assertEqual((r["briefing"]["url"][-1], r["briefing"]["day"]), ("2", dt.date(2026, 11, 9)))
+
+    def test_no_date_on_its_first_line_uses_the_posting_day(self):
+        r = build([comment("**Briefing**\n\nQuiet.\n", dt.datetime(2026, 11, 6, 21, 0))])
+        self.assertEqual(r["briefing"]["day"], dt.date(2026, 11, 6))
+
+    def test_only_the_planners_and_not_in_the_future(self):
+        r = build([comment(BRIEFING, dt.datetime(2026, 11, 9, 8, 0), login="mattmcalister"),
+                   comment(BRIEFING, dt.datetime(2026, 11, 9, 12, 0))])   # after MON
+        self.assertIsNone(r["briefing"])
+
+    def test_state_is_plain(self):
+        s = report.state(build([comment(BRIEFING, dt.datetime(2026, 11, 9, 8, 0))]))
+        self.assertEqual(s["briefing"]["paragraphs"][-1], "9 decisions wait on the Bridge.")
 
 
 class FetchTest(unittest.TestCase):

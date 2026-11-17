@@ -3,6 +3,9 @@
 One page, `bridge.html`, built only from what the desk already reads, so it costs no API
 calls of its own (the merged PRs come from the closed items generate.fetch() already reads):
 
+  - The briefing (M8, #1069), first: the planner's newest `**Briefing` comment on the report
+    issue (report.py reads it), whole, its paragraphs in order, linked to the comment. When it
+    is for a day before today it says so, with its day.
   - Status: open Goals and Areas and how many are flagged; agents working, from the floor;
     decisions waiting; authority used in `swarm trouble`'s window.
   - Decisions waiting (owner amber): what `swarm trouble` says waits on the owner, open gov
@@ -33,7 +36,7 @@ import activity
 import effort
 import layout
 from layout import esc
-from report import inline
+from report import LOOK_BACK_DAYS, inline
 
 FILE = "bridge.html"
 REPORT_DAYS = 7          # merged PRs shown as reports
@@ -240,6 +243,7 @@ def orders(m: dict, owner: str | None) -> list[dict]:
 
 def build(m: dict, owner: str | None) -> dict:
     t = m.get("trouble") or {}
+    r = m.get("report") or {}
     scopes = _scopes(t)
     floor = m.get("floor") or {}
     live = [s for s in m.get("sessions") or [] if s.get("status") != "stopped" and not s.get("never_acted")]
@@ -251,7 +255,9 @@ def build(m: dict, owner: str | None) -> dict:
             "authority": sum(len(s.get("authority") or []) for s in [*scopes, t.get("outside") or {}]),
             "authority_hours": t.get("authority_hours") or 24,
             "decisions": decisions(m), "reports": reports(m), "flights": flights,
-            "orders": orders(m, owner)}
+            "orders": orders(m, owner),
+            "briefing": r.get("briefing"), "today": r.get("today"),
+            "report_read": bool(r) and r.get("state") not in ("unset", "unread")}
 
 
 # ---------------------------------------------------------------- drawing
@@ -292,6 +298,25 @@ def _time(t: dt.datetime | None, now: dt.datetime) -> str:
 def _tile(label: str, big: str, sub: str, cls: str = "") -> str:
     return (f'<div class="br-tile {cls}"><span class="muted">{esc(label)}</span>'
             f'<span class="br-big">{big}</span><span class="br-sub">{sub}</span></div>')
+
+
+def briefing_html(b: dict) -> str:
+    """The briefing, whole, first on the page; a note when it is from before today."""
+    br = b.get("briefing")
+    head = '<div class="br-colh"><h2 class="br-h">Briefing</h2>'
+    if not br:
+        if not b.get("report_read"):
+            return ""
+        return (f'<section class="br-brief">{head}</div><p class="muted">No briefing on the report '
+                f'issue in the last {LOOK_BACK_DAYS} days.</p></section>')
+    stamp = (f'<span class="muted">{_a(br.get("url"), esc(br["line"]))} · posted '
+             f'{_time(_ts(br.get("posted")), b["now"])}</span></div>')
+    today = b.get("today") or b["now"].date()
+    old = (f'<p class="br-old">This briefing is from {br["day"]:%a %Y-%m-%d}, not today.</p>'
+           if br.get("day") and br["day"] < today else "")
+    paras = "".join(f'<p>{"<br>".join(inline(ln) for ln in p.splitlines())}</p>'
+                    for p in br.get("paragraphs") or [])
+    return f'<section class="br-brief" aria-label="Briefing">{head}{stamp}{old}{paras}</section>'
 
 
 def status_html(b: dict) -> str:
@@ -428,7 +453,7 @@ def render(b: dict) -> str:
            'decisions and authority may be missing.</p>' if b.get("trouble_error") else "")
     day = b["now"].astimezone(dt.timezone.utc).strftime("%a %d %b, %H:%M UTC")
     main = (f'<div class="br-main"><div class="br-titlebar"><h1>Bridge</h1>'
-            f'<span class="mono muted">{esc(day)}</span></div>{err}'
+            f'<span class="mono muted">{esc(day)}</span></div>{briefing_html(b)}{err}'
             f'{status_html(b)}{decisions_html(b)}'
             f'<div class="br-cols"><div class="br-left">{reports_html(b)}</div>'
             f'<div class="br-right">{flights_html(b)}{orders_html(b)}</div></div></div>')

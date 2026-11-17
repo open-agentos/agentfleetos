@@ -212,6 +212,9 @@ footer.foot .here { text-decoration:none; color:var(--muted); }
 .br-main { flex:999 1 520px; min-width:0; display:flex; flex-direction:column; gap:26px; }
 .br-titlebar { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 16px; }
 .br-titlebar h1 { font-size:30px; margin:12px 0 0; }
+.br-brief { max-width:68ch; }
+.br-brief p { margin:10px 0 0; font-size:16px; line-height:1.55; }
+.br-brief .br-old { font-size:13px; color:var(--owner); }
 .br-status { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
 .br-tile { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px;
   display:flex; flex-direction:column; gap:2px; font-size:13px; }

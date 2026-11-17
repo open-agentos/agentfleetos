@@ -12,6 +12,12 @@ numbered items under its `Asks` heading (at most 5), each its bold lead-in and t
 first sentence; then, on a Monday, the check-in's first sentence. With no report today it says
 whether one is due, late or not expected, and shows the last one's first sentence.
 
+It also reads the briefing (M8, #1069), which the Bridge shows first: the newest comment by the
+planner App on the same issue whose body starts `**Briefing`. Its day is the date on its first
+line, else the local day it was posted; its paragraphs are the rest of its body, blank-line
+separated, without the `-- planner (...)` signature line. It comes from the same comments, so
+it costs no API call of its own.
+
 API calls: 1 REST call, more only if the report issue has over 100 comments in 4 days: the
 report issue's comments since 4 days ago, which reaches Friday's report on a Monday or
 Tuesday. Stdlib only.
@@ -33,6 +39,9 @@ ASK_CHARS = 120            # an ask's lead-in and first sentence, cut to about t
 
 REPORT_START = "**Daily report"
 CHECKIN_START = "**Monday check-in"
+BRIEFING_START = "**Briefing"
+DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+SIGNATURE_RE = re.compile(r"^--\s+\S+\s*\(")
 ASKS_HEADING_RE = re.compile(r"^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(?:\d+\.\s*)?Asks\b", re.IGNORECASE)
 HEADING_RE = re.compile(r"^\s*(?:#{1,6}\s|\*\*\d+\.\s)")
 ITEM_RE = re.compile(r"^\s*\d+[.)]\s+(.*\S)")
@@ -134,21 +143,57 @@ def _post(c: dict, day: dt.date, posted: dt.datetime) -> dict:
             "asks": asks(body)}
 
 
+def paragraphs(body: str) -> list[str]:
+    """A briefing's paragraphs after its first line, blank-line separated, each stripped, without
+    the signature line (`-- planner (<model>)`)."""
+    lines = (body or "").strip().splitlines()[1:]
+    out, cur = [], []
+    for ln in lines + [""]:
+        if SIGNATURE_RE.match(ln.strip()):
+            continue
+        if ln.strip():
+            cur.append(ln.strip())
+        elif cur:
+            out.append("\n".join(cur))
+            cur = []
+    return out
+
+
+def briefing(c: dict, tz: dt.tzinfo | None) -> dict | None:
+    """A briefing comment as {"day", "posted", "url", "line", "paragraphs"}, or None if it has
+    no readable posting time. `day` is the date on its first line, else its local posting day."""
+    posted = _local(c.get("created_at"), tz)
+    if posted is None:
+        return None
+    body = (c.get("body") or "").strip()
+    line = first_line(body)
+    day = posted.date()
+    m = DATE_RE.search(line)
+    if m:
+        try:
+            day = dt.date(*map(int, m.groups()))
+        except ValueError:
+            pass
+    return {"day": day, "posted": posted, "url": c.get("html_url"), "line": line,
+            "paragraphs": paragraphs(body)}
+
+
 def build(comments: list[dict] | None, now: dt.datetime, issue: int | None,
           daily_at: dt.time | None, tz: dt.tzinfo | None = None) -> dict:
     """The panel's data: {"issue", "read", "today" (local date), "daily_at", "state", "report"
     (today's or None), "last" (the newest earlier report or None), "checkin" (today's, Mondays
-    only, or None)}. `state` is one of "posted", "due", "late", "weekend", "unread", "unset"."""
+    only, or None), "briefing" (the newest briefing posted by now, of any day, or None)}.
+    `state` is one of "posted", "due", "late", "weekend", "unread", "unset"."""
     local = now.astimezone(tz) if tz else now.astimezone()
     today = local.date()
     out = {"issue": issue, "today": today, "daily_at": daily_at, "report": None, "last": None,
-           "checkin": None, "read": comments is not None}
+           "checkin": None, "briefing": None, "read": comments is not None}
     if issue is None:
         return {**out, "state": "unset"}
     if comments is None:
         return {**out, "state": "unread"}
     swarm = _swarm()
-    reports, checkins = [], []
+    reports, checkins, briefings = [], [], []
     for c in comments:
         if (c.get("user") or {}).get("login") != PLANNER:
             continue
@@ -161,12 +206,17 @@ def build(comments: list[dict] | None, now: dt.datetime, issue: int | None,
             posted = _local(c.get("created_at"), local.tzinfo)
             if posted and posted <= local:
                 checkins.append(_post(c, posted.date(), posted))
+        elif body.startswith(BRIEFING_START):
+            b = briefing(c, local.tzinfo)
+            if b and b["posted"] <= local:
+                briefings.append(b)
     reports.sort(key=lambda r: r["posted"])
     out["report"] = next((r for r in reversed(reports) if r["day"] == today), None)
     out["last"] = next((r for r in reversed(reports) if r["day"] < today), None)
     if today.weekday() == 0:
         out["checkin"] = next((c for c in reversed(sorted(checkins, key=lambda c: c["posted"]))
                                if c["day"] == today), None)
+    out["briefing"] = max(briefings, key=lambda b: b["posted"], default=None)
     if out["report"]:
         state = "posted"
     elif today.weekday() >= 5:

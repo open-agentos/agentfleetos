@@ -189,6 +189,37 @@ class RenderTest(unittest.TestCase):
         self.assertIn('href="bridge.html"', layout.nav("index.html"))
 
 
+def briefing(day, hours_ago=2):
+    return {"day": day, "posted": NOW - dt.timedelta(hours=hours_ago), "line": f"Briefing, {day:%a %Y-%m-%d}",
+            "url": f"https://github.com/{REPO}/issues/249#issuecomment-9",
+            "paragraphs": ["**The Desk (M3).** It moved.\nA second line.", "<i>2</i> decisions wait on the Bridge."]}
+
+
+class BriefingTest(unittest.TestCase):
+    def with_briefing(self, b):
+        m = model()
+        m["report"] = {**m["report"], "today": NOW.date(), "briefing": b}
+        return bridge.render(bridge.build(m, OWNER))
+
+    def test_todays_briefing_comes_first_whole(self):
+        html = self.with_briefing(briefing(NOW.date()))
+        self.assertLess(html.index('aria-label="Briefing"'), html.index('aria-label="Status"'))
+        self.assertLess(html.index('aria-label="Briefing"'), html.index(">Decisions waiting<"))
+        self.assertIn("<p><b>The Desk (M3).</b> It moved.<br>A second line.</p>", html)
+        self.assertIn("&lt;i&gt;2&lt;/i&gt; decisions wait on the Bridge.", html)
+        self.assertIn(f'href="https://github.com/{REPO}/issues/249#issuecomment-9"', html)
+        self.assertNotIn("not today", html)
+        self.assertEqual(html.count("<section"), html.count("</section>"))
+
+    def test_an_older_briefing_says_its_day(self):
+        html = self.with_briefing(briefing(NOW.date() - dt.timedelta(days=1), hours_ago=20))
+        self.assertIn("This briefing is from Wed 2026-11-11, not today.", html)
+
+    def test_none_found_says_so_and_unread_shows_nothing(self):
+        self.assertIn("No briefing on the report issue in the last 4 days.", self.with_briefing(None))
+        self.assertNotIn("Briefing", bridge.render(bridge.build(model(report=None), OWNER)))
+
+
 class MergedTest(unittest.TestCase):
     def test_merged_prs_from_closed_items(self):
         items = [{"number": 1, "title": "a", "html_url": "h1", "user": {"login": "x"},
