@@ -31,10 +31,13 @@ def desk_model():
                         "b": [ev("b", "heartbeat", 2, issue=392, tools=["Edit"])]})
 
 
-def script_of(page: str) -> str:
-    found = re.findall(r"<script>(.*?)</script>", page, re.S)
-    assert len(found) == 1, len(found)
-    return found[0]
+def script_of(page: str) -> tuple[str, str]:
+    """The one script tag's (src, integrity); a page carries no inline script (#1106)."""
+    found = re.findall(r"<script\b[^>]*>.*?</script>", page, re.S)
+    assert len(found) == 1, found
+    m = re.fullmatch(r'<script src="([^"]+)" integrity="([^"]+)"></script>', found[0])
+    assert m, found[0]
+    return m[1], m[2]
 
 
 def csp_of(page: str) -> dict[str, list[str]]:
@@ -122,13 +125,15 @@ class PageTest(unittest.TestCase):
         self.desk = self.pages["index.html"]
 
     def test_csp_hash_matches_the_script(self):
-        js = script_of(self.desk)
+        src, integrity = script_of(self.desk)
+        self.assertEqual(src, "js/poll.js")   # same-origin, beside the page (#1106)
+        js = live.script()
         digest = base64.b64encode(hashlib.sha256(js.encode("utf-8")).digest()).decode()
         csp = csp_of(self.desk)
-        self.assertEqual(csp["script-src"], [f"'sha256-{digest}'"])   # that script, nothing else
+        self.assertEqual(csp["script-src"], ["'self'", f"'sha256-{digest}'"])   # that script, nothing else
+        self.assertEqual(integrity, f"sha256-{digest}")
         self.assertEqual(csp["default-src"], ["'none'"])
         self.assertEqual(csp["connect-src"], ["'self'"])
-        self.assertEqual(js, live.script())
 
     def test_csp_comes_before_anything_it_governs(self):
         head = self.desk.split("</head>")[0]

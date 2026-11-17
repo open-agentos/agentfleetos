@@ -1,7 +1,7 @@
 // The Work map (#1082, FEAT-9): a squarified treemap of map.json's rows, drawn in the browser.
-// workmap_page.py inlines this file and names its hash in the page's CSP. It reads the data
-// from the page's JSON block, builds DOM nodes with createElement and text nodes only (no
-// innerHTML, no eval), and never fetches. It shows each issue's own figures and each group's
+// generate.py serves this file as js/workmap.js and the page's CSP names its hash. It reads the
+// data from the page's JSON block, builds DOM nodes with createElement and text nodes only (it
+// never parses markup or runs strings as code), and never fetches. It shows each issue's own figures and each group's
 // share as a percentage: no amount is ever summed across issues for display (GOV-0033).
 // The Selected panel (#1083) shows one issue: its 14-day cost is that issue's own sum, a
 // per-issue figure, not a sum across issues.

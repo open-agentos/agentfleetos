@@ -151,6 +151,9 @@ class HandleTest(unittest.TestCase):
         (self.live / desk.STATE).write_text("{}")
         (self.live / "fonts").mkdir()
         (self.live / "fonts" / "a.woff2").write_bytes(b"font")
+        (self.live / "js").mkdir()
+        (self.live / "js" / "poll.js").write_text("x();")
+        (self.live / "js" / "a.txt").write_text("no")
         (self.live / "secret.txt").write_text("no")
 
     def tearDown(self):
@@ -162,7 +165,8 @@ class HandleTest(unittest.TestCase):
                                   ("/index.html?t=1", "text/html", b"<p>desk</p>"),
                                   ("/operations.html", "text/html", b"<p>ops</p>"),
                                   ("/state.json?t=99", "application/json", b"{}"),
-                                  ("/fonts/a.woff2", "font/woff2", b"font")):
+                                  ("/fonts/a.woff2", "font/woff2", b"font"),
+                                  ("/js/poll.js", "text/javascript", b"x();")):
             status, headers, got = desk.handle(self.live, "GET", path)
             self.assertEqual((status, got), (200, body), path)
             self.assertTrue(headers["Content-Type"].startswith(ctype), path)
@@ -191,7 +195,8 @@ class HandleTest(unittest.TestCase):
         os.symlink("/etc/hosts", self.live / "linked.html")
         for path in ("/secret.txt", "/../index.html", "/fonts/../secret.txt", "/fonts/.hidden",
                      "/nope.html", "/linked.html", "/index.htm", "//etc/passwd", "/INDEX.html",
-                     "/fonts/", "/fonts/a.exe"):
+                     "/fonts/", "/fonts/a.exe", "/js/", "/js/a.txt", "/js/../secret.txt",
+                     "/js/.hidden.js", "/js/missing.js"):
             self.assertEqual(desk.handle(self.live, "GET", path)[0], 404, path)
 
     def test_before_the_first_build(self):

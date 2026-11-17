@@ -1,5 +1,5 @@
-// The desk's live refresh (#411; option 2 of #396). live.py fills in the settings and inlines
-// this at build time; the page's CSP allows only this script, by hash. It reads same-origin
+// The desk's live refresh (#411; option 2 of #396). live.py fills in the settings at build
+// time and generate.py serves it as js/poll.js; the page's CSP allows only this script, by hash. It reads same-origin
 // state.json and nothing else, and builds DOM nodes from its node trees with createElement,
 // setAttribute and text nodes; it never parses HTML or runs strings as code. With JavaScript
 // off the static page is unchanged.

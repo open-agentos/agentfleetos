@@ -16,7 +16,8 @@ Reads, through `gh api` (in a swarm session that's ops/shims/gh acting as the ro
     say when the owner last acted.
 
 Builds nine pages in one look (layout.py), each headed by a red LIVE mark, the build time
-and the owner's last act (#402), and copies the self-hosted fonts beside them:
+and the owner's last act (#402), and copies the self-hosted fonts and the pages' scripts
+(js/, #1106) beside them:
   - workmap.html, the Work map (workmap_page.py, #1082): a treemap of what each issue cost
     and what it returned, from map.json's data, with the lead's Briefing under it; the live
     Desk's home;
@@ -36,9 +37,9 @@ and the owner's last act (#402), and copies the self-hosted fonts beside them:
     their round grids, and ended committees;
   - authority.html: the authority map, who may decide what, from governance/jurisdictions.yml
     in the checkout (authority.py, #410).
-Stdlib only. The desk carries one inline script, the live refresh (live.py, #411), per
-option 2 of gov question #396, and the Work map one, its treemap (workmap.js); the other
-pages carry none.
+Stdlib only. The desk loads one script, the live refresh (live.py, #411), and the Work map
+one, its treemap (workmap.js, #1082); the other pages load none. Each is a same-origin file in
+js/, allowed by its hash in the page's CSP (option 3 of gov question #1102).
 
     python3 dashboard/generate.py                 # writes dashboard/out/{index,operations,decisions,authority}.html
     python3 dashboard/generate.py --out /tmp/x/index.html --days 7 --idle-minutes 15
@@ -67,6 +68,7 @@ import ghql
 import governance
 import grants
 import layout
+import live
 import plan
 import precedent
 import progress
@@ -1040,6 +1042,11 @@ def write_map(data: dict, model: dict, now: dt.datetime, out_dir: Path, days: in
     return save_map(map_data(data, model, now, days, fetch_prs), out_dir)
 
 
+def scripts() -> dict[str, str]:
+    """Every script a page loads, by its file name in js/: exactly the text each page hashes."""
+    return {live.FILE: live.script(), workmap_page.JS.name: workmap_page.script()}
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Render the swarm dashboard's static HTML pages.")
     ap.add_argument("--repo", help="owner/name (default: this checkout's origin)")
@@ -1081,13 +1088,14 @@ def main(argv: list[str]) -> int:
     model["workmap"] = map_data(data, model, now, args.days)   # the Work map page carries it (#1082)
     pages = render(model)
     layout.copy_fonts(out.parent)   # before the pages, so a published page never lacks them
+    layout.write_scripts(out.parent, scripts())   # likewise the scripts the pages load (#1106)
     for name, page in pages.items():
         (out if name == "index.html" else out.parent / name).write_text(page, encoding="utf-8")
     (out.parent / STATE_FILE).write_text(data_json, encoding="utf-8")   # #400
     print(save_map(model["workmap"], out.parent))
     live = sum(s["status"] != "stopped" for s in model["sessions"])
     others = ", ".join(n for n in pages if n != "index.html")
-    print(f"wrote {out}, {others}, {STATE_FILE} and {layout.FONTS_DIR}/ beside it: "
+    print(f"wrote {out}, {others}, {STATE_FILE}, {layout.FONTS_DIR}/ and {layout.JS_DIR}/ beside it: "
           f"{live} live / {len(model['sessions'])} sessions, "
           f"{len(model['prs'])} open PRs, {len(model['gov'])} open gov questions")
     return 0
