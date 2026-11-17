@@ -39,7 +39,9 @@ and the owner's last act (#402), and copies the self-hosted fonts and the pages'
     in the checkout (authority.py, #410).
 Stdlib only. The desk loads one script, the live refresh (live.py, #411), and the Work map
 one, its treemap (workmap.js, #1082); the other pages load none. Each is a same-origin file in
-js/, allowed by its hash in the page's CSP (option 3 of gov question #1102).
+js/, allowed by its hash in the page's CSP (option 3 of gov question #1102). Vendored libraries
+(static/vendor/, #1107) are checked against their pinned hashes before anything is fetched or
+written, and copied into js/ beside them; a mismatch fails the build.
 
     python3 dashboard/generate.py                 # writes dashboard/out/{index,operations,decisions,authority}.html
     python3 dashboard/generate.py --out /tmp/x/index.html --days 7 --idle-minutes 15
@@ -1063,6 +1065,11 @@ def main(argv: list[str]) -> int:
     if not repo:
         print("generate.py: can't tell the repo; pass --repo owner/name", file=sys.stderr)
         return 2
+    try:   # #1107: every vendored library matches its pinned hash, or no page is written
+        vendor = layout.vendored(reserved=scripts())
+    except (OSError, ValueError) as e:
+        print(f"generate.py: {e}", file=sys.stderr)
+        return 1
     now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
     # Exit 0 without writing the page: the last good page stays up and the run isn't a failure.
     skip = (too_soon(repo, now) if nudged() else None) or low_allowance(PAGE_NEEDS)
@@ -1088,7 +1095,8 @@ def main(argv: list[str]) -> int:
     model["workmap"] = map_data(data, model, now, args.days)   # the Work map page carries it (#1082)
     pages = render(model)
     layout.copy_fonts(out.parent)   # before the pages, so a published page never lacks them
-    layout.write_scripts(out.parent, scripts())   # likewise the scripts the pages load (#1106)
+    # likewise the scripts the pages load (#1106) and the vendored libraries, checked above (#1107)
+    layout.write_scripts(out.parent, scripts() | vendor)
     for name, page in pages.items():
         (out if name == "index.html" else out.parent / name).write_text(page, encoding="utf-8")
     (out.parent / STATE_FILE).write_text(data_json, encoding="utf-8")   # #400

@@ -343,5 +343,102 @@ class ScriptRulesTest(unittest.TestCase):
                 g.layout.write_scripts(Path(d), {"../a.js": "x();"})
 
 
+
+class VendoredLibrariesTest(unittest.TestCase):
+    """#1107 (GOV-0051): every vendored library matches its pinned manifest entry, or the build fails."""
+
+    LIB = b"/* lib v1.2.3, ISC */ window.lib = 1;\n"
+
+    def vendor(self, d: Path, files: dict[str, bytes], entries: list[dict]) -> Path:
+        src = d / "vendor"
+        src.mkdir()
+        for f, b in files.items():
+            (src / f).write_bytes(b)
+        (src / "manifest.json").write_text(json.dumps({"files": entries}))
+        return src
+
+    def entry(self, file="lib.js", data=LIB, **kw) -> dict:
+        return {"file": file, "library": "lib", "version": "1.2.3", "licence": "ISC",
+                "source": "https://example.org/lib@1.2.3/dist/lib.min.js",
+                "sha256": hashlib.sha256(data).hexdigest(), **kw}
+
+    def check(self, files, entries, **kw):
+        with tempfile.TemporaryDirectory() as d:
+            return g.layout.vendored(self.vendor(Path(d), files, entries), **kw)
+
+    def assertFails(self, files, entries, says, **kw):
+        with self.assertRaises(ValueError) as cm:
+            self.check(files, entries, **kw)
+        self.assertIn(says, str(cm.exception))
+
+    def test_the_checked_in_manifest_starts_empty_and_passes(self):
+        self.assertEqual(g.layout.vendored(), {})
+        self.assertEqual(json.loads((g.layout.VENDOR_SRC / "manifest.json").read_text()), {"files": []})
+
+    def test_a_match_returns_the_bytes(self):
+        self.assertEqual(self.check({"lib.js": self.LIB}, [self.entry()]), {"lib.js": self.LIB})
+
+    def test_a_changed_byte_fails(self):
+        changed = self.LIB.replace(b"1;", b"2;")
+        self.assertFails({"lib.js": changed}, [self.entry()], "lib.js: differs from its recorded sha256")
+
+    def test_a_file_with_no_entry_fails(self):
+        self.assertFails({"lib.js": self.LIB, "extra.js": b"x"}, [self.entry()], "extra.js: no manifest entry")
+
+    def test_an_entry_with_no_file_fails(self):
+        self.assertFails({}, [self.entry()], "lib.js: manifest entry with no file")
+
+    def test_every_problem_is_named_at_once(self):
+        with self.assertRaises(ValueError) as cm:
+            self.check({"lib.js": b"changed", "extra.js": b"x"}, [self.entry(), self.entry("gone.js")])
+        for says in ("lib.js: differs", "extra.js: no manifest entry", "gone.js: manifest entry with no file"):
+            self.assertIn(says, str(cm.exception))
+
+    def test_entries_must_pin_exactly(self):
+        self.assertFails({"lib.js": self.LIB}, [self.entry(version="^1.2")], "isn't one exact version")
+        self.assertFails({"lib.js": self.LIB}, [self.entry(sha256="abc")], "sha256 isn't 64")
+        self.assertFails({"lib.js": self.LIB}, [self.entry(source="http://example.org/lib.js")], "https://")
+        bare = self.entry()
+        del bare["licence"]
+        self.assertFails({"lib.js": self.LIB}, [bare], "entry 0: needs exactly")
+        self.assertFails({"lib.js": self.LIB}, [self.entry(), self.entry()], "lib.js: listed twice")
+
+    def test_names_are_plain_scripts_and_not_the_desks_own(self):
+        self.assertFails({"lib.min.js": self.LIB}, [self.entry("lib.min.js")], "not a script file name")
+        self.assertFails({"poll.js": self.LIB}, [self.entry("poll.js")], "the Desk's own scripts",
+                         reserved=g.scripts())
+
+    def test_a_page_loads_a_library_by_hash_before_its_own_script(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = self.vendor(Path(d), {"lib.js": self.LIB}, [self.entry()])
+            libs = g.layout.libs("lib.js", src=src)
+            with self.assertRaises(ValueError):
+                g.layout.libs("nope.js", src=src)
+        page = g.layout.page("index.html", "t", REPO, NOW, "<p>x</p>", script=("own.js", "own();"), libs=libs)
+        lib_hash, own_hash = live.script_hash(self.LIB), live.script_hash("own();")
+        self.assertIn(f"script-src 'self' {lib_hash} {own_hash};", page)
+        self.assertLess(page.index('src="js/lib.js"'), page.index('src="js/own.js"'))
+        self.assertIn(f'<script src="js/lib.js" integrity="{lib_hash[1:-1]}"></script>', page)
+
+    def test_main_fails_before_writing_anything_on_a_mismatch(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            src = self.vendor(d, {"lib.js": b"changed"}, [self.entry()])
+            with mock.patch.object(g.layout, "VENDOR_SRC", src), \
+                    mock.patch.object(g, "fetch", side_effect=AssertionError("fetched")):
+                rc = g.main(["--repo", REPO, "--out", str(d / "out" / "index.html")])
+            self.assertEqual(rc, 1)
+            self.assertFalse((d / "out").exists())
+
+    def test_libraries_are_written_beside_the_desks_own_scripts(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            src = self.vendor(d, {"lib.js": self.LIB}, [self.entry()])
+            with mock.patch.object(g.layout, "VENDOR_SRC", src):
+                vendor = g.layout.vendored(reserved=g.scripts())
+            g.layout.write_scripts(d / "out", g.scripts() | vendor)
+            self.assertEqual((d / "out" / "js" / "lib.js").read_bytes(), self.LIB)
+
+
 if __name__ == "__main__":
     unittest.main()
