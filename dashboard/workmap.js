@@ -32,7 +32,9 @@
   var legendEl = document.getElementById("wm-legend");
   var tipEl = document.getElementById("wm-tip");
 
-  var st = Object.assign({}, DEFAULTS, { zoom: null, selected: null });
+  // mark: the strip's pick (#1114), "flagged" or "decisions", outlining the matching boxes.
+  var st = Object.assign({}, DEFAULTS, { zoom: null, selected: null, mark: null });
+  var STRIP = (data && data.strip) || { flagged: [], decisions: [] };
   try {
     var saved = JSON.parse(window.localStorage.getItem(KEY) || "{}");
     Object.keys(CHOICES).forEach(function (k) {
@@ -265,6 +267,7 @@
     list.forEach(function (g) { inView = inView.concat(g.rows); });
     var sh = shades(inView);
     var W = mapEl.clientWidth, H = mapEl.clientHeight;
+    var markG = [];
     if (!list.length) note("Nothing in this window has any " + (st.size === "lines" ? "lines changed" : st.size) + ".");
     squarify(list, 0, 0, W, H).forEach(function (gp) {
       var g = gp.item;
@@ -292,12 +295,19 @@
         box.appendChild(info);
       }
       mapEl.appendChild(box);
+      if (st.mark === "flagged" && st.group === "goal" && g.sel &&
+          STRIP.flagged.indexOf(Number(g.sel.slice(5))) >= 0) {
+        markG.push(gp);
+      }
       var items = g.rows.map(function (r) { return { value: sizeOf(r), row: r }; })
         .sort(function (a, b) { return b.value - a.value; });
       squarify(items, gp.x, gp.y + HEAD, dim.w, Math.max(0, dim.h - HEAD)).forEach(function (p) {
         mapEl.appendChild(issueBox(p, sh.of.get(p.item.row)));
       });
     });
+    // The strip's flagged Goals: a solid frame over each one's box, drawn last so the issue
+    // boxes don't cover it, and letting clicks through.
+    markG.forEach(function (gp) { var o = el("div", "wm-markg"); place(o, gp); mapEl.appendChild(o); });
     legend(sh.ends, left);
     markSelected();
     panel();
@@ -323,6 +333,7 @@
       b.appendChild(el("span", "wm-fold")); marks.push("no outcome");
     }
     if (r.ref === st.selected) b.classList.add("wm-sel");
+    if (st.mark === "decisions" && (r.needs_you || STRIP.decisions.indexOf(r.ref) >= 0)) b.classList.add("wm-mark");
     if (dim.w >= 44 && dim.h >= 18) b.appendChild(el("span", "wm-t", r.title || r.ref));
     if (dim.w >= 44 && dim.h >= 34) b.appendChild(el("span", "wm-m", sizeText(r) + " · " + shade.text));
     b.setAttribute("aria-controls", "wm-sel");
@@ -839,7 +850,6 @@
           if (f && (st.zoom === null || groupOf(f.row) === st.zoom)) shown.push({ it: it, row: f.row });
         });
       }
-      count.textContent = sets ? String(shown.length) : "–";
       if (key === "quiet") {
         var longer = LONGER[st.window];
         var line = sets && longer && !rowsOf(longer)
@@ -847,9 +857,49 @@
           : QUIET_LINE;
         var d = sec.querySelector(".wm-ld"); d.textContent = line; d.title = line;
       }
-      if (!shown.length) { ol.appendChild(el("li", "wm-lnone muted", why || sec.getAttribute("data-empty"))); continue; }
-      shown.slice(0, SHOW).forEach(function (x) { ol.appendChild(listRow(key, x.it, x.row)); });
+      // Needs you: then the decisions waiting its rows don't show (#1114), oldest first, and
+      // it shows them all, scrolling inside its five rows' height.
+      var extra = key === "needs" && sets && st.zoom === null ? needsExtra(shown) : [];
+      count.textContent = sets ? String(shown.length + extra.length) : "–";
+      if (!shown.length && !extra.length) { ol.appendChild(el("li", "wm-lnone muted", why || sec.getAttribute("data-empty"))); continue; }
+      (key === "needs" ? shown : shown.slice(0, SHOW)).forEach(function (x) { ol.appendChild(listRow(key, x.it, x.row)); });
+      extra.forEach(function (d) { ol.appendChild(extraRow(d)); });
     }
+  }
+  function needsExtra(shown) {
+    var here = shown.map(function (x) { return x.row.ref; });
+    return (data.needs_extra || []).filter(function (d) {
+      return !(d.refs || []).some(function (r) { return here.indexOf(r) >= 0; });
+    });
+  }
+
+  // A decision waiting that isn't a row of the list: it selects its issue when that is on
+  // the map, else it links to where it's answered on GitHub.
+  function extraRow(d) {
+    var li = el("li");
+    var onMap = (d.refs || []).filter(function (r) { return findRow(r); })[0];
+    var b;
+    if (onMap) {
+      b = el("button", "wm-li");
+      b.type = "button";
+      b.setAttribute("data-wm-ref", onMap);
+      b.setAttribute("aria-controls", "wm-sel");
+      b.setAttribute("aria-pressed", onMap === st.selected ? "true" : "false");
+    } else if (d.url) {
+      b = el("a", "wm-li"); b.href = d.url;
+    } else b = el("span", "wm-li");
+    var top = el("span", "wm-lt");
+    top.appendChild(el("span", "wm-ln", d.title || d.ref));
+    top.appendChild(el("span", "wm-lf wm-lf-you", "You"));
+    b.appendChild(top);
+    var v = d.age ? "waiting " + d.age : (d.ttl ? "TTL " + d.ttl : "");
+    b.appendChild(el("span", "wm-lv mono", v));
+    var line = d.ref + " · " + d.scope + (d.why ? " · " + d.why : "");
+    b.appendChild(el("span", "wm-lx muted", line));
+    b.title = (d.title || d.ref) + "\n" + line;
+    b.setAttribute("aria-label", (d.title || d.ref) + ": " + (v ? v + ", " : "") + line + ", needs you");
+    li.appendChild(b);
+    return li;
   }
   function rowsOf(w) { var r = data && data.windows ? data.windows[w] : null; return Array.isArray(r) ? r : null; }
 
@@ -881,6 +931,10 @@
     for (var i = 0; i < bs.length; i++) {
       bs[i].setAttribute("aria-pressed", st[bs[i].getAttribute("data-k")] === bs[i].getAttribute("data-v") ? "true" : "false");
     }
+    var ms = document.querySelectorAll(".sp-pick[data-mark]");
+    for (var j = 0; j < ms.length; j++) {
+      ms[j].setAttribute("aria-pressed", st.mark === ms[j].getAttribute("data-mark") ? "true" : "false");
+    }
   }
 
   var bs = document.querySelectorAll(".wm-seg button[data-k]");
@@ -888,8 +942,22 @@
     bs[i].disabled = false;
     bs[i].addEventListener("click", function (ev) {
       var k = ev.currentTarget.getAttribute("data-k"), v = ev.currentTarget.getAttribute("data-v");
-      if (k === "group" && st.group !== v) st.zoom = null;
+      if (k === "group" && st.group !== v) { st.zoom = null; st.mark = null; }
       st[k] = v; save(); writeUrl(false); draw();
+    });
+  }
+
+  // The strip (#1114): picking "flagged" or "decisions waiting" sets Group by to Goal and
+  // outlines the matching boxes; picking it again clears the outline. Nothing is resized.
+  var ms = document.querySelectorAll(".sp-pick[data-mark]");
+  for (var mi = 0; mi < ms.length; mi++) {
+    ms[mi].disabled = false;
+    ms[mi].addEventListener("click", function (ev) {
+      var v = ev.currentTarget.getAttribute("data-mark");
+      if (st.mark === v) { st.mark = null; draw(); return; }
+      st.mark = v;
+      if (st.group !== "goal") { st.group = "goal"; st.zoom = null; save(); writeUrl(false); }
+      draw();
     });
   }
 

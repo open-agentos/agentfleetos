@@ -15,14 +15,13 @@ Reads, through `gh api` (in a swarm session that's ops/shims/gh acting as the ro
   - for every page's header (#402, activity.py): the repo's public events, 1 to 3 pages, to
     say when the owner last acted.
 
-Builds nine pages in one look (layout.py), each headed by a red LIVE mark, the build time
+Builds eight pages in one look (layout.py), each headed by a red LIVE mark, the build time
 and the owner's last act (#402), and copies the self-hosted fonts and the pages' scripts
 (js/, #1106) beside them:
   - workmap.html, the Work map (workmap_page.py, #1082): a treemap of what each issue cost
-    and what it returned, from map.json's data, with the lead's Briefing under it; the live
-    Desk's home;
-  - bridge.html, the Bridge (bridge.py, #926): read-only: status, decisions
-    waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub;
+    and what it returned, from map.json's data, with the counts strip above it and the lead's
+    Briefing, the lists and the tape under it; the live Desk's home. It retired the Bridge
+    (#1114): bridge.html only redirects to /;
   - commissions.html (commissions.py, #931): each open Goal and Area, grouped by what it needs
     from the owner, with a focus drawer for the one picked;
   - agents.html (agents.py, #932): one row per role, working or idle, with a focus drawer;
@@ -61,7 +60,6 @@ from pathlib import Path
 import activity
 import agents
 import authority
-import bridge
 import commissions
 import committees
 import effort
@@ -204,7 +202,7 @@ def fetch(repo: str, now: dt.datetime, days: int, with_progress: bool = False,
             "plan": plan.fetch(repo) if with_plan else None,
             "report": fetch_report(repo, now) if with_plan else None,
             "trouble": fetch_trouble(repo, now) if with_trouble else None,
-            # The Bridge's shipped and delivered reports (#926), from the closed items read above.
+            # The tape's shipped and delivered items (#926, #1114), from the closed items read above.
             "merged": merged_prs(items.values())}
 
 
@@ -557,7 +555,7 @@ def build(data: dict, now: dt.datetime, idle_after: dt.timedelta,
          # with_plan reads both; the plan's own None means its read failed, which the panel says
          "plan": plan.build(data.get("plan"), owner, repo) if data.get("report") else None,
          "trouble": data.get("trouble"),
-         "merged": data.get("merged") or [],   # #926: the Bridge's reports
+         "merged": data.get("merged") or [],   # #1114: the Work map tape's merged PRs
          # #931: the owner's Goals and Areas closed in the window, for Commissions' "delivered"
          "closed_scopes": [{"number": i["number"], "title": i.get("title"), "url": i.get("html_url"),
                             "type": (i.get("type") or {}).get("name"), "closed_at": i.get("closed_at")}
@@ -885,12 +883,16 @@ def render_decisions(m: dict) -> str:
 
 def render_workmap(m: dict) -> str:
     """workmap.html: the Work map, the live Desk's home (#1082)."""
-    return workmap_page.page(m, TITLE, owner_line(m))
+    return workmap_page.page(m, TITLE, owner_line(m), committees.owner_login())
 
 
-def render_bridge(m: dict) -> str:
-    """bridge.html: the Bridge, the owner's "v5 · the bridge" home, read-only (#926)."""
-    return bridge.page(m, committees.owner_login(), TITLE, owner_line(m))
+# The Bridge was retired into the Work map (#1114): bridge.html only sends old links to /.
+BRIDGE_FILE = "bridge.html"
+BRIDGE_REDIRECT = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                   '<meta name="robots" content="noindex, nofollow">'
+                   '<meta http-equiv="refresh" content="0; url=./">'
+                   '<title>The Bridge moved</title></head><body>'
+                   '<p>The Bridge is now the <a href="./">Work map</a>.</p></body></html>\n')
 
 
 def render_commissions(m: dict) -> str:
@@ -918,7 +920,7 @@ def render_authority(m: dict) -> str:
 
 def render(m: dict) -> dict[str, str]:
     """Every page, by file name, in layout.PAGES order."""
-    pages = {"workmap.html": render_workmap, "bridge.html": render_bridge, "commissions.html": render_commissions,
+    pages = {"workmap.html": render_workmap, "commissions.html": render_commissions,
              "agents.html": render_agents, "index.html": render_desk, "effort.html": render_effort, "operations.html": render_operations,
              "decisions.html": render_decisions, "authority.html": render_authority}
     return {f: pages[f](m) for f, _ in layout.PAGES}
@@ -1093,7 +1095,7 @@ def main(argv: list[str]) -> int:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     model["workmap"] = map_data(data, model, now, args.days)   # the Work map page carries it (#1082)
-    pages = render(model)
+    pages = {**render(model), BRIDGE_FILE: BRIDGE_REDIRECT}   # old links to the Bridge go to / (#1114)
     layout.copy_fonts(out.parent)   # before the pages, so a published page never lacks them
     # likewise the scripts the pages load (#1106) and the vendored libraries, checked above (#1107)
     layout.write_scripts(out.parent, scripts() | vendor)

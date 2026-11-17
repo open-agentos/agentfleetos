@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-import bridge
+import strip
 import layout
 from layout import esc
 
@@ -45,11 +45,11 @@ def build(m: dict) -> dict:
     prs = m.get("prs") or []
     days = m.get("days") or 14
     since = now - dt.timedelta(days=days)
-    merged = sorted((p for p in m.get("merged") or [] if bridge.role_of(p.get("author"))
-                     and (bridge._ts(p.get("merged_at")) or since) >= since),
+    merged = sorted((p for p in m.get("merged") or [] if strip.role_of(p.get("author"))
+                     and (strip._ts(p.get("merged_at")) or since) >= since),
                     key=lambda p: p.get("merged_at") or "", reverse=True)
-    author = {p["number"]: bridge.role_of(p.get("author")) for p in merged}
-    author.update({p["number"]: bridge.role_of(p.get("author")) for p in prs})
+    author = {p["number"]: strip.role_of(p.get("author")) for p in merged}
+    author.update({p["number"]: strip.role_of(p.get("author")) for p in prs})
     calls = (m.get("grants") or {}).get("calls") or []
     sessions = [s for s in m.get("sessions") or [] if not s.get("never_acted")]
     report_issue = (m.get("report") or {}).get("issue")
@@ -65,12 +65,12 @@ def build(m: dict) -> dict:
                            "url": f"https://github.com/{repo}/{'pull' if s.get('pr') else 'issues'}/{n}",
                            "status": s.get("status")})
         used = [c for c in calls if (role == "merger" or author.get(c.get("number")) == role)]
-        open_prs = [p for p in prs if bridge.role_of(p.get("author")) == role]
+        open_prs = [p for p in prs if strip.role_of(p.get("author")) == role]
         working = bool(live) or (role == "merger" and bool(used))
         rows.append({
             "role": role, "does": does, "group": "working" if working else "idle",
             "blocked": any(s.get("status") == "blocked" for s in live), "on": on,
-            "merged": [p for p in merged if bridge.role_of(p.get("author")) == role],
+            "merged": [p for p in merged if strip.role_of(p.get("author")) == role],
             "open": open_prs,
             "changes": [p for p in open_prs if (p.get("reviewer") or {}).get("at_head") == CHANGES],
             "sessions": len(mine), "authority": used,
@@ -78,14 +78,14 @@ def build(m: dict) -> dict:
             "ask": role != "merger"})
     rows.sort(key=lambda r: r["group"] != "working")
     return {"now": now, "repo": repo, "days": days, "rows": rows,
-            "report_issue": report_issue, "counts": bridge.nav_counts(m)}
+            "report_issue": report_issue}
 
 
 # ---------------------------------------------------------------- drawing
 
 def _badge(role: str, group: str) -> str:
-    cls = " lead" if role == bridge.LEAD else " idle" if group == "idle" else ""
-    return f'<span class="br-av{cls}" aria-hidden="true">{esc(bridge.BADGE.get(role, role[:2].upper()))}</span>'
+    cls = " lead" if role == strip.LEAD else " idle" if group == "idle" else ""
+    return f'<span class="br-av{cls}" aria-hidden="true">{esc(strip.BADGE.get(role, role[:2].upper()))}</span>'
 
 
 def _line(r: dict, now: dt.datetime) -> str:
@@ -99,7 +99,7 @@ def _line(r: dict, now: dt.datetime) -> str:
         return esc(f'{len(r["authority"])} call{"s" if len(r["authority"]) != 1 else ""} in the last 24 hours')
     if r["merged"]:
         p = r["merged"][0]
-        return esc(f'Last: {p.get("title") or ""}, merged {bridge.when(bridge._ts(p.get("merged_at")), now)}')
+        return esc(f'Last: {p.get("title") or ""}, merged {strip.when(strip._ts(p.get("merged_at")), now)}')
     return "Nothing merged in the window."
 
 
@@ -140,26 +140,26 @@ def drawer_html(r: dict, b: dict) -> str:
            f'<div class="ag-head">{_badge(r["role"], r["group"])}<div><h2 class="br-h cm-dtitle">'
            f'{esc(r["role"].capitalize())}</h2><p class="muted cm-crumb">{esc(r["does"])}</p></div></div>',
            f'<p><span class="cm-pill {pill[1]}">{pill[0]}</span> '
-           f'<span class="muted">{"last seen " + esc(bridge.when(r["last_ts"], now)) if r["last_ts"] else ""}</span></p>',
+           f'<span class="muted">{"last seen " + esc(strip.when(r["last_ts"], now)) if r["last_ts"] else ""}</span></p>',
            f'<div class="cm-sec"><p class="br-kind">LAST {days} DAYS</p><div class="ag-tiles">'
            + _tile("Merged", len(r["merged"]), "PRs by its App")
            + _tile("Open now", len(r["open"]), "PRs by its App")
            + _tile("Changes requested", len(r["changes"]), "at head, open PRs", red=True)
            + _tile("Sessions", r["sessions"], "run in the window")
            + "</div></div>"]
-    out.append(_list("WORKING ON", [f'{bridge._a(x["url"], esc(x["ref"]))} {esc(x["title"])}'
+    out.append(_list("WORKING ON", [f'{strip.a(x["url"], esc(x["ref"]))} {esc(x["title"])}'
                                     + (' <span class="owner">blocked</span>' if x["status"] == "blocked" else "")
                                     for x in r["on"]], "No live session."))
     out.append(_list("RECENTLY MERGED", [
-        f'{bridge._a(p.get("url"), "#" + str(p.get("number")))} {esc(p.get("title") or "")} '
-        f'<span class="muted">· {esc(bridge.when(bridge._ts(p.get("merged_at")), now))}</span>'
+        f'{strip.a(p.get("url"), "#" + str(p.get("number")))} {esc(p.get("title") or "")} '
+        f'<span class="muted">· {esc(strip.when(strip._ts(p.get("merged_at")), now))}</span>'
         for p in r["merged"][:RECENT]], "Nothing merged in the window."))
     out.append(_list("AUTHORITY USED, LAST 24 HOURS", [
-        f'{bridge._a(c.get("link"), "PR #" + str(c.get("number")))} {esc(GROUP_WORD.get(c.get("group"), ""))} '
+        f'{strip.a(c.get("link"), "PR #" + str(c.get("number")))} {esc(GROUP_WORD.get(c.get("group"), ""))} '
         f'{esc(c.get("reason") or "")}' for c in r["authority"]], "None."))
     if r["ask"]:
         issue = b.get("report_issue")
-        where = (bridge._a(f"https://github.com/{repo}/issues/{issue}", f"#{issue}") if issue
+        where = (strip.a(f"https://github.com/{repo}/issues/{issue}", f"#{issue}") if issue
                  else "the report issue")
         out.append(f'<div class="cm-sec"><p class="br-kind">ASK IT SOMETHING</p><p>Comment '
                    f'<code>Ask: {esc(r["role"])}: …</code> on {where}. <span class="muted">It starts '
@@ -181,8 +181,7 @@ def render(b: dict) -> str:
     aside = ('<aside class="cm-aside" aria-label="In focus"><p class="cm-pick muted">Pick an agent to see '
              'what it merged, what it\'s working on, the authority it used and how to ask it something.</p>'
              + "".join(drawer_html(r, b) for r in rows) + "</aside>")
-    return (f'<div class="bridge">{bridge.nav_html(FILE, b["counts"])}'
-            f'<div class="cm-wrap"><div class="cm-main" id="top">{"".join(out)}</div>{aside}</div></div>')
+    return f'<div class="cm-wrap"><div class="cm-main" id="top">{"".join(out)}</div>{aside}</div>'
 
 
 def page(m: dict, title: str, owner_line: str) -> str:

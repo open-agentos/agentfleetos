@@ -45,11 +45,11 @@ GENERATE = ROOT / "dashboard" / "generate.py"
 DESK_DIR = "desk"            # under ~/.productswarm/launcher
 LIVE = "live"                # symlink to the build being served
 STATE = "state.json"
-# What / serves: the Work map (#1082), which replaced the Bridge there (#1035); the Bridge stays
-# at /bridge.html and the old desk at /index.html. A build without the Work map falls back to
-# the Bridge, and one without either to the desk.
+# What / serves: the Work map (#1082), which retired the Bridge (#1114): /bridge.html is now a
+# page that sends the browser to /. The old desk stays at /index.html, and a build without the
+# Work map falls back to it.
 HOME = "workmap.html"
-HOME_FALLBACKS = (HOME, "bridge.html", "index.html")
+HOME_FALLBACKS = (HOME, "index.html")
 NUDGE_FILE = "nudge"         # webhooks.NUDGE_FILE; not imported so the desk needs no db
 MIN_GAP = 120                # seconds from one build's start before a nudge starts another
 SWEEP_MINUTES = 10           # a build this often with no nudge, inside the desk's 15-min stale mark

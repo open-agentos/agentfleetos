@@ -10,7 +10,7 @@ generate.build() already makes, so it costs no API calls of its own:
   - `closed_scopes`: the owner's Goals and Areas closed in the build's window.
 
 Groups, in order, each scope in the first that fits: needs a look (flagged: something stuck, a
-failing criterion or a missed date, bridge.flagged), waits on you, running (Goals), keep it so
+failing criterion or a missed date, strip.flagged), waits on you, running (Goals), keep it so
 (Areas), then delivered this week (closed in the last DELIVERED_DAYS days).
 
 The drawer needs no script: each row links to `#c-<number>`, and CSS `:target` shows that
@@ -23,7 +23,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-import bridge
+import strip
 import layout
 from layout import esc
 from report import inline
@@ -42,7 +42,7 @@ def _num(ref) -> int | None:
 
 
 def group(s: dict) -> str:
-    if bridge.flagged(s):
+    if strip.flagged(s):
         return "look"
     if s.get("waiting"):
         return "waiting"
@@ -50,17 +50,17 @@ def group(s: dict) -> str:
 
 
 def build(m: dict) -> dict:
-    """{"now", "repo", "error", "rows": [...], "counts"}: one row per scope, in group order."""
+    """{"now", "repo", "error", "rows": [...]}: one row per scope, in group order."""
     now = m["now"]
     t = m.get("trouble") or {}
     plan = {s["number"]: s for s in (m.get("plan") or {}).get("scopes") or []}
     rows = []
-    for s in bridge._scopes(t):
+    for s in strip.scopes(t):
         n = _num(s.get("ref"))
         crit = s.get("progress") or []
         p = plan.get(n) or {}
         rows.append({"number": n, "group": group(s), "type": s.get("type") or "",
-                     "lead": bridge.lead(s.get("title")), "title": re.sub(r"^\S{1,12}:\s+", "", s.get("title") or ""),
+                     "lead": strip.lead(s.get("title")), "title": re.sub(r"^\S{1,12}:\s+", "", s.get("title") or ""),
                      "url": s.get("url"), "date": s.get("date"), "date_missed": s.get("date_missed"),
                      "criteria": crit, "met": sum(c.get("status") == "met" for c in crit),
                      "stuck": s.get("stuck") or [], "waiting": s.get("waiting") or [],
@@ -75,17 +75,16 @@ def build(m: dict) -> dict:
                          "done": p.get("done"), "subs": p.get("subs") or []})
     since = now - dt.timedelta(days=DELIVERED_DAYS)
     for c in m.get("closed_scopes") or []:
-        closed = bridge._ts(c.get("closed_at"))
+        closed = strip._ts(c.get("closed_at"))
         if closed and closed >= since:
             rows.append({"number": c["number"], "group": "delivered", "type": c.get("type") or "",
-                         "lead": bridge.lead(c.get("title")),
+                         "lead": strip.lead(c.get("title")),
                          "title": re.sub(r"^\S{1,12}:\s+", "", c.get("title") or ""), "url": c.get("url"),
                          "closed": closed, "date": None, "date_missed": False, "criteria": [], "met": 0,
                          "stuck": [], "waiting": [], "authority": [], "open": None, "done": None, "subs": []})
     order = [g for g, _ in GROUPS]
     rows.sort(key=lambda r: (order.index(r["group"]), r["type"] != "Goal", r["number"] or 0))
-    return {"now": now, "repo": m["repo"], "error": t.get("error"), "rows": rows,
-            "counts": bridge.nav_counts(m)}
+    return {"now": now, "repo": m["repo"], "error": t.get("error"), "rows": rows}
 
 
 # ---------------------------------------------------------------- drawing
@@ -96,7 +95,7 @@ DOT = {"look": "red", "waiting": "owner", "running": "agent", "keep": "quiet", "
 def _word(r: dict, now: dt.datetime) -> tuple[str, str]:
     """The row's status word and its class."""
     if r["group"] == "delivered":
-        return f"closed {bridge.when(r.get('closed'), now)}", ""
+        return f"closed {strip.when(r.get('closed'), now)}", ""
     if r["stuck"]:
         return f"{len(r['stuck'])} stuck", "br-red"
     if r["date_missed"]:
@@ -141,8 +140,8 @@ def _items(head: str, xs: list[dict], none: str, now: dt.datetime) -> str:
     if not xs:
         return f'<div class="cm-sec"><p class="br-kind">{esc(head)}</p><p class="muted">{esc(none)}</p></div>'
     lis = "".join(
-        f'<li>{bridge._a(x.get("url"), esc(x.get("ref") or ""))} {inline(x.get("reason") or "")} '
-        f'<span class="muted">· {esc(bridge.age(bridge._ts(x.get("since")), now))}</span></li>'
+        f'<li>{strip.a(x.get("url"), esc(x.get("ref") or ""))} {inline(x.get("reason") or "")} '
+        f'<span class="muted">· {esc(strip.age(strip._ts(x.get("since")), now))}</span></li>'
         for x in xs)
     return f'<div class="cm-sec"><p class="br-kind">{esc(head)}</p><ul class="cm-list">{lis}</ul></div>'
 
@@ -153,9 +152,9 @@ def _subs(subs: list[dict]) -> str:
     lis = []
     for x in subs:
         st = x.get("status") or {}
-        pr = (f' · {bridge._a((x.get("pr") or {}).get("url"), "PR #" + str(x["pr"]["number"]))}'
+        pr = (f' · {strip.a((x.get("pr") or {}).get("url"), "PR #" + str(x["pr"]["number"]))}'
               if x.get("pr") else "")
-        lis.append(f'<li>{bridge._a(x.get("url"), esc(x.get("ref") or ""))} {esc(x.get("title") or "")} '
+        lis.append(f'<li>{strip.a(x.get("url"), esc(x.get("ref") or ""))} {esc(x.get("title") or "")} '
                    f'<span class="st {esc(st.get("kind") or "")}">{inline(st.get("text") or "")}</span>{pr}</li>')
     return f'<div class="cm-sec"><p class="br-kind">OPEN WORK UNDER IT</p><ul class="cm-list">{"".join(lis)}</ul></div>'
 
@@ -169,7 +168,7 @@ def drawer_html(r: dict, now: dt.datetime) -> str:
     word, _ = _word(r, now)
     out = [f'<section class="cm-drawer" id="c-{r["number"]}" aria-label="{esc(r["lead"] or r["title"])}">',
            f'<p class="br-kind">IN FOCUS · {esc(r["type"].upper() or "SCOPE")}</p>',
-           f'<p class="muted cm-crumb">Whole plan › {bridge._a(r["url"], "#" + str(r["number"]))}</p>',
+           f'<p class="muted cm-crumb">Whole plan › {strip.a(r["url"], "#" + str(r["number"]))}</p>',
            f'<h2 class="br-h cm-dtitle">{esc(r["lead"] + ": " if r["lead"] else "")}{esc(r["title"])}</h2>',
            f'<p><span class="cm-pill {color}">{pill}</span> <span class="muted">{esc(word)}</span></p>']
     if r["criteria"]:
@@ -184,7 +183,7 @@ def drawer_html(r: dict, now: dt.datetime) -> str:
         out.append(_items("WAITS ON YOU", r["waiting"], "Nothing waits on you.", now))
         out.append(_items("DONE ON YOUR AUTHORITY", r["authority"], "Nothing in the last day.", now))
         out.append(_subs(r["subs"]))
-    out.append(f'<p class="cm-sec">{bridge._a(r["url"], "Open it on GitHub")} · '
+    out.append(f'<p class="cm-sec">{strip.a(r["url"], "Open it on GitHub")} · '
                f'<a href="#top">Back to the list</a></p></section>')
     return "".join(out)
 
@@ -211,8 +210,7 @@ def render(c: dict) -> str:
              f'Pick a Goal or Area to see its done test, what\'s stuck, what waits on you and the work under it.</p>'
              f'{drawers}</aside>')
     main = f'<div class="cm-main" id="top">{"".join(out)}</div>'
-    return (f'<div class="bridge">{bridge.nav_html(FILE, c["counts"])}'
-            f'<div class="cm-wrap">{main}{aside}</div></div>')
+    return f'<div class="cm-wrap">{main}{aside}</div>'
 
 
 def page(m: dict, title: str, owner_line: str) -> str:

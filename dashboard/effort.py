@@ -14,7 +14,6 @@ model calls and no API calls of its own. The cache, schema 1:
 without a known label or a merge time is left out and counted as unreadable.
 
 What it draws:
-  - the Bridge's In flight: each Goal card's PRs by label for the last WINDOW days (card_line);
   - the desk's Effort panel: a stacked bar per open Goal (this window, the one before; the fix
     share hatched) and the capability share across all merged PRs by week, each segment
     linking to its PRs on effort.html;
@@ -36,7 +35,7 @@ FILE = "effort.html"
 CACHE_NAME = "classify/cache/effort.json"
 CACHE = Path(__file__).resolve().parent.parent / CACHE_NAME
 LABELS = ("capability", "upkeep", "governance", "knowledge")
-WINDOW = 7          # days: the Bridge's counts, the desk's bars and the risk rule
+WINDOW = 7          # days: the desk's bars and the risk rule
 TREND_WEEKS = 8     # weeks of capability share, this week included
 WINDOWS = (("this", "last 7 days"), ("last", "7 days before"))
 REF_RE = re.compile(r"^([\w.-]+/[\w.-]+)#(\d+)$")
@@ -157,16 +156,6 @@ def build(cache: dict | None, repo: str, now: dt.datetime, goals: list[dict]) ->
                       "total": len(these)})
     return {"status": "ok", "classifier": cache.get("classifier"), "updated_at": _ts(cache.get("updated_at")),
             "unreadable": bad, "goals": out_goals, "by_goal": by_goal, "trend": trend, "now": now}
-
-
-def card_line(c: dict | None) -> str | None:
-    """The Bridge card's line: "5 PRs · 2 capability · 1 upkeep · 1 governance · 1 knowledge · 1 fix"."""
-    if c is None:
-        return None
-    n = c["total"]
-    parts = [f"{n} PR{'s' if n != 1 else ''}", *(f"{c['by'][lb]} {lb}" for lb in LABELS),
-             f"{c['fixes']} fix{'es' if c['fixes'] != 1 else ''}"]
-    return " · ".join(parts)
 
 
 def upkeep_heavy(c: dict) -> bool:
