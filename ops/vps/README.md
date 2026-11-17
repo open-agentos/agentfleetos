@@ -8,7 +8,7 @@
 
 ## The services (#660)
 
-`systemd/` has five units. All run as the `swarm` user from a checkout at `/home/swarm/agentfleetos`, with state in `/home/swarm/.agentfleetos/launcher/swarm.db`. Each service sets `PRODUCTSWARM_HOME=/home/swarm/.agentfleetos`. The variable keeps its old name (GOV-0048), and `provision.sh` links `~/.productswarm` to the state folder, so commands you run by hand as `swarm` find the same state.
+`systemd/` has seven units. All run as the `swarm` user from a checkout at `/home/swarm/agentfleetos`, with state in `/home/swarm/.agentfleetos/launcher/swarm.db`. Each service sets `PRODUCTSWARM_HOME=/home/swarm/.agentfleetos`. The variable keeps its old name (GOV-0048), and `provision.sh` links `~/.productswarm` to the state folder, so commands you run by hand as `swarm` find the same state.
 
 | Unit | Runs | Reads |
 |---|---|---|
@@ -16,8 +16,11 @@
 | `agentfleetos-watch.service` | `swarm watch --serve --dry-run`: a check on each webhook nudge (at most every 30 s) and every `interval_minutes` | `secrets.env` |
 | `agentfleetos-desk.service` | `swarm desk` on 127.0.0.1:8080, behind Caddy (#664) | `desk.env`: only the read-only `GH_TOKEN` |
 | `agentfleetos-backup.service` and `.timer` | `swarm backup` nightly at 03:30 UTC | nothing secret |
+| `agentfleetos-pull.service` and `.timer` | `/usr/local/sbin/agentfleetos-pull` (`pull.sh`) every 5 minutes | nothing secret |
 
-The watcher runs with `--dry-run` until #661: starting role sessions here needs #661's containers. Take `--dry-run` off then. Until then the checkout doesn't update itself, so pull it by hand after merges.
+The watcher runs with `--dry-run` until #661: starting role sessions here needs #661's containers. Take `--dry-run` off then.
+
+**Keeping the checkout current.** `agentfleetos-pull.timer` fast-forwards the checkout to `main` every 5 minutes, as `swarm`. When `launcher/` changed, it restarts the webhooks, watch and Desk services. A `dashboard/` change needs no restart, because the Desk runs `generate.py` afresh on each build. It never installs a change under `ops/`: it logs one (`journalctl -u agentfleetos-pull`), and copying units or `pull.sh` stays yours. The script is a root-owned copy in `/usr/local/sbin`, not the checkout's, so nothing a merge brings in runs as root. It does mean whatever merges to `main` runs on this host, as `swarm`, within about 5 minutes. To pause it: `systemctl stop agentfleetos-pull.timer`.
 
 The Desk's `--repo` must be the current slug. GitHub redirects most API calls after a rename, but not search, so an old slug stops the Desk publishing.
 
@@ -29,8 +32,9 @@ grep '^WEBHOOK_SECRET=' /etc/agentfleetos/secrets.env > /etc/agentfleetos/webhoo
 grep -E '^(GH_TOKEN|GITHUB_TOKEN)=' /etc/agentfleetos/secrets.env > /etc/agentfleetos/desk.env
 chown root:swarm /etc/agentfleetos/webhooks.env /etc/agentfleetos/desk.env && chmod 640 /etc/agentfleetos/webhooks.env /etc/agentfleetos/desk.env
 cp /root/vps/systemd/agentfleetos-* /etc/systemd/system/
+install -o root -g root -m 755 /root/vps/pull.sh /usr/local/sbin/agentfleetos-pull
 systemctl daemon-reload
-systemctl enable --now agentfleetos-webhooks agentfleetos-watch agentfleetos-desk agentfleetos-backup.timer
+systemctl enable --now agentfleetos-webhooks agentfleetos-watch agentfleetos-desk agentfleetos-backup.timer agentfleetos-pull.timer
 ```
 
 Check: `systemctl status agentfleetos-webhooks agentfleetos-watch agentfleetos-desk` and `journalctl -u agentfleetos-watch -f`. To stop everything starting work, add `swarm:halt` to the report issue (#249); only your label counts.

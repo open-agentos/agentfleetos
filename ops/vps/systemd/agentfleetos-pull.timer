@@ -1,0 +1,11 @@
+# ops/vps/systemd/agentfleetos-pull.timer: pull main every 5 minutes, and 2 minutes after boot.
+[Unit]
+Description=Pull the AgentFleetOS checkout every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

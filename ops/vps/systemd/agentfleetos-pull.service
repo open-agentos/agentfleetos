@@ -1,0 +1,12 @@
+# ops/vps/systemd/agentfleetos-pull.service: fast-forward /home/swarm/agentfleetos to main,
+# run by agentfleetos-pull.timer. Runs /usr/local/sbin/agentfleetos-pull (ops/vps/pull.sh) as
+# root only to restart services; the git commands run as swarm.
+[Unit]
+Description=AgentFleetOS checkout pull
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentfleetos-pull
+TimeoutStartSec=120
