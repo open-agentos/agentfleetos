@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -161,6 +162,18 @@ class NoteTest(Tmp):
         [ep] = self.episodes()
         self.assertEqual(ep["note"]["tried"], episodes.CUT)
         self.assertNotIn("PRODUCT.md and roles", (episodes.outbox(self.home) / "2026-11-17.jsonl").read_text())
+
+    def test_asking_for_the_note_keeps_git_from_committing_it(self):
+        # A repo whose .gitignore doesn't list the note (another org repo, GOV-0036).
+        subprocess.run(["git", "init", "-q", str(self.work)], check=True)
+        self.stop()
+        self.stop()                                          # asked once; excluded once
+        exclude = (self.work / ".git" / "info" / "exclude").read_text().splitlines()
+        self.assertEqual(exclude.count(f"/{episodes.NOTE_FILE}"), 1)
+        (self.work / episodes.NOTE_FILE).write_text("{}")
+        status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=self.work,
+                                capture_output=True, text=True, check=True).stdout
+        self.assertNotIn(episodes.NOTE_FILE, status)
 
     def test_an_actions_run_is_not_asked(self):
         e = swarm.Started(name="reviewer-1", role="reviewer", model="m", session_id=SID, started=0,
@@ -333,7 +346,9 @@ EVENTS = {7: [{"id": 41, "event": "labeled", "label": {"name": "kind:bug"}, "act
               {"id": 42, "event": "closed", "actor": {"login": OWNER}, "commit_id": None,
                "created_at": "2026-11-17T09:30:00Z"}],
           8: [{"id": 43, "event": "closed", "actor": {"login": OWNER}, "commit_id": None,
-               "created_at": "2026-11-17T09:40:00Z"}]}
+               "created_at": "2026-11-17T09:40:00Z"}],
+          20: [{"id": 44, "event": "closed", "actor": {"login": OWNER}, "commit_id": None,
+                "state_reason": "completed", "created_at": "2026-11-17T09:50:00Z"}]}
 PULLS = {8: {"merged_at": None},
          9: {"merged_by": {"login": OWNER}, "merged_at": "2026-11-17T12:00:00Z", "title": 'Revert "Add x"',
              "html_url": "https://github.com/o/r/pull/9"}}
@@ -398,6 +413,13 @@ class ReaderTest(SyncCase):
         self.assertEqual(got["commented #21"], acts.REPEAT)       # same domain, much the same title as #20
         self.assertIsNone(got["retagged #7"])
         self.assertNotIn("edited an agent's PR #8", got)          # the bot edited it last, not the owner
+
+    def test_closing_an_answered_question_is_not_a_veto(self):
+        # GOVERNANCE.md §6: the owner closes a question once it is answered. That's routine.
+        api = FakeAPI()
+        reader = acts.Reader(OWNER, None, api.gh_json, api.gh_items, lambda f: False)
+        self.assertEqual(reader.read("issues", "closed", REPO, 20, None), [])
+        self.assertNotIn("closed #20", self.sync(LEADS + [("issues", "closed", 20, None)]))
 
     def test_a_question_in_another_domain_is_a_genuine_call(self):
         acts_ = self.sync(LEADS[:-1])

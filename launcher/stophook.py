@@ -63,7 +63,8 @@ The run's budget (GOV-0012) is what bounds spend; MAX_BLOCKS is a code value.
 
 **The session note (#1184, FEAT-14).** Once a `swarm watch` run may stop, the hook asks it,
 once, for a note: a JSON object with three short fields, tried, surprised and blocked, written
-to episodes.NOTE_FILE in its worktree (the payload's cwd). When the run next stops, the hook
+to episodes.NOTE_FILE in its worktree (the payload's cwd), which the hook first adds to that
+repo's info/exclude so no repo can commit it. When the run next stops, the hook
 writes a note episode (episodes.py) with the run's session id, role, model, repo, issue or PR
 and the files its PR touched, scrubbed, with any field that quotes the run's prompt cut. A run
 that stops without a note, or that the hook can't ask (it has blocked MAX_BLOCKS times), gets
@@ -463,6 +464,24 @@ def touched(g: GitHub, repo: str | None, e: swarm.Started) -> list[str]:
             if f.get("filename")]
 
 
+def exclude_note(work: Path) -> None:
+    """Add episodes.NOTE_FILE to the run's repo's info/exclude, so a run in a repo whose
+    .gitignore doesn't list it (another org repo, GOV-0036) can't commit it. Best effort."""
+    try:
+        out = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=work,
+                             capture_output=True, text=True, timeout=10)
+        if out.returncode != 0 or not out.stdout.strip():
+            return
+        exclude = work / out.stdout.strip()
+        lines = exclude.read_text().splitlines() if exclude.exists() else []
+        if episodes.NOTE_FILE not in lines and f"/{episodes.NOTE_FILE}" not in lines:
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            with exclude.open("a") as f:
+                f.write(("\n" if lines and lines[-1] else "") + f"/{episodes.NOTE_FILE}\n")
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def note_step(payload: dict, home: Path, e: swarm.Started, g: GitHub, repo: str | None,
               state_file: Path, now: Callable[[], dt.datetime]) -> dict | None:
     """Ask the run for its note once, then record it as an episode (#1184)."""
@@ -474,6 +493,7 @@ def note_step(payload: dict, home: Path, e: swarm.Started, g: GitHub, repo: str 
     note = episodes.read_note(path) if path else None
     if note is None and path and not state.get("note_asked") and int(state.get("blocks", 0)) < MAX_BLOCKS:
         state_file.write_text(json.dumps({**state, "note_asked": True}) + "\n")
+        exclude_note(Path(cwd))
         return {"decision": "block", "reason": NOTE_ASK.format(path=path)}
     try:
         paths = touched(g, repo, e)

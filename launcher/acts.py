@@ -29,7 +29,8 @@ What counts:
     edit     the owner edited an agent's issue, PR or comment (#1184)
     close    the owner closed an agent's issue, or its PR unmerged: a veto (#1184)
 What doesn't: opening or editing a Goal or Area (labels on one are edits to it), closing their
-own issue or one a merge closes, reading the report or the Desk.
+own issue or one a merge closes, closing a gov:question (routine once it is answered,
+GOVERNANCE.md §6), reading the report or the Desk.
 
 Kind: `plan` (on a Mission, Goal or Area, or a `hold` veto, GOV-0031), `report`
 (on the report issue: replies, asks and `Ask:` one-on-ones), `ask` (on a `gov:question`, or
@@ -60,7 +61,8 @@ with no model call:
     approval       a `ready` label, an approving review (an approval at the PR's head when it
                    was given), or a merge
     correction     an edit to an agent's issue, PR or comment; a `kind:*` label; a veto (a
-                   `hold` label, taking `ready` off, or closing an agent's issue or PR unmerged);
+                   `hold` label, taking `ready` off, or closing an agent's issue, other than a
+                   gov:question, or its PR unmerged);
                    merging a revert
     repeat answer  an answer on a gov:question whose domain is that of an earlier answered
                    question and whose title says much the same (title_overlap)
@@ -303,6 +305,12 @@ class Reader:
     def exempt(self, repo: str, n: int) -> bool:
         return ((self.issue(repo, n).get("type") or {}).get("name")) in EXEMPT_TYPES
 
+    @staticmethod
+    def is_question(it: dict) -> bool:
+        """Whether an issue is a gov:question. Closing an answered one is routine (GOVERNANCE.md
+        §6, "the owner closes the question"), not a veto, so it isn't an act."""
+        return GOV_QUESTION in {(l or {}).get("name") for l in it.get("labels") or []}
+
     def agent_made(self, x: dict) -> bool:
         """Whether an issue, PR or comment was written by an agent (a bot), not the owner."""
         who = login(x.get("user")) or ""
@@ -363,7 +371,7 @@ class Reader:
                                 "what": f"{verb} {name}", "url": page,
                                 "tag": rule_tag("label", label=name, added=e["event"] == "labeled")})
                 elif (e.get("event") == "closed" and action == "closed" and not e.get("commit_id")
-                      and self.agent_made(it)):
+                      and self.agent_made(it) and not self.is_question(it)):
                     if "pull_request" in it:
                         pr = self.gh_json("api", f"repos/{repo}/pulls/{n}") or {}
                         if pr.get("merged_at"):

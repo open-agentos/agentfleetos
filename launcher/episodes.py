@@ -3,9 +3,9 @@ and the signals the engine sees, kept as raw experience for the learning loop.
 
 **Store (GOV-0052).** One JSONL file per UTC day, `YYYY-MM-DD.jsonl`, one episode per line,
 schema 1. GOV-0052 puts them in `memory/episodes/` in this repo. How the engine commits them is
-#1199, not ruled yet: until it is, the engine writes them to an outbox on its own host,
-`~/.productswarm/memory/episodes/`, the default #1199 states, and nothing is committed or
-pushed. `swarm memory episodes` reads the outbox and `memory/episodes/` together. Episodes are
+#1199: the owner answered it (Option 1), but its record hasn't merged, so until it does the
+engine writes them to an outbox on its own host, `~/.productswarm/memory/episodes/`, the
+default #1199 states, and nothing is committed or pushed. `swarm memory episodes` reads the outbox and `memory/episodes/` together. Episodes are
 appended, never edited; one with an id already in its day's file isn't written again. The
 dream (FEAT-15, not this) deletes files after 30 days.
 
@@ -48,7 +48,7 @@ from typing import Callable, Iterable
 SCHEMA = 1
 TYPES = ("note", "act", "retag", "review", "revert", "closed-unmerged", "run", "answer")
 NOTE_FIELDS = ("tried", "surprised", "blocked")
-NOTE_FILE = ".session-note.json"     # in the session's worktree; .gitignore'd
+NOTE_FILE = ".session-note.json"     # in the session's worktree; .gitignore'd, and info/exclude'd
 FIELD_MAX = 400                      # characters kept of a note field
 EXCERPT_MAX = 300                    # characters kept of what a review asked for
 QUOTE_WORDS = 8                      # this many words in a row from the prompt is a quote
@@ -58,7 +58,7 @@ REVERT_RE = re.compile(r'^Revert "')
 
 
 def outbox(home: Path) -> Path:
-    """Where the engine writes episodes until #1199 rules how they're committed."""
+    """Where the engine writes episodes until #1199's record merges and they're committed."""
     return home / "memory" / "episodes"
 
 
