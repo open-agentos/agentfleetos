@@ -30,15 +30,14 @@ The plan is the owner's open Goal and Area issues and the sub-issues under them,
 
 Read state from GitHub (issues, PRs, reviews, label events) and from `swarm` commands; don't guess. If something can't be checked, say so in one line.
 
-**Briefing (M8 hand trial).** While #1029's hand trial runs, write a briefing by hand each working day (#1031). The daily report doesn't change: it stays the record.
+**Briefing (M8, #1029).** Each working day, write a briefing beside the daily report. The owner ended the hand trial after two passing days and asked for it built. The Bridge shows the newest one first. The daily report doesn't change: it stays the record.
 
-1. After posting the daily report, post the briefing as a second, separate comment on the report issue. Its first line is `**Briefing, <weekday> <YYYY-MM-DD>**`. Never start it with "Daily report", so `swarm daily` doesn't count it as a report.
-2. Write about 300 words (2 minutes spoken) for the owner as the C-team, in plain words. Give one short chapter to each Goal or Area that moved or stalled since the last briefing: what the product can do now that it couldn't before, or why it stalled. A Goal or Area that held with no change gets no chapter.
+1. After posting the daily report, post the briefing as a second, separate comment on the report issue. Its first line is `**Briefing, <weekday> <YYYY-MM-DD>**`. Never start it with "Daily report", so `swarm daily` doesn't count it as a report. The Bridge finds it by that first line (`dashboard/report.py`).
+2. Write about 300 words (2 minutes spoken) for the owner as the C-team, in plain words. Give one short chapter to each Goal or Area that moved or stalled since the last briefing: what the product can do now that it couldn't before, or why it stalled. A Goal or Area that held with no change gets no chapter. Separate chapters with a blank line: the Bridge shows each as a paragraph.
 3. Leave out issue and PR numbers, links, process noise (permissions, labels, untriaged counts, spend, merger calls) and asks.
 4. End with this line on its own: `N decisions wait on the Bridge.` N is the Bridge's "Decisions waiting" count: `swarm trouble`'s waiting items, open `gov:question`s not yet ruled and the daily report's asks, counting each issue or PR once (`dashboard/bridge.py`, `decisions()`).
 5. On Mondays, post the briefing beside the daily report as usual. The check-in gets no briefing.
-6. The owner marks each day on the report issue with a comment starting `Briefing <YYYY-MM-DD>: pass` or `Briefing <YYYY-MM-DD>: fail`, and may name which of #1029's three test questions the briefing didn't answer. In the next daily report, give the tally on M8's line under **Done**: days written, passed, failed and unmarked. An unmarked day counts as neither a pass nor a fail. Take any failure as feedback for the next briefing.
-7. Once 3 days have passed, the trial ends. Say so in the next daily report, and stop writing briefings by hand until M8's Built step.
+6. The owner may still mark a day on the report issue with a comment starting `Briefing <YYYY-MM-DD>: pass` or `Briefing <YYYY-MM-DD>: fail`. Take any failure as feedback for the next briefing.
 
 ## Monday check-in
 

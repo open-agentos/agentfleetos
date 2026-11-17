@@ -57,7 +57,11 @@ def model(**over) -> dict:
                   "created_ts": NOW, "ttl": None, "waiting": []}],
          "report": {"state": "posted", "daily_at": dt.time(9, 0),
                     "report": {"line": "**Daily report, Thu 11-12.** Two merged.", "url": f"https://github.com/{REPO}/issues/249#c1",
-                               "posted": NOW - dt.timedelta(hours=3), "asks": [{"lead": "a"}]}},
+                               "posted": NOW - dt.timedelta(hours=3), "asks": [{"lead": "a"}]},
+                    "briefing": {"day": NOW.date(), "posted": NOW - dt.timedelta(hours=3),
+                                 "url": f"https://github.com/{REPO}/issues/249#c2", "line": "Briefing, Thu 2026-11-12",
+                                 "paras": ["**The Desk (M3).** The Bridge is <the> front page.",
+                                           "3 decisions wait on the Bridge."]}},
          "merged": [{"number": 925, "title": "Desk: trouble panel", "url": f"https://github.com/{REPO}/pull/925",
                      "author": "productswarm-builder[bot]", "merged_at": "2026-11-12T09:30:00Z"},
                     {"number": 920, "title": "Brief: state questions", "url": f"https://github.com/{REPO}/pull/920",
@@ -161,18 +165,25 @@ class BuildTest(unittest.TestCase):
 class RenderTest(unittest.TestCase):
     def test_sections_in_order(self):
         html = bridge.render(bridge.build(model(), OWNER))
-        order = [html.index(x) for x in ('aria-label="Status"', ">Decisions waiting<", ">Reports<",
+        order = [html.index(x) for x in ('aria-label="Briefing"', 'aria-label="Status"', ">Decisions waiting<", ">Reports<",
                                          ">In flight<", ">Orders received<")]
         self.assertEqual(order, sorted(order))
         self.assertIn("Answer on GitHub", html)
         self.assertIn("you, via GitHub", html)
         self.assertIn("<b>Daily report, Thu 11-12.</b>", html)
+        self.assertIn("<p><b>The Desk (M3).</b> The Bridge is &lt;the&gt; front page.</p>", html)
+        self.assertNotIn("None yet today", html)
+
+    def test_an_older_briefing_says_so(self):
+        m = model()
+        m["report"]["briefing"]["day"] = NOW.date() - dt.timedelta(days=1)
+        self.assertIn("None yet today; this is the newest.", bridge.render(bridge.build(m, OWNER)))
 
     def test_empty_states(self):
         empty = {"repo": REPO, "now": NOW, "trouble": {"scopes": [], "outside": {}}, "floor": None,
                  "sessions": [], "gov": [], "report": None, "merged": [], "activity": None, "plan": None}
         html = bridge.render(bridge.build(empty, OWNER))
-        for text in ("Nothing is waiting on you.", "No reports in the last 7 days.", "No open Goal or Area.",
+        for text in ("No briefing from the lead in the last few days.", "Nothing is waiting on you.", "No reports in the last 7 days.", "No open Goal or Area.",
                      "No acts of yours in the events read.", "nothing waits on you"):
             self.assertIn(text, html)
 

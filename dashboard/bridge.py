@@ -3,6 +3,8 @@
 One page, `bridge.html`, built only from what the desk already reads, so it costs no API
 calls of its own (the merged PRs come from the closed items generate.fetch() already reads):
 
+  - Briefing, first (M8, #1029): the lead's newest daily briefing from the report issue, whole,
+    as report.py read it, with its day. A briefing from before today says so.
   - Status: open Goals and Areas and how many are flagged; agents working, from the floor;
     decisions waiting; authority used in `swarm trouble`'s window.
   - Decisions waiting (owner amber): what `swarm trouble` says waits on the owner, open gov
@@ -250,6 +252,7 @@ def build(m: dict, owner: str | None) -> dict:
             "idle": len(floor.get("idle") or []),
             "authority": sum(len(s.get("authority") or []) for s in [*scopes, t.get("outside") or {}]),
             "authority_hours": t.get("authority_hours") or 24,
+            "briefing": ((m.get("report") or {}).get("briefing")),
             "decisions": decisions(m), "reports": reports(m), "flights": flights,
             "orders": orders(m, owner)}
 
@@ -307,6 +310,22 @@ def status_html(b: dict) -> str:
         _tile("Authority used", str(b["authority"]), f'last {b["authority_hours"]}h, on your grants'),
     ]
     return f'<section class="br-status" aria-label="Status">{"".join(tiles)}</section>'
+
+
+def briefing_html(b: dict) -> str:
+    """The lead's newest briefing, whole: M8's "the Bridge shows it first"."""
+    br = b.get("briefing")
+    if not br:
+        return ('<section class="br-brief"><div class="br-colh"><h2 class="br-h">Briefing</h2></div>'
+                '<p class="muted">No briefing from the lead in the last few days.</p></section>')
+    today = b["now"].astimezone(br["posted"].tzinfo).date() if br.get("posted") else None
+    stamp = f'{br["day"]:%a %m-%d}' + (f', {br["posted"]:%H:%M}' if br.get("posted") else "")
+    old = ('<p class="muted">None yet today; this is the newest.</p>'
+           if today and br["day"] < today else "")
+    body = "".join(f"<p>{inline(p)}</p>" for p in br.get("paras") or [])
+    return ('<section class="br-brief" aria-label="Briefing"><div class="br-colh"><h2 class="br-h">Briefing</h2>'
+            f'<span class="muted">from the lead · {_a(br.get("url"), esc(stamp))}</span></div>'
+            f'{old}<div class="br-briefbody">{body}</div></section>')
 
 
 def decisions_html(b: dict) -> str:
@@ -429,7 +448,7 @@ def render(b: dict) -> str:
     day = b["now"].astimezone(dt.timezone.utc).strftime("%a %d %b, %H:%M UTC")
     main = (f'<div class="br-main"><div class="br-titlebar"><h1>Bridge</h1>'
             f'<span class="mono muted">{esc(day)}</span></div>{err}'
-            f'{status_html(b)}{decisions_html(b)}'
+            f'{briefing_html(b)}{status_html(b)}{decisions_html(b)}'
             f'<div class="br-cols"><div class="br-left">{reports_html(b)}</div>'
             f'<div class="br-right">{flights_html(b)}{orders_html(b)}</div></div></div>')
     return f'<div class="bridge">{nav_html(FILE, {"Commissions": b["commissions"], "Agents": b["agents"]})}{main}</div>'
