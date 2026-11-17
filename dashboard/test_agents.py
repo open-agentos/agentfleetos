@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import sys
 import unittest
@@ -10,6 +11,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import agents  # noqa: E402
+import crewdraw  # noqa: E402
 from test_strip import NOW, REPO, model  # noqa: E402
 
 
@@ -61,27 +63,55 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(self.rows()["reviewer"]["group"], "idle")
 
 
+def drawn(m) -> str:
+    """Crew's roles as crew.js draws them from state.json's `crew_roles` (#1139)."""
+    return crewdraw.draw(crewdraw.base(built_at="2026-11-05T12:00:00Z", crew_roles=json.loads(
+        json.dumps(agents.state(m), default=str))))["roles"]
+
+
+class StateTest(unittest.TestCase):
+    def test_plain_fields_working_first(self):
+        rows = agents.state(amodel())
+        self.assertEqual([r["role"] for r in rows][:3], ["builder", "analyst", "merger"])
+        r = {x["role"]: x for x in rows}
+        self.assertEqual(r["builder"]["line"], "On #894 M4 drill")
+        self.assertEqual(r["analyst"]["line"], "Blocked on #692 Checklist brief")
+        self.assertEqual(r["merger"]["line"], "2 calls in the last 24 hours")
+        self.assertEqual((r["merger"]["count"], r["builder"]["count"]), ("2 calls", "1 merged"))
+        self.assertEqual((r["planner"]["badge"], r["planner"]["lead"]), ("PL", True))
+        self.assertNotIn("<", json.dumps(rows))   # no HTML
+
+
+@unittest.skipUnless(crewdraw.NODE, "node isn't installed")
 class RenderTest(unittest.TestCase):
     def test_rows_open_the_work_maps_role_view(self):
         # #1113: the drawer became the Work map's role view (#1115); each row links there.
-        html = agents.render(agents.build(amodel()))
+        html = drawn(amodel())
         roles = re.findall(r'class="cm-row" href="workmap.html\?group=role#role-([a-z]+)"', html)
         self.assertEqual(sorted(roles), sorted(r for r, _ in agents.ROLES))
         self.assertNotIn("cm-drawer", html)
         self.assertIn("WORKING · 3", html)
         self.assertIn("IDLE · 4", html)
+        self.assertIn("3 working · 4 idle · Thu 05 Nov, 12:00 UTC", html)
+        self.assertIn('<span class="br-av lead" aria-hidden="true">PL</span>', html)
 
     def test_rows_hold_no_link_inside_their_link(self):
-        html = agents.render(agents.build(amodel()))
+        html = drawn(amodel())
         for row in re.findall(r'<a class="cm-row".*?</a>', html):
             self.assertEqual(row.count("<a "), 1)
+
+    def test_repo_text_stays_text(self):
+        m = amodel()
+        m["issue_titles"][894] = "<img src=x>"
+        self.assertIn("On #894 &lt;img src=x&gt;", drawn(m))
 
     def test_empty_model(self):
         empty = {"repo": REPO, "now": NOW, "sessions": [], "prs": [], "merged": [], "grants": None,
                  "report": None, "trouble": None, "plan": None}
-        html = agents.render(agents.build(empty))
+        html = drawn(empty)
         self.assertIn("Nothing merged in the window.", html)
         self.assertIn("IDLE · 7", html)
+
 
 if __name__ == "__main__":
     unittest.main()

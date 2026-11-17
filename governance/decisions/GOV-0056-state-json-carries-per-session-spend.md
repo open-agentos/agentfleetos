@@ -1,5 +1,5 @@
 ---
-id: GOV-0055
+id: GOV-0056
 title: state.json may carry each session's own spend estimate, its cap and an over-cap flag, never a total
 status: in-force
 kind: ruling
