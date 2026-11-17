@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ops/vps/provision.sh: one-time hardening and setup of the productswarm engine host.
+# ops/vps/provision.sh: one-time hardening and setup of the AgentFleetOS engine host.
 # Run as root on a fresh Ubuntu 24.04 or 26.04 Hetzner server, after adding your SSH key in Hetzner's console:
 #   DESK_HOST=desk.example.com bash provision.sh
 # Idempotent: safe to run again. It never reads or writes any secret's value.
@@ -80,11 +80,14 @@ apt-get install -yq gh
 # 6. Service user, state directory and an empty secrets file the owner fills by hand
 id "$SVC" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$SVC"
 usermod -aG docker "$SVC"
-install -d -o "$SVC" -g "$SVC" -m 700 "/home/$SVC/.productswarm"
-install -d -o root -g "$SVC" -m 750 /etc/productswarm
-if [ ! -e /etc/productswarm/secrets.env ]; then
-  install -o root -g "$SVC" -m 640 /dev/null /etc/productswarm/secrets.env
-  echo "Created an empty /etc/productswarm/secrets.env: add ANTHROPIC_API_KEY, WEBHOOK_SECRET and the App keys yourself."
+install -d -o "$SVC" -g "$SVC" -m 700 "/home/$SVC/.agentfleetos"
+# The units set PRODUCTSWARM_HOME to this; the link is for commands run by hand, whose default is ~/.productswarm.
+[ -e "/home/$SVC/.productswarm" ] || ln -s .agentfleetos "/home/$SVC/.productswarm"
+chown -h "$SVC:$SVC" "/home/$SVC/.productswarm"
+install -d -o root -g "$SVC" -m 750 /etc/agentfleetos
+if [ ! -e /etc/agentfleetos/secrets.env ]; then
+  install -o root -g "$SVC" -m 640 /dev/null /etc/agentfleetos/secrets.env
+  echo "Created an empty /etc/agentfleetos/secrets.env: add ANTHROPIC_API_KEY, WEBHOOK_SECRET and the App keys yourself."
 fi
 
 echo "Done. Check: https://$DESK_HOST/healthz"

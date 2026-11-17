@@ -1,0 +1,25 @@
+# ops/vps/systemd/agentfleetos-desk.service: the live Desk (#664, `swarm desk`).
+# Read-only pages on 127.0.0.1:8080 behind Caddy, rebuilt on each webhook nudge (at most every
+# 120 s). It reads GitHub with the read-only GH_TOKEN only, from desk.env.
+[Unit]
+Description=AgentFleetOS Desk (swarm desk)
+After=network-online.target agentfleetos-webhooks.service
+Wants=network-online.target
+
+[Service]
+User=swarm
+Group=swarm
+Environment=PRODUCTSWARM_HOME=/home/swarm/.agentfleetos
+WorkingDirectory=/home/swarm/agentfleetos
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/agentfleetos/desk.env
+ExecStart=/home/swarm/agentfleetos/launcher/swarm desk --host 127.0.0.1 --port 8080 --repo open-agentos/agentfleetos
+Restart=on-failure
+RestartSec=10s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/home/swarm/.agentfleetos
+
+[Install]
+WantedBy=multi-user.target
