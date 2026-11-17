@@ -1,8 +1,10 @@
 // The Work map (#1082, FEAT-9): a squarified treemap of map.json's rows, drawn in the browser.
 // generate.py serves this file as js/workmap.js and the page's CSP names its hash. It reads the
-// data from the page's JSON block, builds DOM nodes with createElement and text nodes only (it
-// never parses markup or runs strings as code), and never fetches. It shows each issue's own figures and each group's
+// data from the page's JSON block and builds DOM nodes with createElement and text nodes only (it
+// never parses markup or runs strings as code). It shows each issue's own figures and each group's
 // share as a percentage: no amount is ever summed across issues for display (GOV-0033).
+// Since #1138 an open map also fetches same-origin map.json while the tab is visible, and redraws
+// in place when it carries a newer build, keeping the view and selection (see "live refresh").
 // The Selected panel (#1083) shows one issue: its 14-day cost is that issue's own sum, a
 // per-issue figure, not a sum across issues. The lists (#1084) under the Briefing show issues
 // one per row; a heading's count is a number of issues, not an amount.
@@ -963,6 +965,86 @@
 
   // Back and Forward: the URL's view and selection, as on opening it.
   window.addEventListener("popstate", function () { readUrl(); draw(); });
+
+  // ------------------------------------------------------------ live refresh (#1138)
+
+  // Every LIVE.every ms while the tab is visible, fetch same-origin map.json (GOV-0051) and, when
+  // it carries a newer build, redraw from it in place: the controls, zoom and selection stay, as
+  // do the page's Goals, roles and strip, which map.json doesn't carry. As poll.js does with
+  // state.json, it only moves forward, and the masthead's LIVE mark greys once the data shown is
+  // older than LIVE.stale. The page's 300-second meta refresh stays until #1135.
+  var LIVE = data && data.live;
+  var stampEl = document.querySelector("header.mast time.stamp");
+  var builtAt = (data && data.built_at) || (stampEl && stampEl.getAttribute("datetime")) || "";
+
+  function fresh() {
+    var old = !(Date.now() - Date.parse(builtAt) <= LIVE.stale);
+    var marks = document.querySelectorAll("header.mast .live");
+    for (var i = 0; i < marks.length; i++) marks[i].classList.toggle("stale", old);
+  }
+
+  // map.json as the page's JSON block carries it (workmap_page.page_data): each row without its
+  // `days`, and each issue's 14 days once. null if it isn't a map.json this script can draw.
+  function fromMap(m) {
+    if (!m || typeof m !== "object" || m.schema !== 1 || typeof m.built_at !== "string" ||
+        !m.windows || typeof m.windows !== "object" || !m.lists || typeof m.lists !== "object") return null;
+    var windows = {}, dates = [], of = {}, ok = true;
+    Object.keys(m.windows).forEach(function (w) {
+      if (!Array.isArray(m.windows[w])) { ok = false; return; }
+      windows[w] = m.windows[w].map(function (r) {
+        if (!r || typeof r !== "object" || typeof r.ref !== "string") { ok = false; return null; }
+        var ds = Array.isArray(r.days) ? r.days : [], out = {};
+        if (ds.length && !Object.prototype.hasOwnProperty.call(of, r.ref)) {
+          if (!dates.length) dates = ds.map(function (d) { return d && d.date; });
+          of[r.ref] = ds.map(function (d) { return [d && d.cost !== undefined ? d.cost : null, (d && d.outcomes) || 0]; });
+        }
+        Object.keys(r).forEach(function (k) { if (k !== "days") out[k] = r[k]; });
+        return out;
+      });
+    });
+    if (!ok) return null;
+    return { built_at: m.built_at, method: m.method, windows: windows, days: { dates: dates, of: of }, lists: m.lists };
+  }
+
+  function stamp(t) {
+    if (!stampEl) return;
+    var iso = new Date(t).toISOString();
+    stampEl.setAttribute("datetime", iso.slice(0, 19) + "Z");
+    stampEl.title = iso.slice(0, 10) + " " + iso.slice(11, 16) + " UTC";
+    stampEl.textContent = iso.slice(11, 16) + " UTC";
+  }
+
+  var FIELDS = ["built_at", "method", "windows", "days", "lists", "error"];
+  function apply(m) {
+    var next = fromMap(m), t = next ? Date.parse(next.built_at) : NaN;
+    // A cache can serve a map.json older than the page; only ever move forward.
+    if (isNaN(t) || t <= Date.parse(builtAt)) return;
+    var before = {};
+    FIELDS.forEach(function (k) { before[k] = data[k]; data[k] = next[k]; });
+    try { draw(); } catch (e) {   // a map.json it can't draw: put the last one back
+      FIELDS.forEach(function (k) { data[k] = before[k]; });
+      draw();
+      return;
+    }
+    builtAt = next.built_at;
+    stamp(t);
+  }
+
+  function poll() {
+    if (document.hidden) { fresh(); return; }
+    fetch("map.json?t=" + Date.now(), { cache: "no-store", credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(apply)
+      .catch(function () {})
+      .then(fresh);
+  }
+
+  if (LIVE && typeof LIVE.every === "number" && LIVE.every >= 1000 && typeof LIVE.stale === "number" &&
+      typeof window.fetch === "function") {
+    fresh();
+    window.setInterval(poll, LIVE.every);
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(); });
+  }
 
   var nojs = document.getElementById("wm-nojs");
   if (nojs) nojs.hidden = true;

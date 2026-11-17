@@ -30,7 +30,8 @@ percentage, never an amount. Nothing on the page sums an amount across issues (G
 per issue may be shown on both Desks (GOV-0049).
 
 The map's rows are in the page itself, in a JSON block, so the page draws on GitHub Pages and the
-live Desk alike without fetching. One script, `workmap.js`, draws it: generate.py writes it to
+live Desk alike as soon as it loads. Since #1138 workmap.js also fetches same-origin map.json
+while the tab is visible and redraws in place from a newer build (GOV-0051). One script, `workmap.js`, draws it: generate.py writes it to
 js/ beside the pages and the page's CSP allows it by its hash (#1106). It builds nodes with createElement and text nodes, never innerHTML or eval.
 With JavaScript off the page says the map needs it, and the Briefing still shows. Each row's
 14-day series is the same in every window, so the page carries it once per issue, under `days`:
@@ -50,6 +51,7 @@ from pathlib import Path
 import agents
 import commissions
 import layout
+import live
 import strip
 from layout import esc
 from report import inline
@@ -85,6 +87,12 @@ def script() -> str:
     return JS.read_text(encoding="utf-8")
 
 
+def live_settings() -> dict:
+    """How often an open map fetches map.json and when its LIVE mark greys, in ms: poll.js's
+    (live.py), so every Desk page refreshes and goes stale alike (#1138)."""
+    return {"every": live.EVERY_SECONDS * 1000, "stale": live.STALE_MINUTES * 60 * 1000}
+
+
 def page_data(wm: dict | None) -> dict:
     """What the page's JSON block carries: map.json's windows, each row without its `days`, and
     each issue's 14 days once (they don't depend on the window), or the reason the map wasn't read."""
@@ -106,7 +114,7 @@ def page_data(wm: dict | None) -> dict:
             "windows": {w: [{k: v for k, v in r.items() if k != "days"} for r in rows]
                         for w, rows in windows.items()},
             "days": {"dates": dates, "of": of},
-            "lists": workmap.desk_lists(windows)}
+            "lists": desk.get("lists") or workmap.desk_lists(windows)}
 
 
 def _plain(text) -> str:
@@ -263,7 +271,7 @@ def render(m: dict, owner: str | None = None) -> str:
     sp = strip.strip(m)
     d = {**pd, "repo": m["repo"], "scopes": scope_data(m), "roles": role_data(m),
          "strip": {"flagged": sp["flagged"], "decisions": sp["decision_refs"]},
-         "needs_extra": strip.needs_extra(m)}
+         "needs_extra": strip.needs_extra(m), "live": live_settings()}
     method = (f'<p class="muted method">Cost: {esc(d["method"])}</p>' if d.get("method") else "")
     return (f'<div class="br-main wm-main"><div class="br-titlebar"><h1>Work map</h1></div>'
             f'{strip.strip_html(sp)}'

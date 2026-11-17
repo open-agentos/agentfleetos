@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -48,9 +49,11 @@ class PageTest(unittest.TestCase):
 
     def test_script_builds_nodes_without_html_parsing(self):
         js = re.sub(r"//[^\n]*", "", wp.script())   # the code, not its comments
-        for bad in ("innerHTML", "outerHTML", "insertAdjacentHTML", "eval(", "new Function", "fetch(",
-                    "XMLHttpRequest", "document.write"):
+        for bad in ("innerHTML", "outerHTML", "insertAdjacentHTML", "eval(", "new Function",
+                    "XMLHttpRequest", "document.write", "import(", "src ="):
             self.assertNotIn(bad, js)
+        # Its one fetch is same-origin map.json (#1138, GOV-0051).
+        self.assertEqual(re.findall(r"fetch\(([^,]*),", js), ['"map.json?t=" + Date.now()'])
         self.assertIn("localStorage", js)
         self.assertIn("try {", js)   # storage is optional
 
@@ -73,7 +76,8 @@ class PageTest(unittest.TestCase):
         self.assertNotRegex(wp.render(model()).lower(), r"\btotal")
         d = json_block(page)
         self.assertEqual(set(d), {"built_at", "method", "windows", "days", "lists", "repo", "scopes", "roles",
-                                  "strip", "needs_extra"})
+                                  "strip", "needs_extra", "live"})
+        self.assertEqual(set(d["live"]), {"every", "stale"})   # timings, no figure
         self.assertEqual(set(d["strip"]), {"flagged", "decisions"})   # numbers and refs, no amount
         for x in d["needs_extra"]:
             self.assertFalse({"cost", "tokens", "total"} & set(x))
@@ -299,6 +303,154 @@ class GenerateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self.assertIn("not written", g.save_map(bad, Path(d)))
             self.assertFalse((Path(d) / "map.json").exists())
+
+    def test_map_json_carries_the_lists_the_page_carries(self):
+        """#1138: an open map redraws from map.json alone, so it carries each window's lists."""
+        from test_workmap import gathered
+        import workmap
+        gd = gathered()
+        desk = g.map_data(gd["data"], gd["model"], NOW, fetch_prs=lambda repo, since: [])["desk"]
+        self.assertEqual(desk["lists"], workmap.desk_lists(desk["windows"]))
+        self.assertEqual(wp.page_data({"desk": desk})["lists"], desk["lists"])
+
+
+class LiveSettingsTest(unittest.TestCase):
+    def test_the_page_carries_poll_js_timings(self):
+        d = json_block(wp.page(model(), "t", ""))
+        self.assertEqual(d["live"], {"every": live.EVERY_SECONDS * 1000, "stale": live.STALE_MINUTES * 60 * 1000})
+        page = wp.page(model(), "t", "")
+        self.assertIn(f'content="{layout.REFRESH_SECONDS}"', page)   # the meta refresh stays until #1135
+        self.assertIn("connect-src 'self'", page)
+
+
+NODE = shutil.which("node")
+
+# A fake DOM just big enough for workmap.js: every element takes children, attributes, classes
+# and styles; the page's ids are looked up on demand; fetch serves `served`; the clock and the
+# interval are cranked by hand.
+HARNESS = r"""
+const fs = require("fs");
+const [scriptPath, casesPath] = process.argv.slice(2);
+const js = fs.readFileSync(scriptPath, "utf8");
+const cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+function text(n) { return n.text !== undefined ? n.text : n.children.map(text).join(""); }
+function el(tag) {
+  const e = { tag, attrs: {}, children: [], style: {}, classes: new Set(), hidden: false, title: "",
+    clientWidth: 800, clientHeight: 500, offsetLeft: 0, offsetTop: 0, offsetWidth: 10, offsetHeight: 10,
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
+    appendChild(c) { this.children.push(c); return c; },
+    removeChild(c) { this.children.splice(this.children.indexOf(c), 1); return c; },
+    get firstChild() { return this.children[0] || null; },
+    get lastChild() { return this.children[this.children.length - 1] || null; },
+    get textContent() { return text(this); },
+    set textContent(v) { this.children = [{ text: String(v) }]; },
+    set className(v) { this.classes = new Set(String(v).split(" ").filter(Boolean)); },
+    get className() { return [...this.classes].join(" "); },
+    addEventListener() {}, querySelectorAll() { return []; }, querySelector() { return el("x"); } };
+  e.classList = { add: (k) => e.classes.add(k), remove: (k) => e.classes.delete(k), contains: (k) => e.classes.has(k),
+    toggle: (k, on) => { if (on === undefined) on = !e.classes.has(k); on ? e.classes.add(k) : e.classes.delete(k); } };
+  return e;
+}
+(async () => {
+  const out = [];
+  for (const c of cases) {
+    const ids = {}, live = el("span"), stampEl = el("time");
+    stampEl.attrs.datetime = c.page_built_at;
+    ids["wm-data"] = { textContent: JSON.stringify(c.page) };
+    const byId = (id) => { if (!ids[id]) { ids[id] = el("div"); for (let i = 0; i < 14; i++) ids[id].children.push(el("span")); } return ids[id]; };
+    let now = Date.parse(c.clock), tick = null, every = null, fetched = [], urls = [];
+    global.Date = class extends Date { static now() { return now; } };
+    global.document = {
+      hidden: !!c.hidden, addEventListener() {},
+      getElementById: byId, createElement: (t) => el(t), createTextNode: (t) => ({ text: String(t) }),
+      querySelector: (s) => s === "header.mast time.stamp" ? stampEl : null,
+      querySelectorAll: (s) => s === "header.mast .live" ? [live] : [],
+    };
+    global.window = {
+      location: { pathname: "/workmap.html", search: c.search, hash: c.hash },
+      history: { pushState: (a, b, u) => urls.push(u), replaceState: (a, b, u) => urls.push(u) },
+      localStorage: { getItem: () => null, setItem() {} },
+      addEventListener() {}, setTimeout: () => 0, clearTimeout() {},
+      setInterval: (fn, ms) => { tick = fn; every = ms; },
+      fetch: (url, opts) => { fetched.push([url.split("?")[0], opts.cache]);
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(c.served) }); },
+    };
+    global.fetch = global.window.fetch;
+    new Function(js)();
+    const staleAtLoad = live.classes.has("stale");
+    now += c.advance_ms; if (tick) tick();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    const map = ids["wm-map"];
+    out.push({ name: c.name, every, staleAtLoad, stale: live.classes.has("stale"), fetched, urls,
+      boxes: map.children.filter((b) => b.attrs["data-ref"]).map((b) => b.attrs["data-ref"]).sort(),
+      crumb: text(ids["wm-crumb"]), selected: text(ids["wm-sel-ref"]),
+      stamp: stampEl.attrs.datetime, stampText: text(stampEl) });
+  }
+  console.log(JSON.stringify(out));
+})();
+"""
+
+
+@unittest.skipUnless(NODE, "node isn't installed")
+class RefreshBehaviourTest(unittest.TestCase):
+    """workmap.js's live refresh (#1138), run in node against a fake DOM."""
+
+    def desk(self, built_at, day):
+        import workmap
+        windows = {"hour": [], "day": day, "week": day}
+        return {"schema": 1, "built_at": built_at, "repo": REPO, "method": "m",
+                "windows": windows, "lists": workmap.desk_lists(windows)}
+
+    def run_cases(self, cases):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "workmap.js").write_text(wp.script(), encoding="utf-8")
+            (Path(d) / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
+            (Path(d) / "harness.js").write_text(HARNESS, encoding="utf-8")
+            r = subprocess.run([NODE, str(Path(d) / "harness.js"), str(Path(d) / "workmap.js"),
+                                str(Path(d) / "cases.json")], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return {c["name"]: c for c in json.loads(r.stdout)}
+
+    def test_refresh(self):
+        old = [row(10, effort="capability"), row(11, effort="capability")]
+        new = [row(10, effort="capability", cost=3.0), row(11, effort="capability"),
+               row(99, "new <b>one</b>", effort="capability")]
+        page = {**wp.page_data({"desk": self.desk("2026-11-05T10:00:00Z", old)}),
+                "repo": REPO, "live": wp.live_settings()}
+        base = {"page": page, "page_built_at": "2026-11-05T10:00:00Z", "clock": "2026-11-05T10:01:00Z",
+                "advance_ms": 15000, "search": "?group=effort&zoom=Capability", "hash": "#issue-10"}
+        bad = self.desk("2026-11-05T10:01:00Z", new)
+        bad["windows"]["day"] = {"not": "rows"}
+        got = self.run_cases([
+            {**base, "name": "newer", "served": self.desk("2026-11-05T10:01:00Z", new)},
+            {**base, "name": "older", "served": self.desk("2026-11-05T09:00:00Z", new)},
+            {**base, "name": "bad", "served": bad},
+            {**base, "name": "hidden", "hidden": True, "served": self.desk("2026-11-05T10:01:00Z", new)},
+            {**base, "name": "stale", "clock": "2026-11-05T10:20:00Z",
+             "served": self.desk("2026-11-05T09:00:00Z", new)},
+            {**base, "name": "fresh_again", "clock": "2026-11-05T10:20:00Z",
+             "served": self.desk("2026-11-05T10:19:00Z", new)},
+        ])
+        n = got["newer"]
+        self.assertEqual(n["every"], live.EVERY_SECONDS * 1000)
+        self.assertEqual(n["fetched"], [["map.json", "no-store"]])
+        self.assertEqual(n["boxes"], ["#10", "#11", "#99"])         # redrawn in place
+        self.assertEqual(n["crumb"], "All effort types › Capability")   # zoom kept
+        self.assertEqual(n["selected"], "#10")                      # selection kept
+        self.assertFalse([u for u in n["urls"] if "issue-10" not in u or "zoom=Capability" not in u])
+        self.assertEqual((n["stamp"], n["stampText"]), ("2026-11-05T10:01:00Z", "10:01 UTC"))
+        self.assertFalse(n["stale"])
+        for name in ("older", "bad"):                                # never backwards, never a broken file
+            self.assertEqual(got[name]["boxes"], ["#10", "#11"], name)
+            self.assertEqual(got[name]["stamp"], "2026-11-05T10:00:00Z", name)
+        self.assertEqual(got["hidden"]["fetched"], [])               # a hidden tab doesn't fetch
+        self.assertTrue(got["stale"]["staleAtLoad"])                 # 20 minutes old: greyed
+        self.assertTrue(got["stale"]["stale"])
+        self.assertFalse(got["fresh_again"]["stale"])                # new data brings it back
+        self.assertEqual(got["fresh_again"]["boxes"], ["#10", "#11", "#99"])
 
 
 if __name__ == "__main__":
