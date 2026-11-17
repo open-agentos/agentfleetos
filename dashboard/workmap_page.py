@@ -11,6 +11,8 @@ the Bridge stays at bridge.html. Top to bottom, beside the shared left column (b
   - the breadcrumb, the treemap, and the legend under it, beside the Selected panel (#1083):
     one issue's story at the map's height, its six sections each at a fixed height, filled by
     workmap.js from the selected box or from any element with `data-wm-ref` in the page;
+    since #1115 also a Goal, Area or role (the `scopes` and `roles` in the JSON block, from the
+    Commissions and Agents drawers' builds), and the URL keeps the view and the selection;
   - the Briefing, moved from the Bridge (M8, #1069): the lead's newest briefing, whole;
   - six lists (#1084), two rows of three: Needs you, Blocked, Spend no outcome, Running hot,
     Gone quiet and Best yield. workmap.py's lists() picks and orders each window's matches for
@@ -33,10 +35,14 @@ says so and points to `swarm map --window month`. Stdlib only.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
+import re
 from pathlib import Path
 
+import agents
 import bridge
+import commissions
 import layout
 from layout import esc
 from report import inline
@@ -96,6 +102,73 @@ def page_data(wm: dict | None) -> dict:
             "lists": workmap.desk_lists(windows)}
 
 
+def _plain(text) -> str:
+    """A line of report Markdown as text: the `code` and **bold** marks go."""
+    return re.sub(r"\*\*|`", "", str(text or ""))
+
+
+def _iso(t) -> str | None:
+    if isinstance(t, dt.datetime):
+        return t.isoformat(timespec="seconds")
+    return t if isinstance(t, str) else None
+
+
+def _items(xs: list[dict]) -> list[dict]:
+    return [{"ref": x.get("ref") or "", "url": x.get("url"), "reason": _plain(x.get("reason")),
+             "since": _iso(x.get("since"))} for x in xs or []]
+
+
+def scope_data(m: dict) -> dict:
+    """Each open Goal and Area the Selected panel can show (#1115), by number, from what the
+    Commissions drawer showed (commissions.build): its done test, what's stuck, what waits on
+    the owner, the authority used under it and its open sub-issues. No amount: the page works
+    out each issue's share of the Goal from the map's rows, never a sum (GOV-0033)."""
+    out = {}
+    for r in commissions.build(m)["rows"]:
+        if r["group"] == "delivered" or r["number"] is None:
+            continue
+        out[str(r["number"])] = {
+            "number": r["number"], "type": r["type"] or "Goal", "lead": r["lead"], "title": r["title"],
+            "url": r["url"], "date": r["date"], "date_missed": bool(r["date_missed"]),
+            "criteria": [{"text": _plain(c.get("criterion")), "status": c.get("status"),
+                          "detail": _plain(c.get("detail"))} for c in r["criteria"]],
+            "met": r["met"], "stuck": _items(r["stuck"]), "waiting": _items(r["waiting"]),
+            "authority": _items(r["authority"]),
+            "subs": [{"number": x.get("number"), "ref": x.get("ref") or "", "title": x.get("title") or "",
+                      "url": x.get("url"), "go": (x.get("status") or {}).get("kind") or "",
+                      "status": _plain((x.get("status") or {}).get("text")),
+                      "pr": ({"number": x["pr"].get("number"), "url": x["pr"].get("url")} if x.get("pr") else None)}
+                     for x in r["subs"]]}
+    return out
+
+
+def _pr(p: dict) -> dict:
+    return {"number": p.get("number"), "title": p.get("title") or "", "url": p.get("url"),
+            "merged_at": _iso(p.get("merged_at"))}
+
+
+def role_data(m: dict) -> dict:
+    """Each role the Selected panel can show (#1115), by name, from what the Agents drawer
+    showed (agents.build): what it does and is on now, its merged and open PRs and those with
+    changes requested at head, its sessions (each one's start, so the page can count a window),
+    the merger's calls on its PRs in the last 24 hours, and where to ask it something (GOV-0029)."""
+    a = agents.build(m)
+    sessions = [s for s in m.get("sessions") or [] if not s.get("never_acted")]
+    out = {}
+    for r in a["rows"]:
+        out[r["role"]] = {
+            "role": r["role"], "does": r["does"], "working": r["group"] == "working", "blocked": r["blocked"],
+            "on": [{"ref": x["ref"], "title": x["title"], "url": x["url"], "status": x["status"]} for x in r["on"]],
+            "merged": [_pr(p) for p in r["merged"]], "open": [_pr(p) for p in r["open"]],
+            "changes": [_pr(p) for p in r["changes"]],
+            "sessions": sorted(_iso(s.get("started_ts") or s.get("last_ts")) or "" for s in sessions
+                               if s.get("role") == r["role"]),
+            "calls": [{"number": c.get("number"), "url": c.get("link"), "group": c.get("group") or "",
+                       "reason": _plain(c.get("reason"))} for c in r["authority"]],
+            "last_ts": _iso(r["last_ts"]), "ask": r["ask"]}
+    return {"days": a["days"], "report_issue": a["report_issue"], "of": out}
+
+
 def data_block(d: dict) -> str:
     """The JSON block. `<`, `>` and `&` are escaped so no title can close the element."""
     text = (json.dumps(d, separators=(",", ":"))
@@ -118,24 +191,29 @@ def controls_html() -> str:
 def selected_html() -> str:
     """The Selected panel (#1083) in its empty state: every section, at its fixed height, with
     placeholders. workmap.js fills the same nodes for a selected issue and empties them again, so
-    selecting or clearing changes no size or position anywhere."""
+    selecting or clearing changes no size or position anywhere. A Goal, Area or role (#1115)
+    shows in `wm-alt` in place of the issue's sections (`wm-ss-i`), inside the same fixed box,
+    scrolling within it: the panel's size doesn't change with what's selected."""
     seg = "".join(f'<span class="wm-sg"><span class="wm-sgbar"></span><span class="wm-sgl">{esc(n)}</span></span>'
                   for _, n in STAGES)
     bars = "".join('<span class="wm-bar"></span>' for _ in range(14))
     nums = "".join(f'<div class="wm-num"><dt>{esc(n)}</dt><dd data-n="{k}">–</dd></div>' for k, n in NUMBERS)
     return ('<aside class="wm-selected wm-sel-empty" id="wm-sel" aria-label="Selected" aria-live="polite">'
-            '<div class="wm-ss wm-ss-head"><span class="br-kind">SELECTED</span><span class="mono" id="wm-sel-ref">–</span></div>'
+            '<div class="wm-ss wm-ss-head"><span class="br-kind" id="wm-sel-kind">SELECTED</span><span class="mono" id="wm-sel-ref">–</span></div>'
             f'<div class="wm-ss wm-ss-title"><p class="wm-st" id="wm-sel-title">{esc(EMPTY)}</p>'
             '<p class="wm-sc muted" id="wm-sel-ctx">–</p></div>'
-            '<div class="wm-ss wm-ss-stage"><p class="wm-sh"><span>Stage</span><span id="wm-sel-stage">–</span></p>'
+            '<div class="wm-ss wm-ss-i wm-ss-stage"><p class="wm-sh"><span>Stage</span><span id="wm-sel-stage">–</span></p>'
             f'<div class="wm-sgs" id="wm-sel-sgs">{seg}</div></div>'
-            '<div class="wm-ss wm-ss-days"><p class="wm-sh"><span>Cost, last 14 days</span><span class="mono" id="wm-sel-dsum">–</span></p>'
+            '<div class="wm-ss wm-ss-i wm-ss-deps"><p class="wm-dl"><span>Waits on</span><span id="wm-sel-by">–</span></p>'
+            '<p class="wm-dl"><span>Holds up</span><span id="wm-sel-blocks">–</span></p></div>'
+            '<div class="wm-ss wm-ss-i wm-ss-days"><p class="wm-sh"><span>Cost, last 14 days</span><span class="mono" id="wm-sel-dsum">–</span></p>'
             f'<div class="wm-bars" id="wm-sel-bars">{bars}</div>'
             '<p class="wm-ax mono"><span>14d ago</span><span id="wm-sel-peak">–</span><span>today</span></p></div>'
-            '<div class="wm-ss wm-ss-peers"><p class="wm-sh"><span>Yield against its group</span><span id="wm-sel-grp">–</span></p>'
+            '<div class="wm-ss wm-ss-i wm-ss-peers"><p class="wm-sh"><span>Yield against its group</span><span id="wm-sel-grp">–</span></p>'
             '<div class="wm-strip" id="wm-sel-strip"><span class="wm-line"></span></div>'
             '<p class="wm-ax mono" id="wm-sel-pax"><span>0</span><span>–</span><span>–</span></p></div>'
-            f'<dl class="wm-ss wm-ss-nums" id="wm-sel-nums">{nums}</dl>'
+            f'<dl class="wm-ss wm-ss-i wm-ss-nums" id="wm-sel-nums">{nums}</dl>'
+            '<div class="wm-ss wm-alt" id="wm-sel-alt"></div>'
             '</aside>')
 
 
@@ -173,7 +251,7 @@ def briefing_html(briefing: dict | None, now) -> str:
 
 def render(m: dict) -> str:
     """The Work map's <main> content."""
-    d = page_data(m.get("workmap"))
+    d = {**page_data(m.get("workmap")), "repo": m["repo"], "scopes": scope_data(m), "roles": role_data(m)}
     method = (f'<p class="muted method">Cost: {esc(d["method"])}</p>' if d.get("method") else "")
     main = (f'<div class="br-main wm-main"><div class="br-titlebar"><h1>Work map</h1></div>'
             f'<p class="wm-keyline">{esc(KEY_LINE)}</p>'

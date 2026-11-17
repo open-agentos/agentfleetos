@@ -44,6 +44,13 @@ commits committed in the window). `stage`, first that holds:
 `blocked_at` is the stage a blocked issue stopped in (#1083): the stage it would have without
 the block, counting it as go, so `queued` at least; null when it isn't blocked.
 
+`blocked_by` and `blocks` (#1115, FEAT-13) are the issue numbers that hold it up and that it
+holds up, from three links (links()): an issue waits on each issue on its body's `**Waits on:**`
+line (read as `swarm watch` reads it, #490); a parent issue waits on its sub-issues (the plan's
+trees, below the owner's Goals and Areas: a Goal or Area itself waits on nothing here, since its
+whole tree is under it); and an issue waits on its GitHub blocked-by issues (the plan's go read).
+A link whose either end is known to be closed is dropped: a closed issue holds nothing up.
+
 **Rows:** every open issue under the owner's open Goals and Areas (two levels down, as the plan
 reads them), every issue closed in the window, every issue with spend or an outcome in the
 window, and the unattributed row.
@@ -59,6 +66,8 @@ import datetime as dt
 import json
 import math
 import subprocess
+import sys
+from pathlib import Path
 
 import effort as effort_mod
 import generate
@@ -240,6 +249,57 @@ def plan_index(plan_data: dict | None, plan_model: dict | None,
     return goal_of, go, open_subs, blocked
 
 
+def _waits_on(body: str | None) -> list[int]:
+    """watch.waits_on(): the `**Waits on:**` line, read as `swarm watch` reads it (#490)."""
+    launcher = str(Path(__file__).resolve().parent.parent / "launcher")
+    if launcher not in sys.path:
+        sys.path.insert(0, launcher)
+    import watch
+    return watch.waits_on(body)
+
+
+def links(issues: list[dict], plan_data: dict | None, repo: str) -> tuple[dict, dict]:
+    """({n: blocked_by numbers}, {n: blocks numbers}), sorted, from `**Waits on:**` lines,
+    sub-issue links under the plan's Goals and Areas, and GitHub blocked-by links. Links with a
+    closed end are dropped (see the module doc)."""
+    pairs: set[tuple[int, int]] = set()   # (blocked, blocker)
+    closed: set[int] = set()
+    for i in issues:
+        if generate.is_tracking(i):
+            continue
+        if i.get("state") == "closed":
+            closed.add(i["number"])
+        pairs |= {(i["number"], w) for w in _waits_on(i.get("body")) if w != i["number"]}
+
+    def here(x) -> bool:
+        return bool(x) and (x.get("repository") or {}).get("nameWithOwner") in (None, repo)
+
+    for tree in ((plan_data or {}).get("trees") or {}).values():
+        for a in ((tree or {}).get("subIssues") or {}).get("nodes") or []:
+            if not here(a):
+                continue
+            if (a.get("state") or "").upper() == "CLOSED":
+                closed.add(a["number"])
+            for x in ((a.get("subIssues") or {}).get("nodes") or []):
+                if here(x):
+                    pairs.add((a["number"], x["number"]))
+                    if (x.get("state") or "").upper() == "CLOSED":
+                        closed.add(x["number"])
+    for n, node in ((plan_data or {}).get("go") or {}).items():
+        for b in ((node or {}).get("blockedBy") or {}).get("nodes") or []:
+            if here(b):
+                pairs.add((int(n), b["number"]))
+                if (b.get("state") or "").upper() == "CLOSED":
+                    closed.add(b["number"])
+    by, holds = {}, {}
+    for blocked, blocker in sorted(pairs):
+        if blocked in closed or blocker in closed:
+            continue
+        by.setdefault(blocked, []).append(blocker)
+        holds.setdefault(blocker, []).append(blocked)
+    return by, holds
+
+
 def stage(go_kind: str | None, open_prs: list[dict], session_on: bool, session_blocked: bool,
           open_blocker: bool = False) -> str | None:
     """One open issue's stage (see the module doc). `open_prs` are generate.build()'s PRs;
@@ -328,6 +388,7 @@ def build(g: dict, now: dt.datetime, window: str = DEFAULT_WINDOW) -> dict:
         import plan
         plan_model = plan.build(data["plan"], committees.owner_login(), repo)
     goal_of, go, open_subs, blocked = plan_index(data.get("plan"), plan_model, repo)
+    blocked_by, blocks = links(data["issues"], data.get("plan"), repo)
 
     spent = all_charges(data)
     happened = outcomes(g.get("prs") or [], data["issues"], repo)
@@ -395,7 +456,8 @@ def build(g: dict, now: dt.datetime, window: str = DEFAULT_WINDOW) -> dict:
         if n is None:
             return {**base, "ref": UNATTRIBUTED, "title": "spend before any working_on",
                     "url": None, "state": None, "lines": 0, "goal": None, "effort": None,
-                    "stage": None, "blocked_at": None, "needs_you": False}
+                    "stage": None, "blocked_at": None, "needs_you": False,
+                    "blocked_by": [], "blocks": []}
         it = issues.get(n) or {}
         state = it.get("state") or ("open" if n in open_subs else None)
         st = at = None
@@ -409,7 +471,8 @@ def build(g: dict, now: dt.datetime, window: str = DEFAULT_WINDOW) -> dict:
                 "url": it.get("html_url") or f"https://github.com/{repo}/issues/{n}",
                 "state": state, "lines": lines_of.get(n, 0), "goal": goal_of.get(n),
                 "effort": effort_of(prs_of.get(n, set()), g.get("effort"), repo),
-                "stage": st, "blocked_at": at, "needs_you": n in needs}
+                "stage": st, "blocked_at": at, "needs_you": n in needs,
+                "blocked_by": blocked_by.get(n, []), "blocks": blocks.get(n, [])}
 
     rows = [row(n) for n in keys]
     rows.sort(key=lambda r: (-(r["cost"] or 0.0), -r["tokens"], r["issue"]))
