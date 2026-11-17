@@ -185,6 +185,8 @@ class StageTest(unittest.TestCase):
                       blockers={10: ["OPEN"], 11: ["CLOSED", "OPEN"], 12: ["OPEN"], 13: ["CLOSED"]})
         r = rows(wm.build(gd, NOW, "day"))
         self.assertEqual([r[n]["stage"] for n in (10, 11, 12, 13)], ["blocked", "blocked", "blocked", "queued"])
+        # where each stopped (#1083): #12 has a PR ready for review; the others, nothing yet
+        self.assertEqual([r[n]["blocked_at"] for n in (10, 11, 12, 13)], ["queued", "queued", "review", None])
         self.assertEqual(wm.stage("go", [], False, False, True), "blocked")
 
 
@@ -212,8 +214,8 @@ class RowsTest(unittest.TestCase):
         m = wm.build(gd, NOW, "day")
         self.assertEqual([r["issue"] for r in m["rows"]], [10, 30, None])   # not #20, not #40
         fields = {"issue", "ref", "title", "url", "state", "cost", "unpriced_tokens", "tokens", "lines",
-                  "outcomes", "outcome_kinds", "goal", "effort", "role", "stage", "needs_you",
-                  "baseline", "days"}
+                  "outcomes", "outcome_kinds", "goal", "effort", "role", "stage", "blocked_at",
+                  "needs_you", "baseline", "days"}
         for r in m["rows"]:
             self.assertEqual(set(r), fields)
             self.assertEqual(len(r["days"]), 14)

@@ -8,7 +8,9 @@ the Bridge stays at bridge.html. Top to bottom, beside the shared left column (b
   - four controls, segmented buttons: Group by (Effort, Goal, Role, Stage), Size (Cost, Tokens,
     Lines changed), Colour (Yield, Velocity, Change) and Window (Hour, Day, Week, Month). The
     viewer's choices are kept in this browser's localStorage, if it has one;
-  - the breadcrumb, the treemap, and the legend under it, beside the Selected panel's space;
+  - the breadcrumb, the treemap, and the legend under it, beside the Selected panel (#1083):
+    one issue's story at the map's height, its six sections each at a fixed height, filled by
+    workmap.js from the selected box or from any element with `data-wm-ref` in the page;
   - the Briefing, moved from the Bridge (M8, #1069): the lead's newest briefing, whole;
   - the lists' space (their own features).
 
@@ -20,7 +22,9 @@ The map's rows are in the page itself, in a JSON block, so the page draws on Git
 live Desk alike without fetching. One inline script, `workmap.js`, draws it, allowed by its hash
 in the page's CSP. It builds nodes with createElement and text nodes, never innerHTML or eval.
 With JavaScript off the page says the map needs it, and the Briefing still shows. Each row's
-14-day series is left out of the page: the map doesn't use it, and map.json still carries it.
+14-day series is the same in every window, so the page carries it once per issue, under `days`:
+`dates` (the 14 UTC days, oldest first) and `of` (ref -> [[cost, outcomes], ...]). The Selected
+panel's 14-day figure is one issue's own sum, not a sum across issues, so GOV-0033 doesn't bar it.
 
 The Desk reads 14 days of heartbeats, so map.json has the hour, day and week windows. Month
 says so and points to `swarm map --window month`. Stdlib only.
@@ -43,6 +47,10 @@ CONTROLS = (("group", "Group by", (("effort", "Effort"), ("goal", "Goal"), ("rol
             ("colour", "Colour", (("yield", "Yield"), ("velocity", "Velocity"), ("change", "Change"))),
             ("window", "Window", (("hour", "Hour"), ("day", "Day"), ("week", "Week"), ("month", "Month"))))
 DEFAULTS = {"group": "effort", "size": "cost", "colour": "yield", "window": "day"}
+STAGES = (("queued", "Queued"), ("building", "Building"), ("review", "In review"), ("merging", "Merging"))
+EMPTY = "Click a box, or an item in a list below, to see it here."
+NUMBERS = (("cost", "Cost"), ("tokens", "Tokens"), ("lines", "Lines"), ("outcomes", "Outcomes"),
+           ("yield", "Yield"), ("change", "Change against usual"))
 KEY_LINE = ("Size is what each issue used in the window. Shade is the colour measure: darker is more. "
             "A folded corner: spend but no outcome. An amber outline: needs you. A red left edge: blocked.")
 
@@ -56,15 +64,25 @@ def script() -> str:
 
 
 def page_data(wm: dict | None) -> dict:
-    """What the page's JSON block carries: map.json's windows, each row without its `days`,
-    or the reason the map wasn't read."""
+    """What the page's JSON block carries: map.json's windows, each row without its `days`, and
+    each issue's 14 days once (they don't depend on the window), or the reason the map wasn't read."""
     wm = wm or {}
     desk = wm.get("desk")
     if not desk:
         return {"error": wm.get("error") or "no map data in this build"}
+    windows = desk.get("windows") or {}
+    dates, of = [], {}
+    for rows in windows.values():
+        for r in rows:
+            ds = r.get("days") or []
+            if r.get("ref") in of or not ds:
+                continue
+            dates = dates or [d.get("date") for d in ds]
+            of[r["ref"]] = [[d.get("cost"), d.get("outcomes", 0)] for d in ds]
     return {"built_at": desk.get("built_at"), "method": desk.get("method"),
             "windows": {w: [{k: v for k, v in r.items() if k != "days"} for r in rows]
-                        for w, rows in (desk.get("windows") or {}).items()}}
+                        for w, rows in windows.items()},
+            "days": {"dates": dates, "of": of}}
 
 
 def data_block(d: dict) -> str:
@@ -84,6 +102,30 @@ def controls_html() -> str:
         out.append(f'<div class="wm-ctl"><span class="br-kind">{esc(label.upper())}</span>'
                    f'<div class="wm-seg" role="group" aria-label="{esc(label)}">{buttons}</div></div>')
     return f'<div class="wm-ctls">{"".join(out)}</div>'
+
+
+def selected_html() -> str:
+    """The Selected panel (#1083) in its empty state: every section, at its fixed height, with
+    placeholders. workmap.js fills the same nodes for a selected issue and empties them again, so
+    selecting or clearing changes no size or position anywhere."""
+    seg = "".join(f'<span class="wm-sg"><span class="wm-sgbar"></span><span class="wm-sgl">{esc(n)}</span></span>'
+                  for _, n in STAGES)
+    bars = "".join('<span class="wm-bar"></span>' for _ in range(14))
+    nums = "".join(f'<div class="wm-num"><dt>{esc(n)}</dt><dd data-n="{k}">–</dd></div>' for k, n in NUMBERS)
+    return ('<aside class="wm-selected wm-sel-empty" id="wm-sel" aria-label="Selected" aria-live="polite">'
+            '<div class="wm-ss wm-ss-head"><span class="br-kind">SELECTED</span><span class="mono" id="wm-sel-ref">–</span></div>'
+            f'<div class="wm-ss wm-ss-title"><p class="wm-st" id="wm-sel-title">{esc(EMPTY)}</p>'
+            '<p class="wm-sc muted" id="wm-sel-ctx">–</p></div>'
+            '<div class="wm-ss wm-ss-stage"><p class="wm-sh"><span>Stage</span><span id="wm-sel-stage">–</span></p>'
+            f'<div class="wm-sgs" id="wm-sel-sgs">{seg}</div></div>'
+            '<div class="wm-ss wm-ss-days"><p class="wm-sh"><span>Cost, last 14 days</span><span class="mono" id="wm-sel-dsum">–</span></p>'
+            f'<div class="wm-bars" id="wm-sel-bars">{bars}</div>'
+            '<p class="wm-ax mono"><span>14d ago</span><span id="wm-sel-peak">–</span><span>today</span></p></div>'
+            '<div class="wm-ss wm-ss-peers"><p class="wm-sh"><span>Yield against its group</span><span id="wm-sel-grp">–</span></p>'
+            '<div class="wm-strip" id="wm-sel-strip"><span class="wm-line"></span></div>'
+            '<p class="wm-ax mono" id="wm-sel-pax"><span>0</span><span>–</span><span>–</span></p></div>'
+            f'<dl class="wm-ss wm-ss-nums" id="wm-sel-nums">{nums}</dl>'
+            '</aside>')
 
 
 def briefing_html(briefing: dict | None, now) -> str:
@@ -118,8 +160,7 @@ def render(m: dict) -> str:
             'The Work map is drawn by a script in the page; with JavaScript off it can\'t show.</p></div>'
             '<div class="wm-tip" id="wm-tip" role="tooltip" hidden></div></div>'
             '<div class="wm-legend" id="wm-legend"></div></section>'
-            '<aside class="wm-selected" aria-label="Selected"><p class="br-kind">SELECTED</p>'
-            '<p class="muted br-note">The Selected panel is its own feature, still to come.</p></aside></div>'
+            f'{selected_html()}</div>'
             f'{briefing_html((m.get("report") or {}).get("briefing"), m["now"])}'
             '<section class="wm-lists" aria-label="Lists"></section>'
             f'{method}{data_block(d)}</div>')
