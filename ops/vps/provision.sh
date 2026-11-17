@@ -28,7 +28,8 @@ fi
 
 # 2. SSH: keys only, no root password login
 install -d -m 755 /etc/ssh/sshd_config.d
-cat > /etc/ssh/sshd_config.d/10-productswarm.conf <<'CONF'
+rm -f /etc/ssh/sshd_config.d/10-productswarm.conf   # its name before GOV-0048
+cat > /etc/ssh/sshd_config.d/10-agentfleetos.conf <<'CONF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password

@@ -40,6 +40,6 @@ export GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1="!$ops/swarm-token 
 echo "swarm-session: $role as $slug[bot]"
 cd "$root"
 if [[ $# -eq 0 ]]; then
-  exec claude "You are the $role for productswarm. Read CLAUDE.md, PRODUCT.md and roles/$role.md, then begin."
+  exec claude "You are the $role for AgentFleetOS. Read CLAUDE.md, PRODUCT.md and roles/$role.md, then begin."
 fi
 exec claude "$@"

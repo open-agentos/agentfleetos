@@ -19,7 +19,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-REPO_URL = "https://github.com/open-agentos/productswarm"
+REPO_URL = "https://github.com/open-agentos/agentfleetos"
 APPS_DIR = Path(os.environ.get("PRODUCTSWARM_APPS_DIR", Path.home() / ".config/productswarm/apps"))
 
 # No `workflows` or `administration` permission for any role: Apps cannot change
@@ -39,7 +39,7 @@ def manifest(role, port):
     return {
         "name": f"productswarm-{role}",
         "url": REPO_URL,
-        "description": f"productswarm {role} agent. Sessions act as this App; see GOVERNANCE.md.",
+        "description": f"AgentFleetOS {role} agent. Sessions act as this App; see GOVERNANCE.md.",
         "public": False,
         "redirect_url": f"http://127.0.0.1:{port}/callback",
         "hook_attributes": {"url": REPO_URL, "active": False},
@@ -83,7 +83,7 @@ def main():
             pass
 
         def page(self, body):
-            data = f"<!doctype html><meta charset=utf-8><title>productswarm Apps</title><body style='font:16px system-ui;max-width:40em;margin:2em auto'>{body}</body>".encode()
+            data = f"<!doctype html><meta charset=utf-8><title>AgentFleetOS Apps</title><body style='font:16px system-ui;max-width:40em;margin:2em auto'>{body}</body>".encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -103,7 +103,7 @@ def main():
                 install = f"https://github.com/apps/{app['slug']}/installations/new"
                 return self.page(
                     f"<h2>Created {html.escape(app['slug'])}</h2>"
-                    f"<p>1. <a href='{install}' target=_blank>Install it on productswarm</a> (choose <b>Only select repositories</b> → productswarm).</p>"
+                    f"<p>1. <a href='{install}' target=_blank>Install it on agentfleetos</a> (choose <b>Only select repositories</b> → agentfleetos).</p>"
                     "<p>2. <a href='/'>Back to the list</a></p>"
                 )
             action = f"https://github.com/organizations/{args.org}/settings/apps/new"
@@ -118,8 +118,8 @@ def main():
                     f"<input type=hidden name=manifest value=\"{m}\">"
                     f"<button>Create productswarm-{role}</button></form></li>"
                 )
-            self.page("<h2>productswarm role Apps</h2><ul>" + "".join(rows) + "</ul>"
-                      "<p>Install each App on productswarm after creating it. Press Ctrl-C in the terminal when all are done.</p>")
+            self.page("<h2>AgentFleetOS role Apps</h2><ul>" + "".join(rows) + "</ul>"
+                      "<p>Install each App on agentfleetos after creating it. Press Ctrl-C in the terminal when all are done.</p>")
 
     print(f"Open http://127.0.0.1:{args.port}/  (credentials go to {APPS_DIR})", flush=True)
     HTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
