@@ -26,8 +26,10 @@ What counts:
              inline comment or reply makes a review too, so they aren't counted again
     merge    the owner merged a PR, including a protected-path merge
     open     the owner opened an issue other than a Goal or Area
-What doesn't: opening or editing a Goal or Area (labels on one are edits to it), closing an
-issue (a merge closes its issue as the owner), reading the report or the Desk.
+    edit     the owner edited an agent's issue, PR or comment (#1184)
+    close    the owner closed an agent's issue, or its PR unmerged: a veto (#1184)
+What doesn't: opening or editing a Goal or Area (labels on one are edits to it), closing their
+own issue or one a merge closes, reading the report or the Desk.
 
 Kind: `plan` (on a Mission, Goal or Area, or a `hold` veto, GOV-0031), `report`
 (on the report issue: replies, asks and `Ask:` one-on-ones), `ask` (on a `gov:question`, or
@@ -53,6 +55,21 @@ and about 800. Repos, searches and leads are read in parallel. A caller with a d
 next run carries on from them, and a search that runs out of time stores nothing, so the
 next run starts it again. `swarm acts` has no deadline and always finishes.
 
+**Tags (#1184, FEAT-14).** Each act also gets a tag for the learning loop, by rule (rule_tag),
+with no model call:
+    approval       a `ready` label, an approving review (an approval at the PR's head when it
+                   was given), or a merge
+    correction     an edit to an agent's issue, PR or comment; a `kind:*` label; a veto (a
+                   `hold` label, taking `ready` off, or closing an agent's issue or PR unmerged);
+                   merging a revert
+    repeat answer  an answer on a gov:question whose domain is that of an earlier answered
+                   question and whose title says much the same (title_overlap)
+    genuine call   everything else
+The owner retags an act with a comment line `Retag <act key or link>: <tag>` anywhere; the
+retag wins over the rule, and the comment itself has no tag. `swarm acts` shows each act's
+key. Edits and closes are acts from #1184 on; edits come from webhooks only (a backfill can't
+find them) and are read back through GraphQL, which says who edited last.
+
 Limits: an object deleted before it is read back is lost; Discussion comments aren't read; an
 org repo the owner's token can't list isn't searched. Back-room repairs leave no record at all
 (the checklist has the owner self-report them).
@@ -60,6 +77,7 @@ org repo the owner's token can't list isn't searched. Back-room repairs leave no
 from __future__ import annotations
 
 import datetime as dt
+import re
 import sqlite3
 import time
 import urllib.parse
@@ -72,6 +90,12 @@ import statedb
 SCOPE_TYPES = ("Mission", "Goal", "Area")
 EXEMPT_TYPES = ("Goal", "Area")  # opening or editing one is plan approval, not an act
 KINDS = ("plan", "report", "ask", "protected-merge", "other")
+APPROVAL, CORRECTION, REPEAT, GENUINE = "approval", "correction", "repeat answer", "genuine call"
+TAGS = (APPROVAL, CORRECTION, REPEAT, GENUINE)
+READY = "ready"
+RETAG_RE = re.compile(r"^\s*retag\s+(\S+?)\s*:?\s+(approval|correction|repeat answer|genuine call)\s*\.?\s*$",
+                      re.I | re.M)
+REPEAT_OVERLAP = 0.5            # title_overlap at or above this, in the same domain, is a repeat
 HOLD = "hold"                   # the owner's veto (GOV-0031)
 GOV_QUESTION = "gov:question"
 SETTLE = dt.timedelta(hours=1)  # a day is backfilled this long after it ends (search lags)
@@ -109,7 +133,64 @@ CREATE TABLE IF NOT EXISTS acts (
 );
 CREATE INDEX IF NOT EXISTS acts_at ON acts (at);
 CREATE TABLE IF NOT EXISTS act_backfills (start TEXT NOT NULL, end TEXT NOT NULL, at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS act_retags (
+    target TEXT PRIMARY KEY, tag TEXT NOT NULL, at TEXT NOT NULL, url TEXT
+);
 """
+
+
+# ---------------------------------------------------------------- tags (#1184)
+
+def rule_tag(act: str, *, label: str | None = None, added: bool = True, state: str | None = None,
+             revert: bool = False, repeat: bool | None = None) -> str:
+    """An act's tag by rule: approval, correction, repeat answer or genuine call (see above).
+    `repeat` is None unless the act is an answer on a gov:question."""
+    if act == "label":
+        if label == READY:
+            return APPROVAL if added else CORRECTION
+        if label == HOLD or (label or "").startswith("kind:"):
+            return CORRECTION
+        return GENUINE
+    if act == "merge":
+        return CORRECTION if revert else APPROVAL
+    if act == "review":
+        return APPROVAL if state == "APPROVED" else GENUINE
+    if act in ("edit", "close"):
+        return CORRECTION
+    if act == "comment" and repeat:
+        return REPEAT
+    return GENUINE
+
+
+_STOP = {"a", "an", "the", "of", "to", "in", "on", "for", "and", "or", "is", "it", "its", "be", "by",
+         "may", "should", "we", "do", "does", "how", "what", "which", "who", "when", "where", "with",
+         "gov", "q"}
+
+
+def title_words(title: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", (title or "").lower()) if w not in _STOP}
+
+
+def title_overlap(a: str, b: str) -> float:
+    """Jaccard overlap of two titles' content words."""
+    x, y = title_words(a), title_words(b)
+    return len(x & y) / len(x | y) if x and y else 0.0
+
+
+def domain_of(body: str | None) -> str | None:
+    m = re.search(r"^###\s*Domain\s*$\s*(\S+)", body or "", re.M | re.I)
+    return m.group(1).strip().lower() if m else None
+
+
+def retags_in(body: str | None) -> list[tuple[str, str]]:
+    """(target, tag) for each `Retag <key or link>: <tag>` line in a comment."""
+    return [(t, tag.lower()) for t, tag in RETAG_RE.findall(body or "")]
+
+
+def migrate(db: sqlite3.Connection) -> None:
+    """Add acts.tag to a swarm.db made before #1184."""
+    if "tag" not in {r[1] for r in db.execute("PRAGMA table_info(acts)")}:
+        db.execute("ALTER TABLE acts ADD COLUMN tag TEXT")
 
 
 # ---------------------------------------------------------------- leads (from the receiver)
@@ -146,6 +227,12 @@ def lead(event: str, payload: object) -> tuple[str, str, int, str | None, str | 
         action = "merged"
     elif event == "issue_comment" and action == "created":
         ref = field("comment", "id")
+    elif event == "issue_comment" and action == "edited":
+        ref = field("comment", "id")
+    elif event in ("issues", "pull_request") and action == "edited":
+        pass
+    elif event in ("issues", "pull_request") and action == "closed":
+        pass                       # an unmerged close (a merge is caught above)
     elif event == "pull_request_review" and action == "submitted":
         ref = field("review", "id")
     else:
@@ -168,6 +255,7 @@ def record_lead(db: sqlite3.Connection, delivery: str, event: str, found: tuple,
 def connect(state_dir: Path) -> sqlite3.Connection:
     db = statedb.connect(state_dir / statedb.DB_FILE)
     db.executescript(SCHEMA)
+    migrate(db)
     return db
 
 
@@ -188,6 +276,7 @@ class Reader:
         self.gh_json, self.gh_items, self.protected = gh_json, gh_items, protected
         self._issues: dict[tuple[str, int], dict] = {}
         self._files: dict[tuple[str, int], bool] = {}
+        self._questions: dict[str, list[dict]] = {}
 
     def issue(self, repo: str, n: int) -> dict:
         if (repo, n) not in self._issues:
@@ -214,22 +303,75 @@ class Reader:
     def exempt(self, repo: str, n: int) -> bool:
         return ((self.issue(repo, n).get("type") or {}).get("name")) in EXEMPT_TYPES
 
+    def agent_made(self, x: dict) -> bool:
+        """Whether an issue, PR or comment was written by an agent (a bot), not the owner."""
+        who = login(x.get("user")) or ""
+        return who.endswith("[bot]")
+
+    def questions(self, repo: str) -> list[dict]:
+        """Every gov:question in repo, read once per sync."""
+        if repo not in self._questions:
+            self._questions[repo] = [q for q in self.gh_items(
+                f"repos/{repo}/issues?labels={GOV_QUESTION}&state=all&per_page=100")
+                if "pull_request" not in q]
+        return self._questions[repo]
+
+    def repeat(self, repo: str, n: int) -> bool:
+        """Whether gov:question #n matches an earlier answered one: same domain, much the same
+        title (REPEAT_OVERLAP). Answered: closed, or labelled gov:ruled."""
+        q = self.issue(repo, n)
+        domain = domain_of(q.get("body"))
+        if not domain:
+            return False
+        for other in self.questions(repo):
+            names = {(l or {}).get("name") for l in other.get("labels") or []}
+            if (other.get("number") != n and (other.get("created_at") or "") < (q.get("created_at") or "")
+                    and (other.get("state") == "closed" or "gov:ruled" in names)
+                    and domain_of(other.get("body")) == domain
+                    and title_overlap(other.get("title") or "", q.get("title") or "") >= REPEAT_OVERLAP):
+                return True
+        return False
+
+    def last_edit(self, node: str, gql: str) -> dict:
+        """{author, editor, at} for one node, from GraphQL (REST doesn't say who edited)."""
+        q = ("query($id: ID!) { node(id: $id) { ... on %s { author { login } "
+             "editor { login } lastEditedAt } } }" % gql)
+        d = self.gh_json("api", "graphql", "-f", f"query={q}", "-f", f"id={node}") or {}
+        x = ((d.get("data") or {}).get("node") or {})
+        return {"author": login(x.get("author")), "editor": login(x.get("editor")), "at": x.get("lastEditedAt")}
+
     def read(self, event: str, action: str, repo: str, n: int, ref: str | None) -> list[dict]:
-        """The owner's acts this lead points at, read from GitHub ([] if none)."""
+        """The owner's acts this lead points at, read from GitHub ([] if none), each with its
+        tag. A comment's act may carry `retags`, the (target, tag) pairs it sets."""
         page = f"https://github.com/{repo}/issues/{n}"
         act = {"repo": repo, "number": n}
-        if action in ("labeled", "unlabeled"):
+        if action in ("labeled", "unlabeled", "closed"):
             if self.exempt(repo, n):
                 return []
+            it = self.issue(repo, n) if action == "closed" else {}
             out = []
             for e in self.gh_items(f"repos/{repo}/issues/{n}/events?per_page=100"):
+                if (login(e.get("actor")) != self.owner or e.get("id") is None
+                        or not e.get("created_at")):
+                    continue
+                key = f"{repo}:event:{e['id']}"
                 name = (e.get("label") or {}).get("name")
-                if (e.get("event") in ("labeled", "unlabeled") and login(e.get("actor")) == self.owner
-                        and e.get("id") is not None and e.get("created_at") and name):
+                if e.get("event") in ("labeled", "unlabeled") and name:
                     verb = "labelled" if e["event"] == "labeled" else "unlabelled"
                     kind = self.where(repo, n) or ("plan" if name == HOLD else "other")
-                    out.append({**act, "key": f"{repo}:event:{e['id']}", "at": e["created_at"],
-                                "act": "label", "kind": kind, "what": f"{verb} {name}", "url": page})
+                    out.append({**act, "key": key, "at": e["created_at"], "act": "label", "kind": kind,
+                                "what": f"{verb} {name}", "url": page,
+                                "tag": rule_tag("label", label=name, added=e["event"] == "labeled")})
+                elif (e.get("event") == "closed" and action == "closed" and not e.get("commit_id")
+                      and self.agent_made(it)):
+                    if "pull_request" in it:
+                        pr = self.gh_json("api", f"repos/{repo}/pulls/{n}") or {}
+                        if pr.get("merged_at"):
+                            continue
+                    out.append({**act, "key": key, "at": e["created_at"], "act": "close",
+                                "kind": self.where(repo, n) or "plan", "what": "closed unmerged"
+                                if "pull_request" in it else "closed", "url": page,
+                                "tag": rule_tag("close")})
             return out
         if action == "opened":
             it = self.issue(repo, n)
@@ -238,21 +380,52 @@ class Reader:
             kind = self.where(repo, n) or "other"
             what = f"opened {(it.get('type') or {}).get('name') or 'issue'}"
             return [{**act, "key": f"{repo}#{n}:open", "at": it["created_at"], "act": "open",
-                     "kind": kind, "what": what, "url": it.get("html_url") or page}]
+                     "kind": kind, "what": what, "url": it.get("html_url") or page, "tag": rule_tag("open")}]
         if action == "merged":
             pr = self.gh_json("api", f"repos/{repo}/pulls/{n}") or {}
             if login(pr.get("merged_by")) != self.owner or not pr.get("merged_at"):
                 return []
             kind = "protected-merge" if self.touches_protected(repo, n) else "other"
+            revert = (pr.get("title") or "").startswith('Revert "')
             return [{**act, "key": f"{repo}#{n}:merge", "at": pr["merged_at"], "act": "merge",
-                     "kind": kind, "what": "merged", "url": pr.get("html_url") or page}]
+                     "kind": kind, "what": "merged a revert" if revert else "merged",
+                     "url": pr.get("html_url") or page, "tag": rule_tag("merge", revert=revert)}]
+        if action == "edited":
+            if event == "issue_comment":
+                c = self.gh_json("api", f"repos/{repo}/issues/comments/{ref}") or {}
+                node, gql, key = c.get("node_id"), "IssueComment", f"{repo}:comment:{ref}"
+                url, what = c.get("html_url") or page, "edited an agent's comment"
+            else:
+                c = self.issue(repo, n)
+                pr = "pull_request" in c
+                node, gql, key = c.get("node_id"), "PullRequest" if pr else "Issue", f"{repo}#{n}"
+                url, what = c.get("html_url") or page, f"edited an agent's {'PR' if pr else 'issue'}"
+            if not node or not self.agent_made(c) or (event != "issue_comment" and self.exempt(repo, n)):
+                return []
+            ed = self.last_edit(node, gql)
+            if ed["editor"] != self.owner or not ed["at"]:
+                return []
+            return [{**act, "key": f"{key}:edit:{ed['at']}", "at": ed["at"], "act": "edit",
+                     "kind": self.where(repo, n) or "other", "what": what, "url": url,
+                     "tag": rule_tag("edit")}]
         if event == "issue_comment":
             c = self.gh_json("api", f"repos/{repo}/issues/comments/{ref}") or {}
             if login(c.get("user")) != self.owner or not c.get("created_at"):
                 return []
-            return [{**act, "key": f"{repo}:comment:{ref}", "at": c["created_at"], "act": "comment",
-                     "kind": self.where(repo, n) or "other", "what": "commented",
-                     "url": c.get("html_url") or page}]
+            kind = self.where(repo, n) or "other"
+            retags = retags_in(c.get("body"))      # read to tag, never stored
+            if retags:
+                tag = None                         # a retag isn't itself a call
+            elif GOV_QUESTION in {(l or {}).get("name") for l in self.issue(repo, n).get("labels") or []}:
+                tag = rule_tag("comment", repeat=self.repeat(repo, n))
+            else:
+                tag = rule_tag("comment")
+            out = {**act, "key": f"{repo}:comment:{ref}", "at": c["created_at"], "act": "comment",
+                   "kind": kind, "what": "retagged" if retags else "commented",
+                   "url": c.get("html_url") or page, "tag": tag}
+            if retags:
+                out["retags"] = retags
+            return [out]
         if event == "pull_request_review":
             r = self.gh_json("api", f"repos/{repo}/pulls/{n}/reviews/{ref}") or {}
             state = r.get("state") or ""
@@ -262,7 +435,7 @@ class Reader:
                     else self.where(repo, n) or "other")
             return [{**act, "key": f"{repo}:review:{ref}", "at": r["submitted_at"], "act": "review",
                      "kind": kind, "what": f"reviewed: {state.lower().replace('_', ' ')}",
-                     "url": r.get("html_url") or page}]
+                     "url": r.get("html_url") or page, "tag": rule_tag("review", state=state)}]
         return []
 
 
@@ -297,8 +470,15 @@ def sync(state_dir: Path, owner: str, report: tuple[str, int] | None, gh_json: C
                         continue
                     found = []
                 db.execute("BEGIN IMMEDIATE")      # the reads ran in threads; writes stay here
-                db.executemany("INSERT OR IGNORE INTO acts (key, at, act, kind, what, repo, number, url) "
-                               "VALUES (:key, :at, :act, :kind, :what, :repo, :number, :url)", found)
+                for a in found:
+                    for target, tag in a.pop("retags", []):    # a later retag of the same act wins
+                        db.execute("INSERT INTO act_retags (target, tag, at, url) VALUES (?, ?, ?, ?) "
+                                   "ON CONFLICT(target) DO UPDATE SET tag = excluded.tag, at = excluded.at, "
+                                   "url = excluded.url WHERE excluded.at >= act_retags.at",
+                                   (target, tag, a["at"], a["url"]))
+                db.executemany("INSERT OR IGNORE INTO acts (key, at, act, kind, what, repo, number, url, tag) "
+                               "VALUES (:key, :at, :act, :kind, :what, :repo, :number, :url, :tag)",
+                               [{"tag": None, **a} for a in found])
                 db.execute("UPDATE act_leads SET read_at = ? WHERE read_at IS NULL AND event = ? AND "
                            "action IS ? AND repo = ? AND number = ? AND ref IS ?",
                            (stamp, event, action, repo, n, ref))
@@ -402,6 +582,8 @@ def discover(owner: str, repo: str, since: str, gh_json: Callable, gh_items: Cal
                 found.append((f"backfill:{r}:event:{e['id']}", "issues", "labeled", r, n, None))
             elif e.get("event") == "merged":
                 found.append((f"backfill:{r}#{n}:merge", "pull_request", "merged", r, n, None))
+            elif e.get("event") == "closed" and not e.get("commit_id"):    # a veto, if unmerged (#1184)
+                found.append((f"backfill:{r}:event:{e['id']}", "issues", "closed", r, n, None))
         if late(deadline):
             raise RuntimeError(f"{r}'s comments: {OUT_OF_TIME}")
         for c in gh_items(f"repos/{r}/issues/comments?since={since}&per_page=100"):
@@ -499,15 +681,44 @@ def refresh(state_dir: Path, owner: str, report: tuple[str, int] | None, repo: s
 # ---------------------------------------------------------------- per day
 
 def stored(state_dir: Path) -> list[dict]:
-    """Every act in swarm.db, oldest first."""
+    """Every act in swarm.db, oldest first, each with its tag: the owner's latest retag of it
+    (by key or link) if any (retagged true), else the rule's (#1184)."""
     if not (state_dir / statedb.DB_FILE).exists():
         return []
     db = connect(state_dir)
     try:
         db.row_factory = sqlite3.Row
-        return [dict(r) for r in db.execute("SELECT * FROM acts ORDER BY at, key")]
+        rows = [dict(r) for r in db.execute("SELECT * FROM acts ORDER BY at, key")]
+        retag = {t: tag for t, tag in db.execute("SELECT target, tag FROM act_retags")}
     finally:
         db.close()
+    for r in rows:
+        mine = retag.get(r["key"]) or (retag.get(r["url"]) if r["act"] in ("comment", "review") else None)
+        r["retagged"] = mine is not None
+        r["tag"] = mine or r["tag"]
+    return rows
+
+
+def retags(state_dir: Path) -> list[dict]:
+    """Every retag the owner made: {target, tag, at, url}."""
+    if not (state_dir / statedb.DB_FILE).exists():
+        return []
+    db = connect(state_dir)
+    try:
+        db.row_factory = sqlite3.Row
+        return [dict(r) for r in db.execute("SELECT * FROM act_retags ORDER BY at, target")]
+    finally:
+        db.close()
+
+
+def by_tag(rows: list[dict]) -> dict[str, int]:
+    """How many of the acts in per_day()'s rows have each tag, over the whole window."""
+    out = {t: 0 for t in TAGS}
+    for r in rows:
+        for a in r["acts"]:
+            if a.get("tag") in out:
+                out[a["tag"]] += 1
+    return out
 
 
 def per_day(acts: list[dict], days: list[dt.date], tz: dt.tzinfo | None = None,
@@ -525,7 +736,8 @@ def per_day(acts: list[dict], days: list[dt.date], tz: dt.tzinfo | None = None,
         if at.date() in by:
             by[at.date()].append({"at": at.isoformat(timespec="seconds"), "act": a["act"],
                                   "kind": a["kind"], "what": a["what"], "repo": a["repo"],
-                                  "number": a["number"], "url": a["url"]})
+                                  "number": a["number"], "url": a["url"], "key": a.get("key"),
+                                  "tag": a.get("tag"), "retagged": bool(a.get("retagged"))})
     out = []
     for d in days:
         items = sorted(by[d], key=lambda a: a["at"])
@@ -558,5 +770,10 @@ def text(rows: list[dict], owner: str, repo: str | None = None) -> str:
         out.append(f"  {d:%a %Y-%m-%d}  {head}")
         for a in r["acts"]:
             ref = f"#{a['number']}" if a["repo"] == repo else f"{a['repo']}#{a['number']}"
-            out.append(f"    {a['at'][11:16]}  {a['kind']:<15}  {a['what']} on {ref}  {a['url']}")
+            tag = (a.get("tag") or "-") + (" (retagged)" if a.get("retagged") else "")
+            out.append(f"    {a['at'][11:16]}  {a['kind']:<15}  {tag:<26}  {a['what']} on {ref}  {a['url']}"
+                       + (f"  [{a['key']}]" if a.get("key") else ""))
+    tags = by_tag(rows)
+    out.append("By kind over these days: " + ", ".join(f"{t} {n}" for t, n in tags.items())
+               + "  (retag one with a comment line `Retag <key>: <kind>`)")
     return "\n".join(out)

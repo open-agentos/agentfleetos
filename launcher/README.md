@@ -265,7 +265,7 @@ Issues still open after a merged PR that closes them, PRs merged since Tue 2026-
 ## swarm acts: the owner's acts per day (#771)
 
 ```
-launcher/swarm acts [--day YYYY-MM-DD] [--json] [--manifest swarm.toml] [--repo owner/name]
+launcher/swarm acts [--day YYYY-MM-DD | --since YYYY-MM-DD] [--json] [--manifest swarm.toml] [--repo owner/name]
 ```
 
 The owner's acts on each working day of the last two weeks (Monday to Friday, local time), or on `--day`: the count, how many weren't C-team work (`other`), and each act with its time, kind and link. Owner acts are counted and reported, never a gate: there is no limit a day and no run of days to pass (per GOV-0040). M4 (#686) reads them as "counted and reported by `swarm acts`". `--json` gives the same per-day list, with `status`, `count`, `other` and `c_team` (no `other` act) per day, for the daily report and the review.
@@ -276,6 +276,22 @@ The owner's acts on each working day of the last two weeks (Monday to Friday, lo
 - **Kinds:** `plan` (on a Mission, Goal or Area, or a `hold` veto), `report` (on `[watch] report_issue`), `ask` (on a `gov:question`, or approving a protected-path PR), `protected-merge`, and `other`, which fails check 2.
 - **Speed:** each read is a `gh` call of about a second, so repos, searches and acts are read 8 at a time (#858). Backfilling one day takes about 20 seconds.
 - **Gaps:** an object deleted before it is read back isn't counted; nor are Discussion comments, acts in an org repo the token can't list, or back-room repairs.
+
+**Tags (#1184).** Each act also has a tag for the learning loop, set by rule with no model call: `approval` (a `ready` label, an approving review, a merge), `correction` (an edit to an agent's issue, PR or comment, a `kind:*` label, a veto: `hold`, taking `ready` off, or closing an agent's issue or PR unmerged, and merging a revert), `repeat answer` (an answer on a `gov:question` in the same domain as an earlier answered one with much the same title) and `genuine call` (the rest). Each act line ends with its key in brackets. The owner retags an act with a comment line `Retag <key or link>: <tag>`, and the retag wins. The output ends with how many acts have each tag over the window shown; `--since` shows every day from that date, and `--json` adds `by_kind`. Edits and unmerged closes of agents' work count as acts from #1184 on.
+
+## swarm memory: episodes (#1184)
+
+```
+launcher/swarm memory episodes [--since YYYY-MM-DD] [--role ROLE] [--kind KIND] [--json]
+launcher/swarm memory record [--since YYYY-MM-DD] [--repo owner/name]
+```
+
+Raw experience for the learning loop (FEAT-14, `episodes.py`), one JSONL file per UTC day, schema 1:
+
+- **Session notes.** When a `swarm watch` run may stop, the Stop hook asks it once for a note (`tried`, `surprised`, `blocked`, one or two sentences each, or `none`) in `.session-note.json` in its worktree. When it stops, the hook writes a `note` episode with the session id, role, model, repo, issue or PR and the files its PR touched. A run that stops without one gets an episode marked `no_note`.
+- **Signals**, with no model call and a source link each: owner acts with their tags and retags, changes-requested reviews and what they asked for, reverts, PRs closed unmerged, failed and capped runs (the runs ledger), and the owner's answers on `gov:question`s with whether they took the recommendation. `swarm watch` records them once an hour; `swarm memory record` does it by hand.
+- **Nothing secret, no prompt text** (GOV-0002, GOV-0004, GOV-0055): every string is scrubbed of tokens, `NAME=value` secrets, environment values, email addresses and home-directory paths before it is written, and a note field that quotes the run's prompt is cut.
+- **Where.** GOV-0052 puts episodes in `memory/episodes/`. Until #1199 rules how the engine commits them, they wait in the engine host's outbox, `~/.productswarm/memory/episodes/`, and nothing is committed. `swarm memory episodes` reads both. `--kind` matches an episode's type (`note`, `act`, `retag`, `review`, `revert`, `closed-unmerged`, `run`, `answer`) or an act's tag.
 
 ## swarm trouble: what is stuck, per Goal and Area (#803)
 
