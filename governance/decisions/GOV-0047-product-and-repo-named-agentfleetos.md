@@ -1,7 +1,7 @@
 ---
 id: GOV-0047
 title: The product and the repo are named AgentFleetOS; the productswarm-* bot identities stay
-status: in-force
+status: superseded
 kind: ruling
 question: "#1042"
 domain: external
