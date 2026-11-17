@@ -149,6 +149,7 @@ class HandleTest(unittest.TestCase):
         (self.live / desk.HOME).write_text("<p>map</p>")
         (self.live / "bridge.html").write_text("<p>bridge</p>")
         (self.live / desk.STATE).write_text("{}")
+        (self.live / "map.json").write_text("[]")
         (self.live / "fonts").mkdir()
         (self.live / "fonts" / "a.woff2").write_bytes(b"font")
         (self.live / "js").mkdir()
@@ -165,6 +166,7 @@ class HandleTest(unittest.TestCase):
                                   ("/index.html?t=1", "text/html", b"<p>desk</p>"),
                                   ("/operations.html", "text/html", b"<p>ops</p>"),
                                   ("/state.json?t=99", "application/json", b"{}"),
+                                  ("/map.json?t=99", "application/json", b"[]"),   # the Work map refreshes from it (#1138)
                                   ("/fonts/a.woff2", "font/woff2", b"font"),
                                   ("/js/poll.js", "text/javascript", b"x();")):
             status, headers, got = desk.handle(self.live, "GET", path)

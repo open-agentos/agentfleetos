@@ -483,9 +483,11 @@ def build(g: dict, now: dt.datetime, window: str = DEFAULT_WINDOW) -> dict:
 
 
 def desk_file(g: dict, now: dt.datetime) -> dict:
-    """map.json: the map for each of DESK_WINDOWS (the desk's 14 days cover them)."""
+    """map.json: the map for each of DESK_WINDOWS (the desk's 14 days cover them), and each
+    window's lists (desk_lists), so an open Work map can redraw from this file alone (#1138)."""
+    windows = {w: build(g, now, w)["rows"] for w in DESK_WINDOWS}
     return {"schema": SCHEMA, "built_at": generate.rfc3339(now), "repo": g["data"]["repo"],
-            "method": spend.METHOD, "windows": {w: build(g, now, w)["rows"] for w in DESK_WINDOWS}}
+            "method": spend.METHOD, "windows": windows, "lists": desk_lists(windows)}
 
 
 # ---------------------------------------------------------------- the lists (#1084)

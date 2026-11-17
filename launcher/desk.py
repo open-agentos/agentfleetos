@@ -16,7 +16,8 @@ replayed event can at most cause one extra build (the reconciler's rule, GOV-002
              build. A skipped or failed build leaves the last good desk up. generate.py's own
              allowance check (PAGE_NEEDS) still applies.
     serves   GET and HEAD only, on 127.0.0.1:8080 by default: / (the Work map, HOME, #1082),
-             the pages, state.json, fonts/ and js/ (the pages' scripts, #1106). Any other method is 405 and any other path 404. There is no form
+             the pages, state.json, map.json (the Work map's data, which it
+             refreshes from, #1138), fonts/ and js/ (the pages' scripts, #1106). Any other method is 405 and any other path 404. There is no form
              and no POST route until Google login.
     trouble  trouble_panel(report) renders `swarm trouble --json` per Goal and Area as a
              read-only HTML section (#889). generate.py builds the report itself, without
@@ -56,9 +57,9 @@ SWEEP_MINUTES = 10           # a build this often with no nudge, inside the desk
 POLL = 0.5                   # seconds between looks at the nudge file
 BUILD_TIMEOUT = 600          # seconds before a hung generate.py run is killed
 
-# The only paths served: a page, state.json, a font file or a page's script. Nothing else, so
+# The only paths served: a page, state.json, map.json, a font file or a page's script. Nothing else, so
 # no traversal.
-PATH_RE = re.compile(r"/(?:[a-z]+\.html|state\.json|fonts/[A-Za-z0-9][A-Za-z0-9._-]*"
+PATH_RE = re.compile(r"/(?:[a-z]+\.html|state\.json|map\.json|fonts/[A-Za-z0-9][A-Za-z0-9._-]*"
                      r"|js/[a-z][a-z0-9_-]*\.js)")
 TYPES = {".html": "text/html; charset=utf-8", ".json": "application/json",
          ".js": "text/javascript; charset=utf-8",
