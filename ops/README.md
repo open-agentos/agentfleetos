@@ -18,7 +18,7 @@ ops/create-apps.py
 ```
 
 1. Open the URL it prints and click **Create productswarm-<role>**. GitHub asks you to confirm and then sends you back.
-2. On the page you return to, click **Install it on productswarm**, choose **Only select repositories**, and pick productswarm.
+2. On the page you return to, click **Install it on agentfleetos**, choose **Only select repositories**, and pick agentfleetos.
 3. Repeat for each role, then press Ctrl-C.
 
 Credentials are saved to `~/.config/productswarm/apps/<role>.json` and `<role>.pem` (mode 0600). Nothing is committed.
