@@ -1,6 +1,6 @@
 # Swarm dashboard
 
-Read-only pages showing what every agent session is doing and how the swarm is governed: three of them, the [Work map](#the-work-map), [Crew](#crew) and [Governance](#governance-page), joined by one nav (#1113). Built by `generate.py`: Python stdlib only, static HTML files. Crew and Governance load one small script that [refreshes their panels](#live-refresh) from `state.json` (option 2 of gov question #396, which reversed #26's "no JavaScript"), and the Work map one that draws its treemap; Effort's drill-down loads none. Each script is a same-origin file in `js/` beside the pages, allowed by its hash (#1106, option 3 of #1102). Every page but the Work map's treemap is complete with JavaScript off.
+Read-only pages showing what every agent session is doing and how the swarm is governed: three of them, the [Work map](#the-work-map), [Crew](#crew) and [Governance](#governance-page), joined by one nav (#1113). Built by `generate.py`: Python stdlib only, static HTML files. Crew loads one small script that [refreshes its panels](#live-refresh) from `state.json` (option 2 of gov question #396, which reversed #26's "no JavaScript"), Governance one that [draws the whole page](#governance-page) from `state.json`'s plain fields (#1140), and the Work map one that draws its treemap; Effort's drill-down loads none. Each script is a same-origin file in `js/` beside the pages, allowed by its hash (#1106, option 3 of #1102). Crew and Effort are complete with JavaScript off; with it off, Governance shows a notice and a GitHub link (per GOV-0051).
 
 ## Generate it
 
@@ -159,6 +159,8 @@ There's no spend total, cap or cost per result (GOV-0033), and no reassign or on
 - `#precedent`: [precedent in use](#precedent-in-use);
 - `#trends`: [What the numbers say](#what-the-numbers-say) and [How the questions went](#how-the-questions-went).
 
+**Drawn client-side** (#1140, stage 3 of #1135; GOV-0051). The page is a shell (`govpage.py`): the six sections, empty, and the slice of `state.json` it draws from (`govpage.KEYS`) in a `<script type="application/json" id="gov-data">` block, with `<`, `>` and `&` escaped. `governance.js`, served as `js/governance.js` and allowed by its hash, draws every section and the masthead's LIVE mark, build time and owner line from that block's plain fields, with `createElement`, `setAttribute` and text nodes only: no `eval`, no `innerHTML`, no HTML from repo text, and links only to `https://` URLs or a fragment (anything else is shown as text). Then it fetches same-origin `state.json` every 15 seconds while the tab is visible and redraws in place when its `built_at` is newer; a section that fails to draw keeps what it showed. It doesn't read `state.json["desk"]` or load `poll.js`. With JavaScript off the page shows a notice and a GitHub link (per GOV-0051). What the Python renderers worked out (each committee's timeline and round grid) is in `state.json` as data (`committee_views`); the tests run the script in node against a fake DOM (`govdraw.py`) and check what it draws.
+
 ## Effort
 
 `effort.py` (#1013, FEAT-4 under M7 #987) shows what kind of work the swarm ships. It reads only `classify/cache/effort.json`, which `swarm classify run effort` writes (#1012): no model call, no credential and no API call. `main()` reads it from the checkout.
@@ -251,20 +253,22 @@ Each build also writes `state.json` beside `index.html` (so `_site/state.json` o
 | `past_committees` | each ended committee's card: `discussion`, `url`, `question`, `question_title`, `question_url`, `record` (`id`, `url`, or null), `summary` (the INDEX.md ruling, or null), `consensus` (`text`, `consensus`, `dissent`), `rounds_used`, `max_rounds`, `stopped_early`, `models`, `diversity_met`, `minutes`, `swing` and `seats`; `[]` when none has ended |
 | `grants` | [grants in use](#grants-in-use) (#713): `mode` (`off`, `shadow`, `live`, or null if `swarm.toml` couldn't be read), `read` (whether the merger's comments could be read) and `calls`, newest first, one per PR: `number`, `title` (null if it couldn't be read), `group` (`merged`, `enqueued`, `would` or `left`), `queued` (true when the merger enqueued it, so a `merged` call merged through the queue), `reason` (the merger's words), `time` and `link` (the comment) |
 | `effort` | [Effort](#effort) (#1013): `status` (`ok`, `missing` or `error`); when `ok`, `classifier`, `goals` (each `ref` with `this` and `last`: `total`, `fixes`, `by` and `fix_by` label) and `trend` (`week`, `capability`, `total`) |
-| `desk` | what the [live refresh](#live-refresh) draws on Crew and Governance: `mast` (the masthead's LIVE mark, build time and owner line) and each panel (`floor`, `grants`, `effort`, `committee_desk`, `past_committees`, `precedent`, `trends`, `questions_went`) as a node tree, or `null` for a panel that can't be one |
+| `desk` | what the [live refresh](#live-refresh) draws on Crew: `mast` (the masthead's LIVE mark, build time and owner line) and each panel (`floor`, `grants`, `effort`) as a node tree, or `null` for a panel that can't be one. Governance doesn't read it (#1140) |
+| `committee_views` | each committee as Governance draws it (#1140): `open` and `ended`, each with `timeline` (steps: `label`, `reached`, `when`, `url`, `current`), `members`, `diversity`, `grid` (`rounds`, and per seat its cells: `kind` post, waiting, stopped, missed or empty), `outcome`, `rounds_used`, `max_rounds`, `daily_posts` and `over_limit`; then `unparsed` Discussions and `notes` |
+| `authority` | the [authority map](#authority-map)'s domains, quorum and consent window, or its `error` (#1140) |
 
 It carries **no cost**: no session cost, daily spend, cap, over-cap flag or spend totals (GOV-0014; #397). It's public like the page (#33), and sessions and PRs keep only the fields the page shows. Later panels add their slice to `state.py`. Cost per issue is in [`map.json`](#work-map-data), a separate file, never here (GOV-0049).
 
 ## Live refresh
 
-With JavaScript on, an open Crew or Governance page redraws its panels from `state.json` every 15 seconds, without a reload (`live.py` and `poll.js`, #411, option 2 of #396; the desk did until #1113). It's how they feel live between the 300-second reloads.
+With JavaScript on, an open Crew page redraws its panels from `state.json` every 15 seconds, without a reload (`live.py` and `poll.js`, #411, option 2 of #396; the desk did until #1113, Governance until #1140). It's how it feels live between the 300-second reloads. Governance has its own script, which draws from plain fields instead (see [Governance page](#governance-page)).
 
 - **One renderer.** The panels are still drawn in Python. Each build turns each desk panel's HTML into a node tree in `state.json["desk"]`: a node is a string (text) or `[tag, {attr: value}, child, …]`. The script turns the tree back into DOM nodes with `createElement`, `setAttribute` and text nodes. It never uses `innerHTML` or `eval`, and never parses HTML, so text from the repo stays text.
 - **Allow lists.** Only the tags and attributes in `live.py` may appear, and links only to `https://` URLs, a page beside the desk or a fragment. The build checks them, and the script checks them again. A panel with anything else is `null` in `state.json`, so the desk keeps it as drawn until its next reload; the build doesn't fail. A test draws every panel fixture the panels' own tests use, so new markup that isn't allowed shows up as a failing test, not as a panel that quietly stops refreshing.
-- **Boxes.** Crew and Governance draw each live panel inside `<div data-panel="NAME">` (an empty panel still gets its box), and the masthead's LIVE mark, build time and owner line are `data-panel="mast"` (the page name around them stays). `state.json` carries both pages' boxes, and the script redraws each box on the page whose name it carries. A new panel joins by adding itself to `generate.crew_panels()` or `generate.governance_panels()`. Crew's role rows and sessions table, and Governance's decision log, questions, round grids and authority map, aren't boxes: they change with the 300-second reload.
+- **Boxes.** Crew draws each live panel inside `<div data-panel="NAME">` (an empty panel still gets its box), and the masthead's LIVE mark, build time and owner line are `data-panel="mast"` (the page name around them stays). `state.json` carries the boxes, and the script redraws each one on the page. A new panel joins by adding itself to `generate.crew_panels()`. Crew's role rows and sessions table aren't boxes: they change with the 300-second reload.
 - **Only forward.** The script fetches `state.json?t=…` with `cache: "no-store"`, same origin, every 15 seconds while the tab is visible, and applies it only if its `built_at` is newer than the data on screen (the `data-built-at` on `<body>`), since Pages' cache can serve an older copy than the page.
 - **Stale mark.** When the data on screen is more than 15 minutes old, the script adds `stale` to the masthead's LIVE mark (#402), which greys it out. Builds often run further apart than that (see [How often it rebuilds](#how-often-it-rebuilds)), so a grey mark is common and honest.
-- **CSP.** Every page carries a `<meta http-equiv="Content-Security-Policy">`: `default-src 'none'`, `script-src 'self'` plus the live script's `sha256` hash on Crew and Governance, `'self'` plus `workmap.js`'s on the Work map (#1082) and `'none'` elsewhere, `style-src 'unsafe-inline'` (the page's `<style>` and the precedent table's cell shading), `font-src`, `connect-src 'self'`, `base-uri 'none'` and `form-action 'none'`. `live.script()` fills `poll.js`'s settings and allow lists in at build time, and the hash is of that exact text.
+- **CSP.** Every page carries a `<meta http-equiv="Content-Security-Policy">`: `default-src 'none'`, `script-src 'self'` plus the live script's `sha256` hash on Crew, `'self'` plus `governance.js`'s on Governance (#1140), `'self'` plus `workmap.js`'s on the Work map (#1082) and `'none'` elsewhere, `style-src 'unsafe-inline'` (the page's `<style>` and the precedent table's cell shading), `font-src`, `connect-src 'self'`, `base-uri 'none'` and `form-action 'none'`. `live.script()` fills `poll.js`'s settings and allow lists in at build time, and the hash is of that exact text.
 - **Scripts as files** (#1106, option 3 of #1102). No page carries an inline script. `generate.py` writes each script a page loads into `js/` beside the pages (`js/poll.js`, `js/workmap.js`) before it writes any page, and the page loads it with `<script src="js/<file>" integrity="sha256-…">`, the same hash its CSP names, so the browser runs only the bytes the page was built with. A test fails the build if any Desk script contains `eval(`, `new Function` or `innerHTML` (#396's rule, carried over by #1102). The live Desk serves `js/` too (`launcher/desk.py`).
 - **Vendored libraries** (#1107, GOV-0051). A third-party front-end library is pinned to one exact version and vendored into `static/vendor/`; the site loads nothing from a CDN or any other third party. `static/vendor/manifest.json` lists each file under `"files"` with its `file`, `library`, `version` (exact, e.g. `7.9.0`, never `^7` or `7.x`), `licence`, `source` (the `https://` URL it was taken from) and `sha256` (hex, of the file's bytes). Before it fetches anything or writes any page, `generate.py` checks every file against the manifest (`layout.vendored()`) and fails the build, naming every problem, if a file differs from its hash, a file has no entry, an entry has no file, or an entry is incomplete. File names follow the Desk's own scripts (`[a-z][a-z0-9_-]*.js`, so `d3.min.js` comes in as `d3.js`), which is what the live Desk serves, and can't reuse one of their names. The checked files are copied into `js/` beside the Desk's own scripts. A page loads one with `layout.page(..., libs=layout.libs("d3.js"))`: it gets a `<script src="js/d3.js" integrity="sha256-…">` before the page's own script, and its hash joins the page's CSP. The manifest starts empty.
 
@@ -288,7 +292,7 @@ The owner opens the desk to answer three questions without opening Claude Code: 
 | 3 | `floor` | On the floor | Who is on what (#403, unchanged). |
 | 4 | `grants` | Grants in use | What the merger did or would do without the owner's click. |
 
-The wire, the committee desk and the rest follow as today. Each new panel joined the desk's panel list in that order (now `generate.crew_panels()` and `generate.governance_panels()`), so it gets its `data-panel` box and [live refresh](#live-refresh), and its markup stays inside `live.py`'s allow lists. Each fits a phone's width with no sideways scroll, and owner amber marks only what waits on the owner (the asks, and "Left for you").
+The wire, the committee desk and the rest follow as today. Each new panel joined the desk's panel list in that order (now `generate.crew_panels()`; Governance's are drawn client-side since #1140), so it gets its `data-panel` box and [live refresh](#live-refresh), and its markup stays inside `live.py`'s allow lists. Each fits a phone's width with no sideways scroll, and owner amber marks only what waits on the owner (the asks, and "Left for you").
 
 ### Today's report
 
@@ -479,7 +483,7 @@ A record's merge is read from its question closing (the record PR's `Closes #N`)
 
 ## What the numbers say
 
-Governance's `#trends` (#406): each one is a sentence and a sparkline, never a bare count. `questions.py` gathers the `gov:question` history once per build ([How the questions went](#how-the-questions-went) reuses it); `trends.py` turns it into sentences and inline SVG.
+Governance's `#trends` (#406): each one is a sentence and a sparkline, never a bare count. `questions.py` gathers the `gov:question` history once per build ([How the questions went](#how-the-questions-went) reuses it); `trends.py` turns it into sentences and each day's values, and Governance's script draws each sparkline as inline SVG (#1140).
 
 | Trend | Sentence | Sparkline, one point per UTC day |
 |---|---|---|
@@ -541,7 +545,7 @@ On Governance's `#precedent`, `precedent.py` (#408, part 9 of #397) counts how o
 
 ## Committees
 
-`committees.render()` draws the committees `committees.py` reads (#354). On Governance's `#committees` (#1113), open committees, with the unparsed and read-problem lines (`part="open"`), follow the [committee desk](#committee-desk). Committees that ended (record merged, or the question closed) follow the [past committees](#past-committees)' cards, in a collapsed "Round grids of the N ended committees" `<details>` (`part="ended"`). With no committees the section says "No open committees."; with none ended, there's no "Past committees".
+Governance's script draws the committees `committees.py` reads (#354), from `committees.views()` in `state.json`'s `committee_views` (#1140). On Governance's `#committees` (#1113), open committees, with the unparsed and read-problem lines, follow the [committee desk](#committee-desk). Committees that ended (record merged, or the question closed) follow the [past committees](#past-committees)' cards, in a collapsed "Round grids of the N ended committees" `<details>`. With no committees the section says "No open committees."; with none ended, there's no "Past committees".
 
 For each committee:
 
@@ -556,7 +560,7 @@ Discussions that don't match #314's layout are listed as muted "Unparsed" links.
 
 ## Committee desk
 
-`committees.desk()` draws each open committee at the top of Governance's `#committees` (#404), styled like an election-night desk. With no open committee there's none of it. It reads only what `committees.build()` derives, so it adds no API calls.
+Governance's script draws each open committee (`committees.desk_states()`, `state.json`'s `committee_desk`) at the top of Governance's `#committees` (#404), styled like an election-night desk. With no open committee there's none of it. It reads only what `committees.build()` derives, so it adds no API calls.
 
 - **Band** (dark): a red "LIVE" mark, "Committee", the question (linked, with its title), "Round N of 3" (the round the next post belongs to), "waiting on <seat>" (or "rounds over" once no seat is due) and the Discussion's link.
 - **A card per seat:** seat, role and model; the seat's latest recommendation, large (the Recommendation section's first bold phrase, from `phrase()`; "no recommendation yet" without one); its swing from its previous post, "moved from <phrase>" or "held" (nothing on its first post); the first sentence of its **Position** section in quotes, as written (only emphasis and code marks dropped), cut at a word break to about 140 characters ("no Position section" without one); and a link to the post with its round and time. The seat that's up next has a blue top edge.
@@ -566,7 +570,7 @@ Red is used only for the LIVE mark. The same data is `committee_desk` in `state.
 
 ## Past committees
 
-`committees.past()` puts a card per ended committee (record merged, or its question closed) on Governance under "Past committees", newest Discussion first (#409). With none ended there's no heading. The full round grids follow the cards, collapsed. It reads only what `committees.build()` derives and the INDEX.md rows the governance section already parses, so it adds no API calls.
+Governance's script puts a card per ended committee (`committees.past_states()`, `state.json`'s `past_committees`) (record merged, or its question closed) on Governance under "Past committees", newest Discussion first (#409). With none ended there's no heading. The full round grids follow the cards, collapsed. It reads only what `committees.build()` derives and the INDEX.md rows the governance section already parses, so it adds no API calls.
 
 - **Record:** its ID, linked to the file, or "no record yet".
 - **Summary:** the record's one-line ruling from `governance/INDEX.md`, quoted as it stands there. Nothing is written for the card. Without a record it says "no ruling recorded"; with a record that has no INDEX row yet, "not in governance/INDEX.md yet".
@@ -577,7 +581,7 @@ So #314's card reads GOV-0021, "dissent: proposer", 2 of 3 rounds, two models (�
 
 ## Authority map
 
-`authority.py` draws Governance's `#authority` from `governance/jurisdictions.yml` in the checkout (#410; `authority.html` until #1113). It's reference, not live data, so it isn't in `state.json` and adds no API calls.
+`authority.py` draws Governance's `#authority` from `governance/jurisdictions.yml` in the checkout (#410; `authority.html` until #1113). It's reference, not live data, and adds no API calls; `state.json` carries it as `authority` so Governance's script can draw it (#1140).
 
 - **One row per domain**, in file order: its name, description and note (and "always one-way" where the file says so), who decides (agents in blue, the owner in amber, "nobody: ask" when `decide` is empty), the owner, who ratifies, who is vote-eligible and the default shape. An identity reference the file's `identities` doesn't list shows as written, in grey.
 - **Records:** the domain's in-force rows of `governance/INDEX.md` (the same rows the governance section parses), counted and linked to the decision log (`#rulings`), with those past their review-by date named.

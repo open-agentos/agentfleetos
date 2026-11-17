@@ -16,7 +16,6 @@ Stdlib only.
 from __future__ import annotations
 
 import datetime as dt
-import html
 import re
 from pathlib import Path
 
@@ -205,38 +204,5 @@ def went(h: dict | None, records: dict[int, dict], committee_qs: set[int],
 
     return {"days": h["days"], "first_day": h["start"].date(), "total": len(rows),
             "asked_by": count("asked_by", ASKED), "decided_by": count("decided_by", DECIDED),
-            "became": count("became", BECAME), "questions": rows}
-
-
-def sentence(head: str, counts: dict[str, int], cats: tuple) -> str:
-    parts = [f"{words} {counts[k]}" for k, words in cats if counts[k] or k != "other"]
-    return f"{head}: {', '.join(parts)}."
-
-
-def bar(counts: dict[str, int], cats: tuple, total: int) -> str:
-    """A stacked bar, one segment per non-empty category, sized by its share. It repeats the
-    sentence beside it, so screen readers skip it."""
-    segs = "".join(f'<span class="{k}" style="flex:{counts[k]}"></span>'
-                   for k, _ in cats if counts[k])
-    return f'<span class="went-bar" aria-hidden="true">{segs if total else ""}</span>'
-
-
-def render_went(w: dict | None) -> str:
-    if w is None:
-        return ""
-    n = w["total"]
-    rows = (("asked", "Asked by", w["asked_by"], ASKED),
-            ("decided", "Decided by", w["decided_by"], DECIDED),
-            ("became", "Became", w["became"], BECAME))
-    items = "".join(f'<li class="{cls}">{bar(c, cats, n)}<span>{html.escape(sentence(head, c, cats))}'
-                    f'</span></li>' for cls, head, c, cats in rows)
-    intro = (f'{n} question{"s" if n != 1 else ""} asked in the last {w["days"]} days '
-             f'(from {w["first_day"].day} {w["first_day"]:%b}).')
-    note = ('Asked by the owner: the owner opened it, or its "Raised by" starts with "owner". '
-            'Decided by a committee: a committee Discussion serves it or its record\'s shape is '
-            'committee; by the owner: the owner added gov:ruled or ready, it has a record, or it '
-            'was closed without gov:lapsed. Became a record: a file in governance/decisions/ '
-            'answers it; direction only: ruled or ready with no record, which is not precedent '
-            '(GOV-0006).')
-    return (f'<h2>How the questions went</h2><p>{html.escape(intro)}</p>'
-            f'<ul class="went">{items}</ul><p class="muted method">{html.escape(note)}</p>')
+            "became": count("became", BECAME), "questions": rows,
+            "cats": {"asked_by": ASKED, "decided_by": DECIDED, "became": BECAME}}

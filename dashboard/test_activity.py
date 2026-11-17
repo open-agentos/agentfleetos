@@ -10,6 +10,7 @@ sys.path.insert(0, str(HERE))
 import activity as a  # noqa: E402
 import generate as g  # noqa: E402
 import layout  # noqa: E402
+import govdraw  # noqa: E402
 import state  # noqa: E402
 
 REPO = "open-agentos/agentfleetos"
@@ -206,7 +207,10 @@ class HeaderTest(unittest.TestCase):
         s = state.state(m)["owner_last_acted"]
         self.assertEqual(s, {"status": "acted", "kind": "labeled", "text": "labelled #397 ready",
                              "time": "2026-11-05T10:18:00Z",
-                             "link": f"https://github.com/{REPO}/issues/397"})
+                             "link": f"https://github.com/{REPO}/issues/397",
+                             "verb": "labelled", "ref": "#397", "extra": "ready"})
+        if govdraw.NODE:   # Governance redraws the line from those fields (#1140), exactly as built
+            self.assertEqual(govdraw.draw(govdraw.page_data(m))["mast"], layout.mast_live(m["now"], g.owner_line(m)))
 
 
 if __name__ == "__main__":

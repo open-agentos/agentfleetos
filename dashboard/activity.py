@@ -169,7 +169,8 @@ def header(o: dict | None, now: dt.datetime, ago) -> str:
 
 
 def state(o: dict | None) -> dict:
-    """state.json's `owner_last_acted`: the status, and kind, text, time and link if acted."""
+    """state.json's `owner_last_acted`: the status, and kind, text, time and link if acted, with
+    the verb, ref and extra Governance's script draws the masthead's line from (#1140)."""
     o = o or {"status": "unknown"}
-    keep = ("status", "kind", "text", "time", "link", "days")
+    keep = ("status", "kind", "text", "time", "link", "days", "verb", "ref", "extra")
     return {k: o[k] for k in keep if k in o}

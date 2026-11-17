@@ -26,13 +26,14 @@ copies the self-hosted fonts and the pages' scripts (js/, #1106) beside them:
     use (grants.py, #713) and effort per open Goal (effort.py, #1013);
   - governance.html: the full decision log, open and lapsed gov questions, the committees
     (the committee desk and round grids, then past committees' cards and grids), the authority
-    map (authority.py, #410), precedent in use, what the numbers say and how the questions went.
+    map (authority.py, #410), precedent in use, what the numbers say and how the questions went,
+    all drawn client-side from state.json (govpage.py and governance.js, #1140).
 Plus effort.html, the PRs behind each segment of Crew's Effort bars (#1013), and a redirect for
 each retired page (REDIRECTS: index.html, the old desk, and the Bridge, Commissions, Agents,
 Operations, Decisions and Authority pages). index.html is the --out page, so a host that serves
 it at / (Pages) sends the browser on to the Work map.
-Stdlib only. Crew and Governance load one script, the live refresh (live.py, #411), and the Work
-map one, its treemap (workmap.js, #1082). Each is a same-origin file in
+Stdlib only. Crew loads one script, the live refresh (live.py, #411), Governance its own
+(governance.js, #1140), and the Work map its treemap (workmap.js, #1082). Each is a same-origin file in
 js/, allowed by its hash in the page's CSP (option 3 of gov question #1102). Vendored libraries
 (static/vendor/, #1107) are checked against their pinned hashes before anything is fetched or
 written, and copied into js/ beside them; a mismatch fails the build.
@@ -60,6 +61,7 @@ import effort
 import floor
 import ghql
 import governance
+import govpage
 import grants
 import layout
 import live
@@ -715,11 +717,6 @@ def session_rows(m: dict, sessions: list[dict]) -> str:
 TITLE = "Swarm dashboard"
 
 
-def rulings(m: dict) -> dict[str, str]:
-    """Each record's one-line ruling from governance/INDEX.md, by ID (past committees, #409)."""
-    return {r["id"]: r["ruling"] for r in (m.get("governance") or {}).get("all_records") or []}
-
-
 def owner_line(m: dict) -> str:
     """The header's "Owner last acted" line (#402), on every page."""
     return activity.header(m.get("owner_last_acted"), m["now"], ago)
@@ -738,22 +735,10 @@ def crew_panels(m: dict) -> dict[str, str]:
             "effort": effort.render(m.get("effort"))}
 
 
-def governance_panels(m: dict) -> dict[str, str]:
-    """Governance's live panels by name (#1113): the committee desk while a committee is open
-    (#404), each past committee's card (#409), precedent in use (#408), what the numbers say
-    (#406) and how the questions went (#407)."""
-    repo = m["repo"]
-    return {"committee_desk": committees.desk(m.get("committees"), repo),
-            "past_committees": committees.past(m.get("committees"), rulings(m), repo),
-            "precedent": precedent.render(m.get("precedent"), repo),
-            "trends": trends.render(m.get("trends")),
-            "questions_went": questions.render_went(m.get("questions_went"))}
-
-
 def live_panels(m: dict) -> dict[str, str]:
-    """Every panel the live refresh redraws, by name: state.json's `desk` carries them all, and
-    each page redraws the boxes it has (#411)."""
-    return crew_panels(m) | governance_panels(m)
+    """Every panel poll.js redraws, by name: state.json's `desk` carries them. Only Crew's since
+    Governance draws itself from plain fields (#1140)."""
+    return crew_panels(m)
 
 
 def box(name: str, html: str) -> str:
@@ -791,24 +776,10 @@ def render_crew(m: dict) -> str:
 
 def render_governance(m: dict) -> str:
     """governance.html (#1113): the full decision log, open and lapsed gov questions, the
-    committees (open, then past), the authority map, precedent in use, and the trends. The page's
-    live panels refresh in place (#411)."""
-    repo, now = m["repo"], m["now"]
-    g, panels = m["governance"], governance_panels(m)
-    comms = m.get("committees")
-    a = m.get("authority") or authority.build(None, [])
-    out = ["<h1>Governance</h1>",
-           section("rulings", governance.rulings(g, repo)),
-           section("questions", governance.questions(g, now, m["days"], ago, stamp)),
-           section("committees", "<h2>Committees</h2>", box("committee_desk", panels["committee_desk"]),
-                   committees.render(comms, repo, part="open", heading=False)
-                   or '<p class="muted">No open committees.</p>',
-                   box("past_committees", panels["past_committees"]),
-                   committees.render(comms, repo, part="ended", heading=False)),
-           section("authority", authority.render(a, repo)),
-           section("precedent", box("precedent", panels["precedent"])),
-           section("trends", box("trends", panels["trends"]), box("questions_went", panels["questions_went"]))]
-    return layout.page(GOVERNANCE_FILE, TITLE, repo, now, "\n".join(out), owner_line(m), live_refresh=True)
+    committees (open, then past), the authority map, precedent in use, and the trends, all
+    drawn client-side from state.json's plain fields and redrawn in place (govpage.py, #1140)."""
+    import state   # here, not at the top: state imports this module
+    return govpage.page(m, TITLE, owner_line(m), state.state(m))
 
 
 def render_workmap(m: dict) -> str:
@@ -823,7 +794,7 @@ def render_effort(m: dict) -> str:
 
 
 CREW_FILE = "crew.html"
-GOVERNANCE_FILE = "governance.html"
+GOVERNANCE_FILE = govpage.FILE
 
 # Retired pages (#1113, and the Bridge #1114): each only sends the browser to its new home.
 # The Work map is linked as workmap.html, not /: on Pages, / is index.html, so a redirect to /
@@ -976,7 +947,8 @@ def write_map(data: dict, model: dict, now: dt.datetime, out_dir: Path, days: in
 
 def scripts() -> dict[str, str]:
     """Every script a page loads, by its file name in js/: exactly the text each page hashes."""
-    return {live.FILE: live.script(), workmap_page.JS.name: workmap_page.script()}
+    return {live.FILE: live.script(), workmap_page.JS.name: workmap_page.script(),
+            govpage.JS.name: govpage.script()}
 
 
 def main(argv: list[str]) -> int:

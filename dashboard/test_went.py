@@ -1,4 +1,4 @@
-"""Tests for the desk's "How the questions went" (#407, questions.went and render_went).
+"""Tests for the desk's "How the questions went" (#407, questions.went, drawn by governance.js).
 Run: python3 -m unittest discover -s dashboard
 """
 import datetime as dt
@@ -15,6 +15,17 @@ import committees  # noqa: E402
 import generate as g  # noqa: E402
 import questions as q  # noqa: E402
 import state  # noqa: E402
+import govdraw  # noqa: E402
+
+
+def gov(m) -> str:
+    """Every Governance section as governance.js draws a generate.build() model (#1140)."""
+    return "".join(govdraw.draw(govdraw.page_data(m)).values())
+
+
+def render_went(w) -> str:
+    """How the questions went as governance.js draws state.json's `questions_went`."""
+    return govdraw.draw(govdraw.base(questions_went=state.plain(w)))["trends"]
 
 REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
@@ -130,7 +141,7 @@ class DecidedAndBecameTest(unittest.TestCase):
         self.assertEqual(self.w["asked_by"], {"agents": 8, "owner": 0, "other": 0})
 
     def test_sentences(self):
-        html = q.render_went(self.w)
+        html = render_went(self.w)
         self.assertIn("<h2>How the questions went</h2>", html)
         self.assertIn("8 questions asked in the last 14 days (from 23 Oct).", html)
         self.assertIn("Asked by: agents 8, the owner 0.", html)   # "someone else" only when > 0
@@ -143,12 +154,12 @@ class DecidedAndBecameTest(unittest.TestCase):
 class EmptyTest(unittest.TestCase):
     def test_no_history_no_panel(self):
         self.assertIsNone(q.went(None, {}, set(), OWNER))
-        self.assertEqual(q.render_went(None), "")
+        self.assertEqual(render_went(None), "")
 
     def test_no_questions(self):
         w = q.went(history([]), {}, set(), OWNER)
         self.assertEqual(w["total"], 0)
-        html = q.render_went(w)
+        html = render_went(w)
         self.assertIn("0 questions asked", html)
         self.assertIn('<span class="went-bar" aria-hidden="true"></span>', html)
 
@@ -174,7 +185,7 @@ class PageTest(unittest.TestCase):
 
     def test_desk_shows_the_three_breakdowns_after_the_trends(self):
         pages = g.render(self.model())
-        desk = pages["governance.html"]
+        desk = gov(self.model())
         self.assertIn("Asked by: agents 1, the owner 1.", desk)
         self.assertIn("Became: a record 1, direction only 0, nothing yet 1.", desk)
         self.assertLess(desk.index("What the numbers say"), desk.index("How the questions went"))
@@ -193,7 +204,7 @@ class PageTest(unittest.TestCase):
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": []}, NOW,
                     dt.timedelta(minutes=15))
         self.assertIsNone(m["questions_went"])
-        self.assertNotIn("How the questions went", g.render(m)["governance.html"])
+        self.assertNotIn("How the questions went", gov(m))
 
 
 if __name__ == "__main__":

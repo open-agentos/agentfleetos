@@ -12,6 +12,7 @@ import datetime as dt
 from pathlib import Path
 
 import activity
+import authority
 import committees
 import effort
 import grants
@@ -100,8 +101,8 @@ def watcher(w: dict | None) -> dict | None:
 
 
 def desk(m: dict) -> dict:
-    """The masthead's changing part and Crew's and Governance's live panels as node trees,
-    which the live refresh draws (#411, #1113)."""
+    """The masthead's changing part and Crew's live panels as node trees, which the live
+    refresh draws (#411, #1113). Governance draws itself from plain fields (#1140)."""
     mast = layout.mast_live(m["now"], generate.owner_line(m))
     return live.trees({"mast": mast, **generate.live_panels(m)})
 
@@ -122,6 +123,7 @@ def state(m: dict) -> dict:
         "governance": {**gov, "days": m["days"]},
         "committees": m.get("committees"),
         "committee_desk": committees.desk_states(m.get("committees")),
+        "committee_views": committees.views(m.get("committees"), m["repo"]),   # #1140: each committee's grid
         "past_committees": committees.past_states(
             m.get("committees"), {r["id"]: r["ruling"] for r in gov.get("all_records") or []}, m["repo"]),
         "reviewer_runs": reviewer_runs(m["reviewer_runs"]),
@@ -134,5 +136,6 @@ def state(m: dict) -> dict:
         "plan": plan.state(m.get("plan")),   # #712: the owner's Goals and Areas, each sub-issue's go   # #405: today's governance events, newest first
         "grants": grants.state(m.get("grants")),   # #713: the merger's calls in the last 24 hours
         "effort": effort.state(m.get("effort")),   # #1013: PRs by kind of work per open Goal, and the trend
-        "desk": desk(m),   # #411: what the live refresh draws on Crew and Governance
+        "authority": m.get("authority") or authority.build(None, []),   # #410, #1140: Governance's authority map
+        "desk": desk(m),   # #411: what the live refresh draws on Crew
     })

@@ -176,11 +176,11 @@ def role_data(m: dict) -> dict:
     return {"days": a["days"], "report_issue": a["report_issue"], "of": out}
 
 
-def data_block(d: dict) -> str:
+def data_block(d: dict, element_id: str = "wm-data") -> str:
     """The JSON block. `<`, `>` and `&` are escaped so no title can close the element."""
     text = (json.dumps(d, separators=(",", ":"))
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
-    return f'<script type="application/json" id="wm-data">{text}</script>'
+    return f'<script type="application/json" id="{element_id}">{text}</script>'
 
 
 def controls_html() -> str:

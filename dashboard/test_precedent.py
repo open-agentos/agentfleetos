@@ -10,6 +10,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import precedent as p  # noqa: E402
 import state as st  # noqa: E402
+import govdraw  # noqa: E402
+
+
+def render(m) -> str:
+    """Governance's #precedent as governance.js draws state.json's `precedent` (#1140)."""
+    return govdraw.draw(govdraw.base(precedent=st.plain(p.state(m)), repo=REPO))["precedent"]
 
 UTC = dt.timezone.utc
 NOW = dt.datetime(2026, 11, 5, 12, 0, tzinfo=UTC)
@@ -195,12 +201,13 @@ class FindingsTest(unittest.TestCase):
                          "Every in-force record was cited in the last 14 days.")
 
 
+@unittest.skipUnless(govdraw.NODE, "node isn't installed")
 class RenderTest(unittest.TestCase):
     def test_grid(self):
         data = {"start": dt.date(2026, 11, 2), "first": dt.date(2026, 11, 2), "kept": {},
                 "owner": OWNER, "texts": [text(4, REVIEWER, "GOV-0021"), text(4, BUILDER, "GOV-0021")]}
         m = p.build(data, RECORDS, NOW, 4)
-        page = p.render(m, REPO)
+        page = render(m)
         self.assertIn('<div class="scroll"><table class="precedent">', page)   # its own box
         self.assertIn("<th>Record</th>", page)
         self.assertIn(">By reviewer</th>", page)
@@ -213,7 +220,7 @@ class RenderTest(unittest.TestCase):
         self.assertTrue(cells[4].endswith(">·"), row)
         self.assertEqual([c.rsplit(">", 1)[1] for c in cells[5:9]], ["2", "2", "0", "1"])
         self.assertIn("governance/decisions/GOV-0021-x.md", row)
-        self.assertEqual(p.render(None, REPO), "")
+        self.assertEqual(render(None), "")
 
     def test_grid_starts_at_the_first_record(self):
         data = {"start": dt.date(2026, 10, 23), "first": dt.date(2026, 10, 23), "kept": {},

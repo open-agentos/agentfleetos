@@ -21,6 +21,16 @@ sys.path.insert(0, str(HERE))
 import generate as g  # noqa: E402
 import live  # noqa: E402
 import workmap_page  # noqa: E402
+import govdraw  # noqa: E402
+import govpage  # noqa: E402
+
+
+def with_governance(m) -> dict:
+    """The pages, with what governance.js draws from Governance's data appended to its page (#1140)."""
+    pages = g.render(m)
+    if govdraw.NODE:
+        pages["governance.html"] += "".join(govdraw.draw(govdraw.page_data(m)).values())
+    return pages
 
 REPO = "open-agentos/agentfleetos"
 NOW = dt.datetime(2026, 11, 2, 12, 0, tzinfo=dt.timezone.utc)
@@ -169,7 +179,7 @@ class PageTest(unittest.TestCase):
             self.assertEqual(g.read_state(f), {"built_at": "2026-11-09T08:00:00Z"})
 
     def test_render_escapes_and_links(self):
-        pages = g.render(self.model())
+        pages = with_governance(self.model())
         for name, page in pages.items():
             self.assertNotIn("<b>generator</b>", page, name)
         self.assertIn("Dashboard &lt;generator&gt;", pages["crew.html"])
@@ -188,6 +198,9 @@ class PageTest(unittest.TestCase):
             # Crew and Governance load the live refresh and the Work map its treemap, each from js/
             # and allowed by hash (#411, #1082, #1106); no page carries an inline one.
             rest = page.replace(g.layout.script_tag("poll.js", live.script()), "")
+            if name == govpage.FILE:   # its own script and the data it draws from (#1140)
+                rest = re.sub(r'<script type="application/json" id="gov-data">.*?</script>', "",
+                              rest.replace(g.layout.script_tag("governance.js", govpage.script()), ""), flags=re.S)
             if name == "workmap.html":
                 rest = re.sub(r'<script type="application/json" id="wm-data">.*?</script>', "",
                               rest.replace(g.layout.script_tag("workmap.js", workmap_page.script()), ""),
@@ -203,7 +216,8 @@ class PageTest(unittest.TestCase):
             self.assertIn("#F4F3EE", head, name)   # one look (layout.py)
             self.assertIn('src:url("fonts/IBMPlexSans-Regular-Latin1.woff2")', head, name)
             # Nothing loaded from a third party: the only URLs in the head are the fonts.
-            self.assertNotIn("//", head.replace("http-equiv", ""), name)
+            # (A script's base64 hash in the CSP may hold "//", so hashes are left out.)
+            self.assertNotIn("//", re.sub(r"'sha256-[^']+'", "", head.replace("http-equiv", "")), name)
             # One nav on every page, Map · Crew · Governance, and no footer page list (#1113).
             self.assertNotIn("<footer", page, name)
             nav = re.findall(r'<nav class="top" aria-label="Pages">(.*?)</nav>', page)
@@ -215,8 +229,9 @@ class PageTest(unittest.TestCase):
                     self.assertIn(f'<a href="{f}">{label}</a>', nav[0], name)
             self.assertEqual(re.findall(r">([^<]+)</(?:a|span)>", nav[0]), ["Map", "Crew", "Governance"], name)
 
+    @unittest.skipUnless(govdraw.NODE, "node isn't installed")
     def test_each_section_lands_on_its_page(self):
-        pages = g.render(self.model())
+        pages = with_governance(self.model())
         where = {
             "crew.html": ["<h1>Crew</h1>", 'id="roles"', 'id="floor"', 'id="sessions"', "<h2>Sessions</h2>",
                           'id="reviewer"', "<h2>Actions reviewer</h2>", 'id="grants"', 'id="effort"'],
@@ -235,12 +250,13 @@ class PageTest(unittest.TestCase):
             for name, page in pages.items():
                 self.assertNotIn(gone, page, f"{gone} on {name}")
 
+    @unittest.skipUnless(govdraw.NODE, "node isn't installed")
     def test_governance_has_the_full_log(self):
         rows = "\n".join(f"| [GOV-{n:04d}](decisions/GOV-{n:04d}-x.md) | Ruling {n} | ops | rule | in force | 2027-06-01 |"
                          for n in range(1, 13))
         index = "| ID | Ruling | Domain | Shape | Status | Review by |\n|---|---|---|---|---|---|\n" + rows
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": [], "index": index}, NOW, IDLE)
-        pages = g.render(m)
+        pages = with_governance(m)
         self.assertIn("<h3>Decision log (12)</h3>", pages["governance.html"])
         for n in range(1, 13):
             self.assertIn(f">GOV-{n:04d}</a>", pages["governance.html"])
@@ -322,7 +338,11 @@ class EndToEndTest(unittest.TestCase):
             # #1113: index.html, the --out page that Pages serves at /, sends the browser to the Work map.
             self.assertIn('<meta http-equiv="refresh" content="0; url=workmap.html">', (out / "index.html").read_text())
             self.assertIn("<h1>Crew</h1>", (out / "crew.html").read_text())
-            self.assertIn("<h2>Authority map</h2>", (out / "governance.html").read_text())
+            gov = (out / "governance.html").read_text()   # drawn client-side from state.json (#1140)
+            self.assertIn('<section class="sec" id="authority"></section>', gov)
+            self.assertIn('<script type="application/json" id="gov-data">', gov)
+            self.assertEqual((out / "js" / "governance.js").read_text(), govpage.script())
+            self.assertIn("domains", json.loads((out / "state.json").read_text())["authority"])
             for f in g.REDIRECTS:
                 self.assertTrue((out / f).read_text().startswith("<!doctype html>"), f)
             # #1114: the Bridge is retired; its old address sends the browser to /.
@@ -331,7 +351,7 @@ class EndToEndTest(unittest.TestCase):
                 self.assertEqual((out / "fonts" / f).read_bytes(),
                                  (g.layout.FONTS_SRC / f).read_bytes())
             # Each page's scripts are served from js/ beside it, the very bytes its CSP hashes (#1106).
-            self.assertEqual(sorted(p.name for p in (out / "js").iterdir()), ["poll.js", "workmap.js"])
+            self.assertEqual(sorted(p.name for p in (out / "js").iterdir()), ["governance.js", "poll.js", "workmap.js"])
             for name in ("crew.html", "governance.html", "workmap.html"):
                 page = (out / name).read_text()
                 srcs = re.findall(r'<script src="([^"]+)" integrity="sha256-([^"]+)">', page)
