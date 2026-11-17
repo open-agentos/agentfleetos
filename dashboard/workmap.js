@@ -3,6 +3,8 @@
 // from the page's JSON block, builds DOM nodes with createElement and text nodes only (no
 // innerHTML, no eval), and never fetches. It shows each issue's own figures and each group's
 // share as a percentage: no amount is ever summed across issues for display (GOV-0033).
+// The Selected panel (#1083) shows one issue: its 14-day cost is that issue's own sum, a
+// per-issue figure, not a sum across issues.
 (function () {
   "use strict";
   var KEY = "agentfleetos.workmap";
@@ -184,12 +186,12 @@
     clear(mapEl); clear(legendEl); clear(crumbEl); hideTip();
     syncButtons();
     var all = rowsNow();
-    if (!data || data.error) { note("The Work map's data wasn't read in this build" + (data && data.error ? ": " + data.error : ".")); crumb([]); return; }
+    if (!data || data.error) { panel(); note("The Work map's data wasn't read in this build" + (data && data.error ? ": " + data.error : ".")); crumb([]); return; }
     if (!all) {
       note(st.window === "month"
         ? "Month isn't in the Desk's data: the build reads 14 days of heartbeats, too few for a month. `swarm map --window month` prints it."
         : "This window isn't in the build's data.");
-      crumb([]); return;
+      crumb([]); panel(); return;
     }
     var shown = all.filter(function (r) { return sizeOf(r) > 0; });
     var left = all.length - shown.length;
@@ -232,6 +234,8 @@
       });
     });
     legend(sh.ends, left);
+    markSelected();
+    panel();
   }
 
   function issueBox(p, shade) {
@@ -256,6 +260,7 @@
     if (r.ref === st.selected) b.classList.add("wm-sel");
     if (dim.w >= 44 && dim.h >= 18) b.appendChild(el("span", "wm-t", r.title || r.ref));
     if (dim.w >= 44 && dim.h >= 34) b.appendChild(el("span", "wm-m", sizeText(r) + " · " + shade.text));
+    b.setAttribute("aria-controls", "wm-sel");
     b.tabIndex = 0;
     b.setAttribute("role", "button");
     b.setAttribute("aria-pressed", r.ref === st.selected ? "true" : "false");
@@ -274,6 +279,11 @@
 
   function select(ref) {
     st.selected = st.selected === ref ? null : ref;
+    markSelected();
+    panel();
+  }
+
+  function markSelected() {
     var boxes = mapEl.querySelectorAll(".wm-box");
     for (var i = 0; i < boxes.length; i++) {
       var on = boxes[i].getAttribute("data-ref") === st.selected;
@@ -311,6 +321,180 @@
     if (left) legendEl.appendChild(el("span", "wm-left muted", left + (left === 1 ? " issue" : " issues") +
       " with no " + (st.size === "lines" ? "lines changed" : st.size) + " in this window left off"));
   }
+
+  // ------------------------------------------------------------ the Selected panel (#1083)
+
+  var STAGE_ORDER = ["queued", "building", "review", "merging"];
+  var STAGE_NAME = { queued: "Queued", building: "Building", review: "In review", merging: "Merging" };
+  var PER = { cost: 100, tokens: 1e6, lines: 1e3 };
+  var PLACEHOLDER = [30, 45, 25, 60, 40, 20, 50, 35, 55, 30, 45, 25, 40, 50];   // empty state, %
+  function $(id) { return document.getElementById(id); }
+  function setText(id, text) { var e = $(id); if (e) { clear(e); e.appendChild(document.createTextNode(text)); } }
+
+  // The selected issue's row: this window's if it's in it, else any window's (for its title,
+  // Goal and stage), with `here` false.
+  function findRow(ref) {
+    var here = rowsNow() || [];
+    for (var i = 0; i < here.length; i++) if (here[i].ref === ref) return { row: here[i], here: true };
+    var ws = (data && data.windows) || {};
+    var names = ["day", "week", "hour"];
+    for (var k = 0; k < names.length; k++) {
+      var w = ws[names[k]] || [];
+      for (var j = 0; j < w.length; j++) if (w[j].ref === ref) return { row: w[j], here: false };
+    }
+    return null;
+  }
+  function yieldOf(r) {
+    var s = sizeOf(r);
+    return s > 0 ? r.outcomes / s * PER[st.size] : null;
+  }
+  function yieldText(y) { return y === null ? "–" : num(y, y < 10 ? 1 : 0) + " " + UNIT[st.size]; }
+  function changeText(r) {
+    var b = r.baseline, c = r.cost;
+    if (c === null || c === undefined) return "unpriced";
+    if (b === null || b === undefined) return "no baseline";
+    if (b === 0) return c === 0 ? "none before or now" : "new: none usually";
+    return c === 0 ? "none (usual " + usd(b) + ")" : "×" + num(c / b, 1) + " usual (" + usd(b) + ")";
+  }
+
+  function panel() {
+    var box = $("wm-sel");
+    if (!box) return;
+    var found = st.selected === null ? null : findRow(st.selected);
+    if (!found) { st.selected = null; emptyPanel(box); return; }
+    var r = found.row, here = found.here;
+    var w = here ? r : { cost: 0, tokens: 0, lines: 0, outcomes: 0, baseline: r.baseline, unpriced_tokens: 0 };
+    var idle = !here || (!(w.tokens > 0) && !(w.cost > 0) && !w.outcomes);
+    box.classList.remove("wm-sel-empty");
+    setText("wm-sel-ref", r.ref === "unattributed" ? "unattributed" : r.ref);
+
+    var t = $("wm-sel-title"); clear(t);
+    if (typeof r.url === "string" && r.url.indexOf("https://github.com/") === 0) {
+      var a = el("a", "", r.title || r.ref); a.href = r.url; t.appendChild(a);
+    } else t.appendChild(document.createTextNode(r.title || r.ref));
+    t.title = r.title || r.ref;
+
+    var c = $("wm-sel-ctx"); clear(c);
+    var parts = [r.effort ? cap(r.effort) : "no effort", r.role || "no role", r.goal ? (r.goal.lead || "#" + r.goal.number) : "no Goal"];
+    c.appendChild(document.createTextNode(parts.join(" · ")));
+    if (r.needs_you) { c.appendChild(document.createTextNode(" · ")); c.appendChild(el("span", "wm-flag", "◆ needs you")); }
+    if (idle) { c.appendChild(document.createTextNode(" · ")); c.appendChild(el("span", "", "idle this window")); }
+    c.title = goalText(r);
+
+    stagePanel(r);
+    daysPanel(r.ref);
+    peersPanel(r, here);
+    var y = here ? yieldOf(r) : null;
+    var nums = { cost: usd(w.cost) + (w.unpriced_tokens ? "*" : ""), tokens: num(w.tokens || 0, 0),
+                 lines: num(w.lines || 0, 0), outcomes: String(w.outcomes || 0), "yield": yieldText(y),
+                 change: changeText(w) };
+    numbers(nums);
+  }
+
+  function stagePanel(r) {
+    var segs = $("wm-sel-sgs").children;
+    var cur = r.stage === "blocked" ? r.blocked_at || "queued" : r.stage;
+    var at = STAGE_ORDER.indexOf(cur), closed = r.state === "closed";
+    for (var i = 0; i < segs.length; i++) {
+      var cls = "wm-sg";
+      if (closed || (at >= 0 && i < at)) cls += " wm-sg-past";
+      else if (i === at) cls += r.stage === "blocked" ? " wm-sg-stop" : " wm-sg-now";
+      segs[i].className = cls;
+    }
+    var text = closed ? "closed" : r.stage === "blocked" ? "blocked at " + STAGE_NAME[cur]
+      : at >= 0 ? STAGE_NAME[cur] : r.ref === "unattributed" ? "no issue" : "not go yet";
+    setText("wm-sel-stage", text);
+    $("wm-sel-sgs").setAttribute("aria-label", "Stage: " + text);
+  }
+
+  function daysPanel(ref) {
+    var days = (data && data.days) || {}, dates = days.dates || [];
+    var series = (days.of || {})[ref] || [];
+    var bars = $("wm-sel-bars").children, n = bars.length;
+    var peak = 0, sum = 0, priced = false, outs = 0;
+    for (var i = 0; i < n; i++) {
+      var d = series[i] || [null, 0];
+      if (typeof d[0] === "number") { priced = true; sum += d[0]; if (d[0] > peak) peak = d[0]; }
+      outs += d[1] || 0;
+    }
+    for (var k = 0; k < n; k++) {
+      var b = bars[k], v = (series[k] || [null, 0]);
+      clear(b);
+      b.className = "wm-bar" + (k === n - 1 ? " wm-today" : "");
+      var cost = typeof v[0] === "number" ? v[0] : 0;
+      if (peak > 0 && cost > 0) {
+        var i2 = el("i"); i2.style.height = Math.max(1, cost / peak * 100) + "%"; b.appendChild(i2);
+      }
+      if (v[1] > 0) b.appendChild(el("b"));
+      b.title = (dates[k] || "") + ": " + (v[0] === null || v[0] === undefined ? (series[k] ? "unpriced" : "no spend") : usd(v[0])) +
+        (v[1] ? ", " + v[1] + (v[1] === 1 ? " outcome" : " outcomes") : "");
+    }
+    setText("wm-sel-dsum", (priced ? usd(sum) : "–") + " · " + outs + (outs === 1 ? " outcome" : " outcomes"));
+    setText("wm-sel-peak", peak > 0 ? "peak " + usd(peak) : "no spend");
+    $("wm-sel-bars").setAttribute("aria-label", "Cost per day, last 14 days" + (peak > 0 ? ", peak " + usd(peak) : ", none"));
+  }
+
+  function peersPanel(r, here) {
+    var strip = $("wm-sel-strip"), ax = $("wm-sel-pax");
+    while (strip.children.length > 1) strip.removeChild(strip.lastChild);
+    var g = groupOf(r);
+    var peers = (rowsNow() || []).filter(function (p) { return sizeOf(p) > 0 && groupOf(p) === g; });
+    var ys = peers.map(yieldOf), mine = here ? yieldOf(r) : null;
+    var top = Math.max.apply(null, ys.concat([mine || 0, 0]));
+    var med = median(ys);
+    function at(y) { return (top > 0 ? y / top * 100 : 0) + "%"; }
+    peers.forEach(function (p, k) {
+      if (p === r) return;
+      var d = el("span", "wm-pd"); d.style.left = at(ys[k]); strip.appendChild(d);
+    });
+    if (peers.length) { var m = el("span", "wm-med"); m.style.left = at(med); strip.appendChild(m); }
+    if (mine !== null) { var me = el("span", "wm-me"); me.style.left = at(mine); strip.appendChild(me); }
+    setText("wm-sel-grp", g + " · " + peers.length + (peers.length === 1 ? " issue" : " issues"));
+    var spans = ax.children;
+    spans[0].textContent = "0";
+    spans[1].textContent = peers.length ? "median " + num(med, med < 10 ? 1 : 0) : "no peers";
+    spans[2].textContent = top > 0 ? "max " + num(top, top < 10 ? 1 : 0) : "max 0";
+    strip.setAttribute("aria-label", "Yield " + UNIT[st.size] + ": this issue " + (mine === null ? "not on the map" : num(mine, 1)) +
+      ", median " + num(med, 1) + ", max " + num(top, 1) + ", of " + peers.length + " in " + g);
+  }
+
+  function numbers(vals) {
+    var dds = $("wm-sel-nums").querySelectorAll("dd[data-n]");
+    for (var i = 0; i < dds.length; i++) {
+      var k = dds[i].getAttribute("data-n");
+      dds[i].textContent = vals ? vals[k] : "–";
+      dds[i].title = vals ? vals[k] : "";
+    }
+  }
+
+  function emptyPanel(box) {
+    box.classList.add("wm-sel-empty");
+    setText("wm-sel-ref", "–");
+    var t = $("wm-sel-title"); clear(t); t.title = "";
+    t.appendChild(document.createTextNode("Click a box, or an item in a list below, to see it here."));
+    setText("wm-sel-ctx", "–");
+    var segs = $("wm-sel-sgs").children;
+    for (var i = 0; i < segs.length; i++) segs[i].className = "wm-sg";
+    setText("wm-sel-stage", "–");
+    var bars = $("wm-sel-bars").children;
+    for (var k = 0; k < bars.length; k++) {
+      clear(bars[k]); bars[k].className = "wm-bar"; bars[k].title = "";
+      var b = el("i"); b.style.height = PLACEHOLDER[k % PLACEHOLDER.length] + "%"; bars[k].appendChild(b);
+    }
+    setText("wm-sel-dsum", "–"); setText("wm-sel-peak", "–");
+    var strip = $("wm-sel-strip");
+    while (strip.children.length > 1) strip.removeChild(strip.lastChild);
+    setText("wm-sel-grp", "–");
+    var spans = $("wm-sel-pax").children;
+    spans[0].textContent = "0"; spans[1].textContent = "–"; spans[2].textContent = "–";
+    numbers(null);
+  }
+
+  // Any element with data-wm-ref (the Work map's lists) selects that issue.
+  document.addEventListener("click", function (ev) {
+    var t = ev.target && ev.target.closest ? ev.target.closest("[data-wm-ref]") : null;
+    if (t) select(t.getAttribute("data-wm-ref"));
+  });
 
   // ------------------------------------------------------------ tooltip
 

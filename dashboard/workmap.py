@@ -41,6 +41,8 @@ commits committed in the window). `stage`, first that holds:
   building  a draft PR closes it, or a live session is on it;
   queued    it is go (the plan's go);
   null      none of these, or the issue is closed.
+`blocked_at` is the stage a blocked issue stopped in (#1083): the stage it would have without
+the block, counting it as go, so `queued` at least; null when it isn't blocked.
 
 **Rows:** every open issue under the owner's open Goals and Areas (two levels down, as the plan
 reads them), every issue closed in the window, every issue with spend or an outcome in the
@@ -393,19 +395,21 @@ def build(g: dict, now: dt.datetime, window: str = DEFAULT_WINDOW) -> dict:
         if n is None:
             return {**base, "ref": UNATTRIBUTED, "title": "spend before any working_on",
                     "url": None, "state": None, "lines": 0, "goal": None, "effort": None,
-                    "stage": None, "needs_you": False}
+                    "stage": None, "blocked_at": None, "needs_you": False}
         it = issues.get(n) or {}
         state = it.get("state") or ("open" if n in open_subs else None)
-        st = None
+        st = at = None
         if state == "open":
             on = [s for s in live if s.get("issue") == n]
             st = stage(go.get(n), open_prs_of.get(n, []), bool(on),
                        any(s["status"] == "blocked" for s in on), n in blocked)
+            if st == "blocked":
+                at = stage("go", open_prs_of.get(n, []), bool(on), False)
         return {**base, "ref": f"#{n}", "title": it.get("title") or "",
                 "url": it.get("html_url") or f"https://github.com/{repo}/issues/{n}",
                 "state": state, "lines": lines_of.get(n, 0), "goal": goal_of.get(n),
                 "effort": effort_of(prs_of.get(n, set()), g.get("effort"), repo),
-                "stage": st, "needs_you": n in needs}
+                "stage": st, "blocked_at": at, "needs_you": n in needs}
 
     rows = [row(n) for n in keys]
     rows.sort(key=lambda r: (-(r["cost"] or 0.0), -r["tokens"], r["issue"]))

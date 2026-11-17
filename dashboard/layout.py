@@ -362,9 +362,62 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-key .wm-k-needs { box-shadow:inset 0 0 0 3px var(--owner); }
 .wm-key .wm-k-blocked { box-shadow:inset 5px 0 0 0 var(--red); }
 .wm-key .wm-k-sel { outline:2px dashed var(--ink); outline-offset:-2px; }
-.wm-selected { flex:1 1 200px; max-width:280px; min-height:120px; background:var(--card);
-  border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
-.wm-selected .br-kind, .wm-selected .br-note { margin:0; padding:0; }
+/* The Selected panel (#1083): 320px wide, the map frame's height and top, every section a fixed
+   height, so selecting or clearing an issue moves nothing. Below 900px it goes under the map. */
+.wm-selected { flex:0 0 320px; width:320px; box-sizing:border-box; margin-top:30px;
+  height:clamp(460px, 68vh, 640px); overflow:hidden; display:flex; flex-direction:column;
+  justify-content:space-between; background:var(--card); border:1px solid var(--line); padding:12px 14px; }
+@media (max-width:900px) { .wm-selected { flex:1 1 100%; width:100%; margin-top:0; height:460px; } }
+.wm-ss { flex:none; overflow:hidden; margin:0; }
+.wm-ss p { margin:0; }
+.wm-ss-head { height:20px; display:flex; justify-content:space-between; align-items:center; }
+.wm-ss-head .br-kind { margin:0; padding:0; flex:none; }
+.wm-ss-head .mono { font-size:13px; flex:1 1 0; min-width:0; text-align:right; }
+.wm-ss-title { height:58px; }
+.wm-st { height:38px; font:600 14px/19px var(--sans); overflow:hidden; display:-webkit-box;
+  -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+.wm-sel-empty .wm-st { font-weight:400; color:var(--muted); }
+.wm-sc { height:20px; font-size:12px; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wm-flag { color:var(--owner); font-weight:600; }
+.wm-sh { height:18px; display:flex; justify-content:space-between; gap:8px; font:600 11px/18px var(--cond);
+  text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+.wm-sh span:first-child { flex:none; }
+.wm-sh span:last-child { flex:1 1 0; text-align:right; overflow:hidden; text-overflow:ellipsis; min-width:0; text-transform:none;
+  letter-spacing:0; font-family:var(--mono); font-weight:400; }
+.wm-ss-stage { height:50px; }
+.wm-sgs { display:flex; gap:3px; margin-top:4px; }
+.wm-sg { flex:1 1 0; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.wm-sgbar { height:12px; background:var(--paper); box-shadow:inset 0 0 0 1px var(--line); }
+.wm-sgl { height:14px; font-size:11px; line-height:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--muted); }
+.wm-sg-past .wm-sgbar { background:#E2D8C7; box-shadow:none; }
+.wm-sg-now .wm-sgbar { background:#8A7458; box-shadow:none; }
+.wm-sg-now .wm-sgl { color:var(--ink); font-weight:600; }
+.wm-sg-stop .wm-sgbar { background:repeating-linear-gradient(135deg, var(--red) 0 3px, var(--paper) 3px 6px); box-shadow:none; }
+.wm-sg-stop .wm-sgl { color:var(--red); font-weight:600; }
+.wm-ss-days { height:104px; }
+.wm-bars { height:62px; display:flex; align-items:flex-end; gap:2px; margin-top:4px;
+  border-bottom:1px solid var(--quiet); padding-bottom:8px; position:relative; }
+.wm-bar { flex:1 1 0; min-width:0; position:relative; height:100%; }
+.wm-bar i { position:absolute; left:0; right:0; bottom:0; background:#AE987A; }
+.wm-bar.wm-today i { background:#64523E; }
+.wm-bar b { position:absolute; left:50%; bottom:-7px; width:5px; height:5px; margin-left:-2.5px;
+  border-radius:50%; background:var(--ink); }
+.wm-sel-empty .wm-bar i { background:var(--line); }
+.wm-ax { height:16px; display:flex; font-size:11px; line-height:16px; color:var(--muted); white-space:nowrap; }
+.wm-ax span { flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; text-align:center; }
+.wm-ax span:first-child { text-align:left; } .wm-ax span:last-child { text-align:right; }
+.wm-ss-peers { height:62px; }
+.wm-strip { position:relative; height:24px; margin:2px 6px 0; }
+.wm-strip .wm-line { position:absolute; left:0; right:0; top:11px; height:1px; background:var(--quiet); }
+.wm-strip .wm-pd { position:absolute; top:8px; width:7px; height:7px; margin-left:-3.5px; border-radius:50%;
+  background:#CBBBA2; }
+.wm-strip .wm-med { position:absolute; top:4px; width:2px; height:16px; margin-left:-1px; background:var(--muted); }
+.wm-strip .wm-me { position:absolute; top:5px; width:13px; height:13px; margin-left:-6.5px; border-radius:50%;
+  background:var(--ink); box-shadow:0 0 0 2px var(--card); }
+.wm-ss-peers .wm-ax { margin:0 0; }
+.wm-ss-nums { height:96px; display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:32px; gap:0 12px; }
+.wm-num { min-width:0; } .wm-num dt { font-size:11px; line-height:14px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wm-num dd { margin:0; font:13px/18px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wm-brief { width:100%; }
 """
 

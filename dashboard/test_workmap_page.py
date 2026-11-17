@@ -61,12 +61,18 @@ class PageTest(unittest.TestCase):
         self.assertEqual(d["windows"]["day"][0]["title"], "a </script><b>x</b> & y")
         self.assertNotIn("days", d["windows"]["day"][0])
 
+    def test_each_issues_14_days_once(self):
+        """#1083: the Selected panel's 14 days, once per issue, whatever window it's in."""
+        d = json_block(wp.page(model(), "t", ""))
+        self.assertEqual(d["days"], {"dates": ["2026-11-12"], "of": {"#10": [[1.0, 0]], "#11": [[1.0, 0]]}})
+
     def test_no_total_anywhere(self):
         """GOV-0033: per-issue figures only; no amount summed across issues, in the page or its data."""
         page = wp.page(model(), "t", "")
         self.assertNotRegex(wp.render(model()).lower(), r"\btotal")
         d = json_block(page)
-        self.assertEqual(set(d), {"built_at", "method", "windows"})
+        self.assertEqual(set(d), {"built_at", "method", "windows", "days"})
+        self.assertEqual(set(d["days"]), {"dates", "of"})   # per issue, keyed by ref
         self.assertNotIn("$", page.split('id="wm-data"')[0])   # no amount in the drawn HTML
 
     def test_a_failed_read_says_why(self):
@@ -104,6 +110,50 @@ class PageTest(unittest.TestCase):
         self.assertEqual(layout.PAGES[0], ("workmap.html", "Work map"))
         for href in re.findall(r'href="([^"]+)"', page):
             self.assertRegex(href, r"^(https://github\.com/|[a-z]+\.html)")
+
+
+class SelectedTest(unittest.TestCase):
+    """The Selected panel (#1083)."""
+
+    def panel(self) -> str:
+        html = wp.render(model())
+        return re.search(r'<aside class="wm-selected.*?</aside>', html, re.S).group(0)
+
+    def test_empty_state_has_every_section_in_order(self):
+        p = self.panel()
+        self.assertIn("wm-sel-empty", p)
+        order = [p.index(x) for x in ("wm-ss-head", "wm-ss-title", "wm-ss-stage", "wm-ss-days",
+                                      "wm-ss-peers", "wm-ss-nums")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn(wp.EMPTY, p)
+        self.assertEqual(re.findall(r'class="wm-sgl">([^<]+)<', p), ["Queued", "Building", "In review", "Merging"])
+        self.assertEqual(p.count('class="wm-bar"'), 14)
+        self.assertEqual(re.findall(r'<dt>([^<]+)</dt>', p),
+                         ["Cost", "Tokens", "Lines", "Outcomes", "Yield", "Change against usual"])
+        self.assertEqual(re.findall(r'data-n="\w+">([^<]*)<', p), ["–"] * 6)
+
+    def test_fixed_heights_so_selection_moves_nothing(self):
+        css = layout.CSS
+        sel = re.search(r"\.wm-selected \{([^}]*)\}", css).group(1)
+        frame = re.search(r"\.wm-frame \{([^}]*)\}", css).group(1)
+        height = re.search(r"height:([^;]+);", frame).group(1)
+        self.assertIn(f"height:{height};", sel)   # the map's height
+        self.assertIn("320px", sel)
+        self.assertIn("overflow:hidden", sel)
+        heights = {}
+        for cls in ("head", "title", "stage", "days", "peers", "nums"):
+            rule = re.search(rf"\.wm-ss-{cls} \{{([^}}]*)\}}", css).group(1)
+            heights[cls] = int(re.search(r"(?<![-\w])height:(\d+)px", rule).group(1))
+        # the sections, the padding and the border fit the smallest map height
+        self.assertLessEqual(sum(heights.values()) + 24 + 2, 460)
+        self.assertRegex(css, r"@media \(max-width:900px\) \{ \.wm-selected \{[^}]*height:460px")
+
+    def test_script_fills_the_panel_from_the_map_and_lists(self):
+        js = wp.script()
+        for x in ("wm-sel", "data-wm-ref", "blocked_at", "idle this window", "needs you",
+                  "emptyPanel", "Click a box, or an item in a list below, to see it here."):
+            self.assertIn(x, js)
+        self.assertEqual(wp.EMPTY, "Click a box, or an item in a list below, to see it here.")
 
 
 class BriefingTest(unittest.TestCase):
