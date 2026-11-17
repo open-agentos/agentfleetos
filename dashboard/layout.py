@@ -423,6 +423,33 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-num { min-width:0; } .wm-num dt { font-size:11px; line-height:14px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wm-num dd { margin:0; font:13px/18px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wm-brief { width:100%; }
+/* The Work map's lists (#1084): six of them, each exactly five 50px rows tall, whatever is in it. */
+.wm-lists { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:20px 24px; margin-top:20px; }
+@media (max-width:900px) { .wm-lists { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+@media (max-width:600px) { .wm-lists { grid-template-columns:minmax(0, 1fr); } }
+.wm-list { min-width:0; }
+.wm-lh { display:flex; justify-content:space-between; gap:8px; height:22px; margin:0; border-bottom:1px solid var(--ink);
+  font:600 12px/22px var(--cond); letter-spacing:.06em; white-space:nowrap; overflow:hidden; }
+.wm-lh span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.wm-lc { flex:none; font-family:var(--mono); letter-spacing:0; }
+.wm-ld { height:20px; margin:2px 0 0; font-size:12px; line-height:20px; color:var(--muted);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wm-lol { list-style:none; margin:0; padding:0; height:250px; overflow:hidden; }
+.wm-lol li { height:50px; margin:0; }
+.wm-li { display:grid; grid-template-columns:minmax(0, 1fr) auto; grid-template-rows:28px 20px; column-gap:10px;
+  width:100%; height:50px; box-sizing:border-box; padding:0 4px; margin:0; border:0; border-bottom:1px solid var(--line);
+  background:none; color:var(--ink); font:inherit; text-align:left; cursor:pointer; }
+.wm-li:hover { background:var(--card); }
+.wm-li[aria-pressed="true"] { outline:2px dashed var(--ink); outline-offset:-2px; }
+.wm-li:focus-visible { outline:3px solid var(--agent); outline-offset:-3px; }
+.wm-lt { display:flex; align-items:center; gap:6px; min-width:0; font:600 13px/28px var(--sans); }
+.wm-ln { flex:0 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wm-lf { flex:none; padding:0 4px; border:1px solid currentColor; font:600 10px/14px var(--cond);
+  letter-spacing:.04em; text-transform:uppercase; }
+.wm-lf-you { color:var(--owner); } .wm-lf-blk { color:var(--red); }
+.wm-lv { font-size:13px; line-height:28px; white-space:nowrap; text-align:right; }
+.wm-lx { grid-column:1 / -1; font-size:12px; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wm-lnone { padding:10px 4px 0; font-size:13px; }
 /* #1115: what an issue waits on and holds up, and a Goal, Area or role in place of an issue's
    sections, scrolling inside the same fixed box. */
 .wm-ss-deps { height:40px; }

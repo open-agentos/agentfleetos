@@ -14,7 +14,9 @@ the Bridge stays at bridge.html. Top to bottom, beside the shared left column (b
     since #1115 also a Goal, Area or role (the `scopes` and `roles` in the JSON block, from the
     Commissions and Agents drawers' builds), and the URL keeps the view and the selection;
   - the Briefing, moved from the Bridge (M8, #1069): the lead's newest briefing, whole;
-  - the lists' space (their own features).
+  - six lists (#1084), two rows of three: Needs you, Blocked, Spend no outcome, Running hot,
+    Gone quiet and Best yield. workmap.py's lists() picks and orders each window's matches for
+    each size; workmap.js keeps those in the zoomed group, shows five and counts them all.
 
 Per issue only: a box shows its own figures, and a group header its share of what's shown as a
 percentage, never an amount. Nothing on the page sums an amount across issues (GOV-0033). Cost
@@ -57,6 +59,16 @@ STAGES = (("queued", "Queued"), ("building", "Building"), ("review", "In review"
 EMPTY = "Click a box, or an item in a list below, to see it here."
 NUMBERS = (("cost", "Cost"), ("tokens", "Tokens"), ("lines", "Lines"), ("outcomes", "Outcomes"),
            ("yield", "Yield"), ("change", "Change against usual"))
+LISTS = (   # (key, heading, one-line description, empty sentence), in reading order (#1084)
+    ("needs", "Needs you", "Issues in the needs-you list, largest first.", "Nothing here needs you."),
+    ("blocked", "Blocked", "Blocked issues, largest first, with the stage each stopped in.", "Nothing here is blocked."),
+    ("spend", "Spend, no outcome", "Size above zero in this window and no outcome, largest first.",
+     "Everything here that used something has an outcome."),
+    ("hot", "Running hot", "Cost at least 1.5× its usual, highest first.", "Nothing here is at 1.5× its usual or more."),
+    ("quiet", "Gone quiet", "Cost under half its usual, or idle now after spend in the next longer window.",
+     "Nothing here has gone quiet."),
+    ("yield", "Best yield", "Outcomes for their size, highest first.", "Nothing here has an outcome and a size."),
+)
 KEY_LINE = ("Size is what each issue used in the window. Shade is the colour measure: darker is more. "
             "A folded corner: spend but no outcome. An amber outline: needs you. A red left edge: blocked.")
 
@@ -82,10 +94,12 @@ def page_data(wm: dict | None) -> dict:
                 continue
             dates = dates or [d.get("date") for d in ds]
             of[r["ref"]] = [[d.get("cost"), d.get("outcomes", 0)] for d in ds]
+    import workmap   # here, not at the top: workmap imports generate, which imports this module
     return {"built_at": desk.get("built_at"), "method": desk.get("method"),
             "windows": {w: [{k: v for k, v in r.items() if k != "days"} for r in rows]
                         for w, rows in windows.items()},
-            "days": {"dates": dates, "of": of}}
+            "days": {"dates": dates, "of": of},
+            "lists": workmap.desk_lists(windows)}
 
 
 def _plain(text) -> str:
@@ -203,6 +217,19 @@ def selected_html() -> str:
             '</aside>')
 
 
+def lists_html() -> str:
+    """The six lists (#1084) in their empty state: each heading, its count, its line and a list
+    at the height of five rows. workmap.js fills the counts and rows for the window, zoom and
+    size; the heights are fixed, so nothing moves when it does."""
+    out = []
+    for key, name, line, empty in LISTS:
+        out.append(f'<section class="wm-list" data-list="{key}" data-empty="{esc(empty)}" aria-label="{esc(name)}">'
+                   f'<h3 class="wm-lh"><span>{esc(name.upper())}</span><span class="wm-lc">–</span></h3>'
+                   f'<p class="wm-ld" title="{esc(line)}">{esc(line)}</p>'
+                   '<ol class="wm-lol"></ol></section>')
+    return f'<div class="wm-lists" id="wm-lists" aria-label="Lists">{"".join(out)}</div>'
+
+
 def briefing_html(briefing: dict | None, now) -> str:
     """The lead's newest briefing, whole, moved from the Bridge (M8, #1069): one paragraph per
     chapter, a link to its comment, and a note when it's from before today."""
@@ -237,7 +264,7 @@ def render(m: dict) -> str:
             '<div class="wm-legend" id="wm-legend"></div></section>'
             f'{selected_html()}</div>'
             f'{briefing_html((m.get("report") or {}).get("briefing"), m["now"])}'
-            '<section class="wm-lists" aria-label="Lists"></section>'
+            f'{lists_html()}'
             f'{method}{data_block(d)}</div>')
     return f'<div class="bridge">{bridge.nav_html(FILE, bridge.nav_counts(m))}{main}</div>'
 

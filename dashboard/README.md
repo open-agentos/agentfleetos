@@ -49,7 +49,7 @@ The fonts are **self-hosted**, so the public page loads nothing from a third par
 - **Markers**, each a shape as well as a colour, so none relies on colour alone: no outcome (spend in the window, no outcome) is an umber folded corner, top right; needs you a 3px amber inset outline; blocked a 5px red left edge; selected a 2px dashed outline.
 - **Legend** under the map: the ramp with its end labels for the colour chosen, a swatch per marker, and how many issues were left off.
 - **Briefing**, moved from the Bridge (M8, #1029): the lead's newest daily briefing, whole, one paragraph per chapter, from the report issue's comments the desk already reads (`report.py` takes the newest planner comment starting `**Briefing`, without its first line or signature). It links to the comment, and says so when it's from before today. It shows here only.
-- The lists' space, for their own features.
+- **Lists**, six of them under the Briefing ([the lists](#the-lists), #1084).
 
 ### The Selected panel
 
@@ -72,13 +72,30 @@ The panel (#1083, FEAT-10) tells one issue's story beside the map: 320px wide, t
 
 The URL holds the view (#1115): `?group=goal&size=cost&colour=yield&w=week&zoom=M9#issue-1012`, with `#goal-987`, `#role-builder` or `#unattributed` for the other selections. Every control is written, so a copied URL shows the same view in a browser with other saved choices. Opening it restores the controls, zoom and selection, and the URL wins over `localStorage`. A new selection is a history entry, so Back and Forward step through selections; a control or zoom change replaces the current entry.
 
-Empty, it keeps the same sections and size, with grey placeholder bars, dashes and "Click a box, or an item in a list below, to see it here." Clicking a box selects it, and clicking it again clears it. Any element in the page with a `data-wm-ref` attribute (the Work map's lists, when they come) selects that issue the same way. The panel redraws when the window, size or grouping changes.
+Empty, it keeps the same sections and size, with grey placeholder bars, dashes and "Click a box, or an item in a list below, to see it here." Clicking a box selects it, and clicking it again clears it. Any element in the page with a `data-wm-ref` attribute (the Work map's [lists](#the-lists)) selects that issue the same way. The panel redraws when the window, size or grouping changes.
 
 The map's rows are in the page itself, in a `<script type="application/json">` block with `<`, `>` and `&` escaped, so it draws on GitHub Pages and the live Desk without fetching. `workmap.js` reads it and builds nodes with `createElement` and text nodes only (no `innerHTML`, no `eval`); it's served as `js/workmap.js` and the page's CSP allows it by hash. With JavaScript off the page says the map needs it, and the Briefing still shows. Each issue's 14-day series is the same in every window, so the page carries it once, under `days`: `dates` and `of` (ref → `[cost, outcomes]` per day).
 
 **No total** (GOV-0033): boxes show their own issue's figures, headers a percentage, and the tooltip and Selected panel one issue's. Selecting a box or changing a control changes nothing's size or position outside the map: the breadcrumb is one line and the legend a fixed height.
 
 **Month** isn't in `map.json`: the Desk reads 14 days of heartbeats, too few for a month and its baseline. Picking it says so and points to `swarm map --window month`.
+
+### The lists
+
+Six lists under the Briefing (#1084, FEAT-11) name the exceptions a small box hides. They come in two rows of three, two columns below 900px wide and one below 600px. Each has an uppercase heading with its count on the right, a one-line description, and exactly five 50px rows. A list with fewer items keeps its height, and an empty one shows one muted sentence. Each row shows the title on one line, cut with an ellipsis, with **You** (needs you, amber) and **Blocked** (red) flags in words where they apply. The list's value is on the right in mono, and under the title is a muted line with the issue number and some context. Clicking a row, or pressing Enter on it, selects the issue in the [Selected panel](#the-selected-panel) and outlines its box on the map, and the row gets a dashed outline. Every list follows the window, the zoom (only the zoomed group's issues) and the size. Changing a control or selecting an item changes no list's height or position.
+
+| List | Who's in it | Order | Value, and the line under |
+|---|---|---|---|
+| Needs you | issues in the needs-you list | largest size first | size; stage and role |
+| Blocked | stage `blocked` | largest first | size; "was <stage>" (`blocked_at`) and role |
+| Spend, no outcome | size above zero in the window, no outcome | largest first | size; stage and role |
+| Running hot | cost at least 1.5× a baseline above zero | highest first | +N%; usual and now |
+| Gone quiet | cost under half a baseline above zero, or idle in the window (no tokens, cost or outcome) after spend in the next longer window (hour→day, day→week, week→month) | idle first, then the lowest share | −N% or "idle"; usual and now, or the longer window's figure |
+| Best yield | at least one outcome and a size above zero | highest yield first | N per $100, per M tokens or per 1k lines |
+
+Running hot and Gone quiet compare cost, as the map's Change colour does. An issue with no baseline, a baseline of 0 or no price is in neither, except as idle. The unattributed row is in no list. An issue may be in several. A heading's count is every match in the zoomed group, not just the five shown. It is a number of issues, not an amount (GOV-0033).
+
+`workmap.py`'s `lists()` holds the rules. The page carries every window's matches for every size, in order, as `lists` → window → size → list → `[ref, value, figure]`, and `workmap.js` keeps those in the zoomed group. Gone quiet's idle issues are left off the map, so a row may come from another window's data, and the Selected panel says "idle this window". The Desk reads no month, so in the week window Gone quiet has no idle part, and its description says so. In the month window each list says the Desk has no month data.
 
 ## The Bridge
 

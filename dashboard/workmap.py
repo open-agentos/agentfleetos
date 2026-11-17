@@ -488,6 +488,92 @@ def desk_file(g: dict, now: dt.datetime) -> dict:
             "method": spend.METHOD, "windows": {w: build(g, now, w)["rows"] for w in DESK_WINDOWS}}
 
 
+# ---------------------------------------------------------------- the lists (#1084)
+
+LISTS = ("needs", "blocked", "spend", "hot", "quiet", "yield")
+SIZES = ("cost", "tokens", "lines")
+PER = {"cost": 100, "tokens": 1_000_000, "lines": 1_000}   # yield is outcomes per this much size
+HOT = 1.5     # Running hot: cost at least this many times its usual
+QUIET = 0.5   # Gone quiet: cost under this share of its usual
+LONGER = {"hour": "day", "day": "week", "week": "month"}   # Gone quiet's idle check
+
+
+def size_of(r: dict, size: str) -> float:
+    v = r.get(size)
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else 0
+
+
+def _num(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _spent(r: dict) -> bool:
+    return (r.get("tokens") or 0) > 0 or (_num(r.get("cost")) and r["cost"] > 0)
+
+
+def _idle(r: dict) -> bool:
+    return not _spent(r) and not r.get("outcomes")
+
+
+def lists(rows: list[dict], size: str, longer: list[dict] | None = None) -> dict[str, list]:
+    """The Work map's six lists (#1084) for one window's rows and one size: every match, in
+    order, as [ref, value, figure]. The page shows the first five and counts them all. Issues
+    only: the unattributed row is in none. An issue may be in more than one.
+
+      needs    needs_you; value its size; largest first.
+      blocked  stage blocked; value its size; largest first.
+      spend    size above zero and no outcome; value its size; largest first.
+      hot      cost at least HOT x a baseline above zero; value cost/baseline, figure the
+               baseline; highest first. No baseline, a zero one or no price: not in it.
+      quiet    cost under QUIET x a baseline above zero (value cost/baseline, figure the
+               baseline), or idle here (no tokens, cost or outcome) with spend in `longer`, the
+               next longer window's rows (value None, figure its size there). Idle ones first,
+               then the lowest share; ties by the larger figure.
+      yield    at least one outcome and a size above zero; value outcomes per PER[size];
+               highest first.
+    Other ties go to the lower issue number. Cost, not size, is what hot and quiet compare,
+    as the map's Change colour does."""
+    issues = [r for r in rows if r.get("issue") is not None]
+
+    def by_size(keep):
+        return [[r["ref"], size_of(r, size), None]
+                for r in sorted((r for r in issues if keep(r)), key=lambda r: (-size_of(r, size), r["issue"]))]
+
+    def ratio(r):
+        c, b = r.get("cost"), r.get("baseline")
+        return c / b if _num(c) and _num(b) and b > 0 else None
+
+    hot = sorted(((x, r) for r in issues if (x := ratio(r)) is not None and x >= HOT),
+                 key=lambda p: (-p[0], p[1]["issue"]))
+    quiet = {r["ref"]: (1, x, r["baseline"], r["issue"]) for r in issues
+             if (x := ratio(r)) is not None and x < QUIET}
+    here = {r["ref"]: r for r in issues}
+    for r in longer or []:
+        if r.get("issue") is None or not _spent(r):
+            continue
+        if r["ref"] not in here or _idle(here[r["ref"]]):
+            quiet[r["ref"]] = (0, None, size_of(r, size), r["issue"])
+    yields = sorted(((r["outcomes"] / size_of(r, size) * PER[size], r) for r in issues
+                     if (r.get("outcomes") or 0) > 0 and size_of(r, size) > 0),
+                    key=lambda p: (-p[0], p[1]["issue"]))
+    return {
+        "needs": by_size(lambda r: bool(r.get("needs_you"))),
+        "blocked": by_size(lambda r: r.get("stage") == "blocked"),
+        "spend": by_size(lambda r: size_of(r, size) > 0 and not r.get("outcomes")),
+        "hot": [[r["ref"], round(x, 4), r["baseline"]] for x, r in hot],
+        "quiet": [[ref, None if q[1] is None else round(q[1], 4), q[2]]
+                  for ref, q in sorted(quiet.items(), key=lambda kv: (kv[1][0], kv[1][1] or 0, -kv[1][2], kv[1][3]))],
+        "yield": [[r["ref"], round(y, 4), None] for y, r in yields],
+    }
+
+
+def desk_lists(windows: dict[str, list]) -> dict:
+    """Every window's lists for every size: {window: {size: lists()}}. A window whose next
+    longer one isn't here (the Desk's week: it reads no month) has no idle part in quiet."""
+    return {w: {s: lists(rows, s, windows.get(LONGER.get(w))) for s in SIZES}
+            for w, rows in windows.items()}
+
+
 # ---------------------------------------------------------------- text
 
 SPARK = " ▁▂▃▄▅▆▇█"

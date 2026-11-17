@@ -4,7 +4,8 @@
 // never parses markup or runs strings as code), and never fetches. It shows each issue's own figures and each group's
 // share as a percentage: no amount is ever summed across issues for display (GOV-0033).
 // The Selected panel (#1083) shows one issue: its 14-day cost is that issue's own sum, a
-// per-issue figure, not a sum across issues.
+// per-issue figure, not a sum across issues. The lists (#1084) under the Briefing show issues
+// one per row; a heading's count is a number of issues, not an amount.
 // Since #1115 (FEAT-13) the panel also shows a Goal, Area or role (the "i" in a group header, or
 // any element with data-wm-sel), each issue's links (what it waits on and holds up), and the URL
 // keeps the view: ?group=&size=&colour=&w=&zoom= and #issue-N, #goal-N, #role-NAME. The URL
@@ -233,7 +234,9 @@
     mapEl.appendChild(p);
   }
 
-  function draw() {
+  function draw() { drawMap(); drawLists(); }
+
+  function drawMap() {
     clear(mapEl); clear(legendEl); clear(crumbEl); hideTip();
     syncButtons();
     var all = rowsNow();
@@ -358,6 +361,10 @@
       boxes[i].classList.toggle("wm-sel", on);
       boxes[i].classList.toggle("wm-dep", holds.indexOf(Number(ref.slice(1))) >= 0);
       boxes[i].setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    var items = document.querySelectorAll("#wm-lists [data-wm-ref]");
+    for (var k = 0; k < items.length; k++) {
+      items[k].setAttribute("aria-pressed", items[k].getAttribute("data-wm-ref") === st.selected ? "true" : "false");
     }
     var is = mapEl.querySelectorAll(".wm-gi");
     for (var j = 0; j < is.length; j++) {
@@ -758,6 +765,93 @@
     var s2 = ev.target && ev.target.closest ? ev.target.closest("[data-wm-sel]") : null;
     if (s2 && st.selected !== s2.getAttribute("data-wm-sel")) select(s2.getAttribute("data-wm-sel"));
   });
+
+  // ------------------------------------------------------------ the lists (#1084)
+
+  // workmap.py's lists() picked and ordered each window's matches for each size, as
+  // [ref, value, figure]. Here: keep those in the zoomed group, show five, count them all.
+  var SHOW = 5;
+  var LONGER = { hour: "day", day: "week", week: "month" };
+  var QUIET_LINE = "Cost under half its usual, or idle now after spend in the next longer window.";
+
+  function figText(x) {
+    if (st.size === "cost") return usd(x);
+    if (st.size === "tokens") return short(x || 0) + " tokens";
+    return num(x || 0, 0) + " lines";
+  }
+  function stageText(r) { return r.stage ? r.stage : r.state === "closed" ? "closed" : "no stage"; }
+  function pct(x) { return Math.round(Math.abs(x) * 100) + "%"; }
+
+  // The value on the right, in mono, and the muted line under the title.
+  function listText(key, it, r) {
+    var ref = r.ref, role = r.role || "no role";
+    if (key === "hot") return ["+" + pct(it[1] - 1), ref + " · usual " + usd(it[2]) + ", now " + usd(r.cost)];
+    if (key === "quiet") {
+      if (it[1] === null) return ["idle", ref + " · " + figText(it[2]) + " in the " + LONGER[st.window]];
+      return ["−" + pct(1 - it[1]), ref + " · usual " + usd(it[2]) + ", now " + usd(r.cost)];
+    }
+    if (key === "yield") {
+      return [num(it[1], it[1] < 10 ? 1 : 0) + " " + UNIT[st.size],
+              ref + " · " + r.outcomes + (r.outcomes === 1 ? " outcome" : " outcomes") + " for " + sizeText(r)];
+    }
+    if (key === "blocked") return [sizeText(r), ref + " · was " + (r.blocked_at || "queued") + " · " + role];
+    return [sizeText(r), ref + " · " + stageText(r) + " · " + role];
+  }
+
+  function listRow(key, it, r) {
+    var li = el("li");
+    var b = el("button", "wm-li");
+    b.type = "button";
+    b.setAttribute("data-wm-ref", r.ref);
+    b.setAttribute("aria-controls", "wm-sel");
+    b.setAttribute("aria-pressed", r.ref === st.selected ? "true" : "false");
+    var t = listText(key, it, r);
+    var top = el("span", "wm-lt");
+    top.appendChild(el("span", "wm-ln", r.title || r.ref));
+    var flags = [];
+    if (r.needs_you) { top.appendChild(el("span", "wm-lf wm-lf-you", "You")); flags.push("needs you"); }
+    if (r.stage === "blocked") { top.appendChild(el("span", "wm-lf wm-lf-blk", "Blocked")); flags.push("blocked"); }
+    b.appendChild(top);
+    b.appendChild(el("span", "wm-lv mono", t[0]));
+    b.appendChild(el("span", "wm-lx muted", t[1]));
+    b.title = (r.title || r.ref) + "\n" + t[1];
+    b.setAttribute("aria-label", (r.title || r.ref) + ": " + t[0] + ", " + t[1] + (flags.length ? ", " + flags.join(", ") : ""));
+    li.appendChild(b);
+    return li;
+  }
+
+  function drawLists() {
+    var box = $("wm-lists");
+    if (!box) return;
+    var why = null, sets = null;
+    if (!data || data.error) why = "The Work map's data wasn't read in this build.";
+    else if (!rowsNow()) why = st.window === "month" ? "Month isn't in the Desk's data." : "This window isn't in the build's data.";
+    else sets = ((data.lists || {})[st.window] || {})[st.size] || {};
+    var secs = box.querySelectorAll("[data-list]");
+    for (var i = 0; i < secs.length; i++) {
+      var sec = secs[i], key = sec.getAttribute("data-list");
+      var ol = sec.querySelector(".wm-lol"), count = sec.querySelector(".wm-lc");
+      clear(ol);
+      var shown = [];
+      if (sets) {
+        (sets[key] || []).forEach(function (it) {
+          var f = findRow(it[0]);
+          if (f && (st.zoom === null || groupOf(f.row) === st.zoom)) shown.push({ it: it, row: f.row });
+        });
+      }
+      count.textContent = sets ? String(shown.length) : "–";
+      if (key === "quiet") {
+        var longer = LONGER[st.window];
+        var line = sets && longer && !rowsOf(longer)
+          ? "Cost under half its usual. Idle ones need the " + longer + ", which the Desk doesn't read."
+          : QUIET_LINE;
+        var d = sec.querySelector(".wm-ld"); d.textContent = line; d.title = line;
+      }
+      if (!shown.length) { ol.appendChild(el("li", "wm-lnone muted", why || sec.getAttribute("data-empty"))); continue; }
+      shown.slice(0, SHOW).forEach(function (x) { ol.appendChild(listRow(key, x.it, x.row)); });
+    }
+  }
+  function rowsOf(w) { var r = data && data.windows ? data.windows[w] : null; return Array.isArray(r) ? r : null; }
 
   // ------------------------------------------------------------ tooltip
 
