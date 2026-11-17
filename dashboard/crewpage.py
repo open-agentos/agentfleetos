@@ -9,7 +9,7 @@ place when its `built_at` is newer. It doesn't read `state.json["desk"]` or load
 With JavaScript off the page shows a notice and a GitHub link (per GOV-0051).
 
 Each session's spend estimate, cap and over-cap flag come from state.json too (per #1153's
-answer, GOV-0055), so the Spend column redraws in place with the rest. The block adds only the
+answer, GOV-0057), so the Spend column redraws in place with the rest. The block adds only the
 method sentence under the table.
 """
 from __future__ import annotations

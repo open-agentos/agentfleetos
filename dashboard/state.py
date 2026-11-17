@@ -3,7 +3,7 @@
 `state(model)` takes what `generate.build()` returns and keeps only what the page renders,
 with no HTML. Its only cost is each session's own: its list-price estimate (`cost`), its role's
 cap (`cap`) and an over-cap flag (`over_cap`), for Crew's Spend column (per #1153's answer,
-GOV-0055). It never sums them: no daily spend, total or spend block (GOV-0033, GOV-0014). It's
+GOV-0057). It never sums them: no daily spend, total or spend block (GOV-0033, GOV-0014). It's
 public like the page (#33), so sessions and PRs keep only the fields the page shows, by name.
 
 Timestamps are RFC 3339 strings in UTC (`2026-11-05T07:20:08Z`); dates are `YYYY-MM-DD`.

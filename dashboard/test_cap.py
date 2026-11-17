@@ -77,7 +77,7 @@ class OverCapTest(unittest.TestCase):
     def test_page_marks_over_cap(self):
         m, _ = self.sessions({"builder": 15, "reviewer": 5})
         b = next(s for s in st.state(m)["sessions"] if s["session_id"] == "b-over")
-        self.assertEqual((b["cost"], b["cap"], b["over_cap"]), (20.0, 15, True))   # in state.json (GOV-0055)
+        self.assertEqual((b["cost"], b["cap"], b["over_cap"]), (20.0, 15, True))   # in state.json (GOV-0057)
         if crewdraw.NODE:   # the sessions table moved to Crew (#1113), drawn by crew.js (#1139)
             self.assertIn('<span class="pill s-blocked">over cap $15.00</span>', crewdraw.page(m))
 
