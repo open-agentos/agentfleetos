@@ -51,7 +51,7 @@ n/a. This is an authoritative decision by the owner, who confirmed option 2, the
 ## Consequences
 
 - `state.json` may carry per-session cost, cap and an over-cap flag. The same figures are already public in `crew.html`, so this adds a format, not new exposure.
-- `test_state.py`'s ban on keys named cost, usd or spend, and the README's "no cost in `state.json`" line (`dashboard/README.md`), must change to allow these per-session fields and still fail on any total. Those edits belong to the PR that ships the fields (#1139), not this record.
+- `test_state.py`'s ban on keys named cost, usd or spend, and the README's "no cost in `state.json`" line (`dashboard/README.md`), must change to allow these per-session fields and still fail on any total. Those edits were made in #1166, which shipped the fields, not by this record.
 - Sums stay barred (GOV-0033), so the test should keep rejecting totals.
 - The team accepts publishing a new cost field in ready-made form. Dropping the fields again is a code change, but figures already published can't be recalled.
 - Expires on 2026-12-01 (the question's time to live) unless re-affirmed.

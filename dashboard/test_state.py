@@ -66,7 +66,7 @@ class StateTest(unittest.TestCase):
 
     def test_cost_only_per_session_never_summed(self):
         # Each session's own estimate, cap and over-cap flag, for Crew's Spend column (per
-        # #1153's answer, GOV-0056); nothing else, and no total (GOV-0033).
+        # #1153's answer, GOV-0057); nothing else, and no total (GOV-0033).
         self.assertTrue(any(s["over_cap"] for s in self.m["sessions"]))   # the fixture is priced
         for mine, theirs in zip(self.s["sessions"], self.m["sessions"]):
             self.assertEqual([mine[k] for k in ("cost", "cap", "over_cap")],
