@@ -14,6 +14,7 @@ Each session is a Claude Code session with one role: planner, builder, reviewer,
 | `swarm.toml` | The swarm manifest: which roles to run, how many of each, their model and an optional spend cap | [launcher/README.md](launcher/README.md#the-swarm-manifest) |
 | `ops/` | Role identities: one GitHub App per role, and `ops/swarm-session`, which starts a session as that App | [ops/README.md](ops/README.md) |
 | `roles/` | The prompt each role starts from | |
+| `docs/integrations/` | How-to guides for the tools AgentFleetOS connects to. The first is Notion: specs written there ship through the swarm | [docs/integrations/README.md](docs/integrations/README.md) |
 | `research/` | The analyst's record of the landscape outside AgentFleetOS: similar and adjacent products, and platform changes | [research/landscape.md](research/landscape.md) |
 | `GOVERNANCE.md`, `governance/` | Who decides what, the rulings so far (`governance/INDEX.md`) and the Phase 0 log | [GOVERNANCE.md](GOVERNANCE.md) |
 
