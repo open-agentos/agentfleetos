@@ -25,6 +25,7 @@ import precedent
 import report
 import reviewer_runs as reviewer_runs_mod
 import wire
+import workmap_page
 
 SCHEMA = 1
 
@@ -134,4 +135,6 @@ def state(m: dict) -> dict:
         "effort": effort.state(m.get("effort")),   # #1013: PRs by kind of work per open Goal, and the trend
         "authority": m.get("authority") or authority.build(None, []),   # #410, #1140: Governance's authority map
         "crew_roles": agents.state(m),   # #1139: Crew's role rows
+        # #1135: the Work map's strip, tape, Goals and roles, which map.json doesn't carry
+        "workmap": workmap_page.live_data(m, committees.owner_login()),
     })

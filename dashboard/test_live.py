@@ -17,6 +17,7 @@ import crewpage  # noqa: E402
 import generate as g  # noqa: E402
 import govdraw  # noqa: E402
 import govpage  # noqa: E402
+import layout  # noqa: E402
 import live  # noqa: E402
 import state as st  # noqa: E402
 from test_floor import model as floor_model  # noqa: E402
@@ -43,8 +44,7 @@ def csp_of(page: str) -> dict[str, list[str]]:
 
 
 class PageTest(unittest.TestCase):
-    """poll.js retired (#1135): each page draws itself, and only the pages with parts no script
-    redraws reload themselves."""
+    """poll.js retired (#1135): each page draws itself and redraws in place; no page reloads itself."""
 
     def setUp(self):
         self.m = desk_model()
@@ -65,16 +65,22 @@ class PageTest(unittest.TestCase):
             head = self.pages[name].split("</head>")[0]
             self.assertLess(head.index("Content-Security-Policy"), head.index("<style>"), name)
 
-    def test_only_pages_with_parts_no_script_redraws_reload(self):
-        refresh = '<meta http-equiv="refresh" content="300">'
-        for name in ("crew.html", "governance.html"):   # they redraw in place (#1139, #1140)
-            self.assertNotIn('http-equiv="refresh"', self.pages[name], name)
-        for name in ("workmap.html", "effort.html"):    # the strip, Briefing and tape; a static page
-            self.assertIn(refresh, self.pages[name], name)
+    def test_no_page_reloads_itself(self):
+        # The Work map, Crew and Governance redraw in place (#1138-#1140, #1135); effort.html has
+        # no script and shows the build it came with.
+        for name, page in self.pages.items():
+            self.assertNotIn('http-equiv="refresh"', page, name)
+        self.assertFalse(hasattr(layout, "REFRESH_SECONDS"))
+
+    def test_state_json_carries_the_work_maps_other_parts(self):
+        # What map.json doesn't carry, so workmap.js can redraw it from state.json (#1135).
+        d = st.state(self.m)["workmap"]
+        self.assertEqual(set(d), {"strip", "needs_extra", "scopes", "roles", "briefing", "tape"})
+        self.assertEqual(json.loads(json.dumps(d)), d)   # plain JSON
 
     def test_the_masthead_keeps_its_page_name(self):
         # Only the mark, build time and owner line redraw, so each page keeps its own name.
-        for name, title in (("crew.html", "Crew"), ("governance.html", "Governance")):
+        for name, title in (("crew.html", "Crew"), ("governance.html", "Governance"), ("workmap.html", "Map")):
             head = self.pages[name].split('<header class="mast">')[1].split("</header>")[0]
             self.assertIn(f"AgentFleetOS · {title}</span>", head.split('data-panel="mast"')[0], name)
 

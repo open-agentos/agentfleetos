@@ -52,8 +52,9 @@ class PageTest(unittest.TestCase):
         for bad in ("innerHTML", "outerHTML", "insertAdjacentHTML", "eval(", "new Function",
                     "XMLHttpRequest", "document.write", "import(", "src ="):
             self.assertNotIn(bad, js)
-        # Its one fetch is same-origin map.json (#1138, GOV-0051).
-        self.assertEqual(re.findall(r"fetch\(([^,]*),", js), ['"map.json?t=" + Date.now()'])
+        # Its fetches are same-origin map.json (#1138) and state.json (#1135), per GOV-0051.
+        self.assertEqual(re.findall(r"fetch\(([^,]*),", js),
+                         ['"map.json?t=" + Date.now()', '"state.json?t=" + Date.now()'])
         self.assertIn("localStorage", js)
         self.assertIn("try {", js)   # storage is optional
 
@@ -78,7 +79,8 @@ class PageTest(unittest.TestCase):
         self.assertEqual(set(d), {"built_at", "method", "windows", "days", "lists", "repo", "scopes", "roles",
                                   "strip", "needs_extra", "live"})
         self.assertEqual(set(d["live"]), {"every", "stale"})   # timings, no figure
-        self.assertEqual(set(d["strip"]), {"flagged", "decisions"})   # numbers and refs, no amount
+        self.assertEqual(set(d["strip"]), {"flagged", "decisions", "scopes", "waiting", "oldest", "working",
+                                           "agents", "authority", "authority_hours", "error"})   # counts and refs, no amount
         for x in d["needs_extra"]:
             self.assertFalse({"cost", "tokens", "total"} & set(x))
         for sc in d["scopes"].values():   # a Goal's view: no amount of its own, only its issues' rows
@@ -319,7 +321,7 @@ class LiveSettingsTest(unittest.TestCase):
         d = json_block(wp.page(model(), "t", ""))
         self.assertEqual(d["live"], {"every": live.EVERY_SECONDS * 1000, "stale": live.STALE_MINUTES * 60 * 1000})
         page = wp.page(model(), "t", "")
-        self.assertIn(f'content="{layout.REFRESH_SECONDS}"', page)   # the strip, Briefing and tape still reload (#1135)
+        self.assertNotIn('http-equiv="refresh"', page)   # it redraws everything in place (#1135)
         self.assertIn("connect-src 'self'", page)
 
 
@@ -355,7 +357,11 @@ function el(tag) {
 (async () => {
   const out = [];
   for (const c of cases) {
-    const ids = {}, live = el("span"), stampEl = el("time");
+    const ids = {}, live = el("span"), stampEl = el("time"), parts = {};
+    for (const k of ["section.sp", "section.wm-brief", "section.tp", 'header.mast [data-panel="mast"]']) {
+      parts[k] = el("section");
+      parts[k].parentNode = { replaceChild: (next, old) => { parts[k] = next; next.parentNode = old.parentNode; } };
+    }
     stampEl.attrs.datetime = c.page_built_at;
     ids["wm-data"] = { textContent: JSON.stringify(c.page) };
     const byId = (id) => { if (!ids[id]) { ids[id] = el("div"); for (let i = 0; i < 14; i++) ids[id].children.push(el("span")); } return ids[id]; };
@@ -364,7 +370,7 @@ function el(tag) {
     global.document = {
       hidden: !!c.hidden, addEventListener() {},
       getElementById: byId, createElement: (t) => el(t), createTextNode: (t) => ({ text: String(t) }),
-      querySelector: (s) => s === "header.mast time.stamp" ? stampEl : null,
+      querySelector: (s) => s === "header.mast time.stamp" ? stampEl : (parts[s] || null),
       querySelectorAll: (s) => s === "header.mast .live" ? [live] : [],
     };
     global.window = {
@@ -373,8 +379,8 @@ function el(tag) {
       localStorage: { getItem: () => null, setItem() {} },
       addEventListener() {}, setTimeout: () => 0, clearTimeout() {},
       setInterval: (fn, ms) => { tick = fn; every = ms; },
-      fetch: (url, opts) => { fetched.push([url.split("?")[0], opts.cache]);
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(c.served) }); },
+      fetch: (url, opts) => { const f = url.split("?")[0]; fetched.push([f, opts.cache]);
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(f === "state.json" ? (c.state || null) : c.served) }); },
     };
     global.fetch = global.window.fetch;
     new Function(js)();
@@ -385,7 +391,8 @@ function el(tag) {
     out.push({ name: c.name, every, staleAtLoad, stale: live.classes.has("stale"), fetched, urls,
       boxes: map.children.filter((b) => b.attrs["data-ref"]).map((b) => b.attrs["data-ref"]).sort(),
       crumb: text(ids["wm-crumb"]), selected: text(ids["wm-sel-ref"]),
-      stamp: stampEl.attrs.datetime, stampText: text(stampEl) });
+      stamp: stampEl.attrs.datetime, stampText: text(stampEl),
+      parts: Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, text(v)])) });
   }
   console.log(JSON.stringify(out));
 })();
@@ -401,6 +408,18 @@ class RefreshBehaviourTest(unittest.TestCase):
         windows = {"hour": [], "day": day, "week": day}
         return {"schema": 1, "built_at": built_at, "repo": REPO, "method": "m",
                 "windows": windows, "lists": workmap.desk_lists(windows)}
+
+    def state(self, built_at, waiting=0, tape_text="PR #5 merged: x"):
+        """A state.json with the Work map's slice (#1135)."""
+        return {"schema": 1, "built_at": built_at, "owner_last_acted": {"status": "none", "days": 3},
+                "workmap": {"strip": {"flagged": [], "decisions": [], "scopes": 2, "waiting": waiting,
+                                      "oldest": "5h" if waiting else None, "working": 1, "agents": 2,
+                                      "authority": 0, "authority_hours": 24, "error": False},
+                            "needs_extra": [], "scopes": {}, "roles": {"days": 1, "report_issue": None, "of": {}},
+                            "briefing": {"url": None, "stamp": "Thu 11-05, 09:00", "old": False,
+                                         "paras": ["Plain and **bold** and `code`."]},
+                            "tape": [{"time": built_at, "when": "10:01", "who": "builder", "kind": "SHIPPED",
+                                      "text": tape_text, "url": None, "ref": None, "flag": False}]}}
 
     def run_cases(self, cases):
         import subprocess
@@ -425,18 +444,21 @@ class RefreshBehaviourTest(unittest.TestCase):
         bad = self.desk("2026-11-05T10:01:00Z", new)
         bad["windows"]["day"] = {"not": "rows"}
         got = self.run_cases([
-            {**base, "name": "newer", "served": self.desk("2026-11-05T10:01:00Z", new)},
+            {**base, "name": "newer", "served": self.desk("2026-11-05T10:01:00Z", new),
+             "state": self.state("2026-11-05T10:01:00Z", waiting=3)},
+            {**base, "name": "state_older", "served": self.desk("2026-11-05T10:01:00Z", new),
+             "state": self.state("2026-11-05T09:00:00Z", waiting=3)},
             {**base, "name": "older", "served": self.desk("2026-11-05T09:00:00Z", new)},
             {**base, "name": "bad", "served": bad},
             {**base, "name": "hidden", "hidden": True, "served": self.desk("2026-11-05T10:01:00Z", new)},
             {**base, "name": "stale", "clock": "2026-11-05T10:20:00Z",
              "served": self.desk("2026-11-05T09:00:00Z", new)},
             {**base, "name": "fresh_again", "clock": "2026-11-05T10:20:00Z",
-             "served": self.desk("2026-11-05T10:19:00Z", new)},
+             "served": self.desk("2026-11-05T10:19:00Z", new), "state": self.state("2026-11-05T10:19:00Z")},
         ])
         n = got["newer"]
         self.assertEqual(n["every"], live.EVERY_SECONDS * 1000)
-        self.assertEqual(n["fetched"], [["map.json", "no-store"]])
+        self.assertEqual(n["fetched"], [["map.json", "no-store"], ["state.json", "no-store"]])
         self.assertEqual(n["boxes"], ["#10", "#11", "#99"])         # redrawn in place
         self.assertEqual(n["crumb"], "All effort types › Capability")   # zoom kept
         self.assertEqual(n["selected"], "#10")                      # selection kept
@@ -451,6 +473,16 @@ class RefreshBehaviourTest(unittest.TestCase):
         self.assertTrue(got["stale"]["stale"])
         self.assertFalse(got["fresh_again"]["stale"])                # new data brings it back
         self.assertEqual(got["fresh_again"]["boxes"], ["#10", "#11", "#99"])
+        # #1135: a newer state.json redraws the strip, Briefing, tape and masthead in place.
+        p = n["parts"]
+        self.assertIn("3 decisions waiting, oldest 5h", p["section.sp"])
+        self.assertIn("1 agents working of 2 live", p["section.sp"])
+        self.assertIn("Plain and bold and code.", p["section.wm-brief"])
+        self.assertIn("PR #5 merged: x", p["section.tp"])
+        self.assertIn("Owner: no activity in the last 3 days", p['header.mast [data-panel="mast"]'])
+        # An older state.json changes nothing, and the masthead shows the older of the two builds.
+        self.assertEqual(set(got["state_older"]["parts"].values()), {""})
+        self.assertEqual(got["state_older"]["stamp"], "2026-11-05T10:00:00Z")
 
 
 if __name__ == "__main__":

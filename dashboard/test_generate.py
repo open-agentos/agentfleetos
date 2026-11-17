@@ -197,11 +197,7 @@ class PageTest(unittest.TestCase):
         for name, page in pages.items():
             head = page.split("</head>")[0]
             self.assertIn('<meta name="robots" content="noindex, nofollow">', head, name)
-            # Crew and Governance redraw in place; the rest reload for parts no script redraws (#1135).
-            if name in (crewpage.FILE, govpage.FILE):
-                self.assertNotIn('http-equiv="refresh"', head, name)
-            else:
-                self.assertIn('<meta http-equiv="refresh" content="300">', head, name)
+            self.assertNotIn('http-equiv="refresh"', head, name)   # none reloads itself (#1135)
             self.assertIn('<meta name="viewport" content="width=device-width, initial-scale=1">', head, name)
             # Crew and Governance load their own scripts and the Work map its treemap, each from js/
             # and allowed by hash (#1139, #1140, #1082, #1106); no page carries an inline one.

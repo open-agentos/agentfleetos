@@ -713,7 +713,7 @@ def render_workmap(m: dict) -> str:
 def render_effort(m: dict) -> str:
     """effort.html (#1013): the PRs behind each of Crew's Effort bar segments."""
     return layout.page(effort.FILE, TITLE, m["repo"], m["now"], effort.page_body(m.get("effort"), m["repo"]),
-                       owner_line(m), reload=True)   # no script redraws it
+                       owner_line(m))   # no script: it shows the build it came with (#1135)
 
 
 CREW_FILE = crewpage.FILE

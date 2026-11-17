@@ -38,10 +38,6 @@ VENDOR_MANIFEST = "manifest.json"
 VENDOR_FIELDS = ("file", "library", "version", "licence", "source", "sha256")
 EXACT_VERSION = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")   # 7.9.0, never ^7 or 7.x
 SHA256_HEX = re.compile(r"[0-9a-f]{64}")
-# A page with parts its script doesn't redraw reloads itself this often (#351): the Work map's
-# strip, Briefing and tape, and effort.html. Crew and Governance redraw in place instead (#1135).
-REFRESH_SECONDS = 300
-
 # (family, weight, file). Only the faces the CSS below uses.
 FONTS = (
     ("IBM Plex Sans", 400, "IBMPlexSans-Regular-Latin1.woff2"),
@@ -541,12 +537,13 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "", live_
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
          script: tuple[str, str] | None = None, libs: dict[str, bytes] | None = None,
-         live_mast: bool = False, reload: bool = False) -> str:
+         live_mast: bool = False) -> str:
     """One whole page in the shared shell: head (noindex, CSP, CSS), masthead (#402), the nav
     (Map · Crew · Governance, #1113), then the body. `script` is the page's own script as (file
     name, text), e.g. the Work map's (#1082). The page loads it from js/ (write_scripts puts it
-    there) and the CSP allows it by its hash. With `reload`, the page reloads itself every
-    REFRESH_SECONDS with a meta refresh, for parts no script redraws. `libs` are
+    there) and the CSP allows it by its hash. No page reloads itself (#1135): the Work map,
+    Crew and Governance redraw in place from same-origin JSON, and effort.html, which has no
+    script, shows the build it came with. `libs` are
     vendored libraries the page loads before its own script, as layout.libs() returns them
     (#1107): each is served from js/ too and allowed by its hash. With `live_mast`, the
     masthead's changing part is a `data-panel="mast"` box for the page's own script to redraw
@@ -559,7 +556,6 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         f'<meta http-equiv="Content-Security-Policy" content="{live.csp(js, tuple(libs.values()))}">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         '<meta name="robots" content="noindex, nofollow">',  # published publicly; see #33
-        f'<meta http-equiv="refresh" content="{REFRESH_SECONDS}">' if reload else None,
         f"<title>{esc(name)} · {esc(title)} · {esc(repo)}</title><style>{CSS}</style></head>"
         + "<body>",
         f'<header class="mast">{masthead(current, repo, built, owner, live_box=live_mast)}</header>',
