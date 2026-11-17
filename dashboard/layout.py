@@ -423,6 +423,32 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-num { min-width:0; } .wm-num dt { font-size:11px; line-height:14px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wm-num dd { margin:0; font:13px/18px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wm-brief { width:100%; }
+/* #1115: what an issue waits on and holds up, and a Goal, Area or role in place of an issue's
+   sections, scrolling inside the same fixed box. */
+.wm-ss-deps { height:40px; }
+.wm-dl { height:20px; display:flex; gap:8px; font-size:12px; line-height:20px; white-space:nowrap; overflow:hidden; }
+.wm-dl > span:first-child { flex:none; width:62px; color:var(--muted); }
+.wm-dl > span:last-child { flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.wm-pick { font:12px/1.3 var(--mono); padding:0; border:0; background:none; color:var(--ink);
+  text-decoration:underline; text-decoration-color:var(--quiet); text-underline-offset:2px; cursor:pointer; }
+.wm-dl .wm-pick { margin-right:6px; }
+.wm-pick:focus-visible, .wm-gi:focus-visible { outline:3px solid var(--agent); outline-offset:1px; }
+.wm-alt { display:none; }
+.wm-sel-other .wm-ss-i { display:none; }
+.wm-sel-other .wm-alt { display:block; flex:1 1 0; min-height:0; overflow:auto; margin-top:6px; font-size:13px; }
+.wm-alt .wm-sh { margin-top:8px; }
+.wm-alt ul { list-style:none; margin:2px 0 0; padding:0; }
+.wm-alt li { margin:0 0 3px; overflow-wrap:anywhere; }
+.wm-alt .wm-ok { color:var(--muted); }
+.wm-alt .wm-bad { color:var(--red); }
+.wm-tiles { display:grid; grid-template-columns:1fr 1fr; gap:2px 12px; margin-top:2px; }
+.wm-gi { flex:none; width:16px; height:16px; margin-top:2px; padding:0; border:1px solid var(--paper);
+  border-radius:50%; background:none; color:var(--paper); font:600 11px/14px var(--mono); cursor:pointer; }
+.wm-gh.wm-gh-i { padding-right:26px; }
+.wm-g .wm-gi { position:absolute; right:4px; top:0; z-index:1; }
+.wm-dep::before { content:""; position:absolute; inset:1px; border:1px dashed var(--ink); pointer-events:none; }
+.wm-dark.wm-dep::before { border-color:var(--paper); }
+.wm-key .wm-k-dep { outline:1px dashed var(--ink); outline-offset:-2px; }
 """
 
 

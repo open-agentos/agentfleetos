@@ -215,7 +215,7 @@ class RowsTest(unittest.TestCase):
         self.assertEqual([r["issue"] for r in m["rows"]], [10, 30, None])   # not #20, not #40
         fields = {"issue", "ref", "title", "url", "state", "cost", "unpriced_tokens", "tokens", "lines",
                   "outcomes", "outcome_kinds", "goal", "effort", "role", "stage", "blocked_at",
-                  "needs_you", "baseline", "days"}
+                  "needs_you", "baseline", "days", "blocked_by", "blocks"}
         for r in m["rows"]:
             self.assertEqual(set(r), fields)
             self.assertEqual(len(r["days"]), 14)
@@ -296,6 +296,39 @@ class DaysNeededTest(unittest.TestCase):
         self.assertEqual(wm.days_needed("day"), 14)
         self.assertEqual(wm.days_needed("week"), 36)
         self.assertEqual(wm.days_needed("month"), 151)
+
+
+class LinksTest(unittest.TestCase):
+    """#1115 (FEAT-13): what each issue waits on and holds up."""
+
+    def test_blocked_by_from_a_waits_on_line(self):
+        waits = {**issue(10), "body": "Do it.\n**Waits on:** #11 and #12. Then #13 can go.\n"}
+        gd = gathered(issues=[waits, issue(11), issue(12), issue(13)], subs={10: "go", 11: "go", 12: "go", 13: "go"})
+        r = rows(wm.build(gd, NOW, "day"))
+        self.assertEqual(r[10]["blocked_by"], [11, 12])   # the first sentence only, as swarm watch reads it
+        self.assertEqual(r[11]["blocks"], [10])
+        self.assertEqual(r[13]["blocks"], [])
+        self.assertEqual(r[None]["blocked_by"], [])
+
+    def test_blocked_by_from_a_sub_issue_link_but_not_the_goal(self):
+        gd = gathered(issues=[issue(10), issue(11)], subs={10: "go"})
+        gd["data"]["plan"]["trees"][1080]["subIssues"]["nodes"][0]["subIssues"] = {"nodes": [
+            {"number": 11, "state": "OPEN", "repository": {"nameWithOwner": REPO}},
+            {"number": 12, "state": "CLOSED", "repository": {"nameWithOwner": REPO}},
+            {"number": 13, "state": "OPEN", "repository": {"nameWithOwner": "other/repo"}}]}
+        r = rows(wm.build(gd, NOW, "day"))
+        self.assertEqual(r[10]["blocked_by"], [11])   # not the closed #12, nor another repo's #13
+        self.assertEqual(r[10]["blocks"], [])         # the Goal, #1080, isn't held up by its tree here
+
+    def test_blocked_by_from_a_github_dependency(self):
+        gd = gathered(issues=[issue(10)], subs={10: "go"}, blockers={10: ["OPEN", "CLOSED"]})
+        r = rows(wm.build(gd, NOW, "day"))
+        self.assertEqual(r[10]["blocked_by"], [900])
+
+    def test_a_closed_issue_holds_nothing_up(self):
+        waits = {**issue(10), "body": "**Waits on:** #11"}
+        by, holds = wm.links([waits, issue(11, "closed", iso(60))], None, REPO)
+        self.assertEqual((by, holds), ({}, {}))
 
 
 if __name__ == "__main__":
