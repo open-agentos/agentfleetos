@@ -298,5 +298,92 @@ class DaysNeededTest(unittest.TestCase):
         self.assertEqual(wm.days_needed("month"), 151)
 
 
+def lr(n, cost=1.0, tokens=100, lines=10, outcomes=0, baseline=None, **kw):
+    """A map row for the lists' tests."""
+    return {"issue": n, "ref": f"#{n}", "title": f"issue {n}", "cost": cost, "tokens": tokens,
+            "lines": lines, "outcomes": outcomes, "baseline": baseline, "needs_you": False,
+            "stage": None, **kw}
+
+
+def refs(xs):
+    return [x[0] for x in xs]
+
+
+class ListsTest(unittest.TestCase):
+    """The Work map's six lists (#1084)."""
+
+    UNATTRIBUTED = {**lr(None, cost=9.0, baseline=1.0), "issue": None, "ref": "unattributed"}
+
+    def test_needs_you_and_blocked_largest_first_whatever_their_size(self):
+        rows = [lr(1, cost=1.0, needs_you=True), lr(2, cost=3.0, needs_you=True, stage="blocked"),
+                lr(3, cost=0, tokens=0, lines=0, needs_you=True), lr(4, cost=5.0, stage="blocked"),
+                lr(5, cost=9.0), self.UNATTRIBUTED]
+        out = wm.lists(rows, "cost")
+        self.assertEqual(out["needs"], [["#2", 3.0, None], ["#1", 1.0, None], ["#3", 0, None]])
+        self.assertEqual(refs(out["blocked"]), ["#4", "#2"])
+        # the size picks the order
+        rows[0]["lines"], rows[1]["lines"] = 50, 5
+        self.assertEqual(refs(wm.lists(rows, "lines")["needs"]), ["#1", "#2", "#3"])
+
+    def test_spend_no_outcome_needs_a_size_above_zero(self):
+        rows = [lr(1, cost=2.0), lr(2, cost=4.0, outcomes=1), lr(3, cost=0, tokens=50, lines=0),
+                lr(4, cost=None, tokens=70), self.UNATTRIBUTED]
+        self.assertEqual(refs(wm.lists(rows, "cost")["spend"]), ["#1"])   # #3 has no cost, #4 none priced
+        self.assertEqual(refs(wm.lists(rows, "tokens")["spend"]), ["#1", "#4", "#3"])
+        self.assertEqual(refs(wm.lists(rows, "lines")["spend"]), ["#1", "#4"])
+
+    def test_running_hot_from_1_5_times_usual(self):
+        rows = [lr(1, cost=1.5, baseline=1.0), lr(2, cost=1.49, baseline=1.0), lr(3, cost=4.0, baseline=1.0),
+                lr(4, cost=3.0, baseline=0), lr(5, cost=3.0), lr(6, cost=None, baseline=1.0), self.UNATTRIBUTED]
+        out = wm.lists(rows, "cost")["hot"]
+        self.assertEqual(out, [["#3", 4.0, 1.0], ["#1", 1.5, 1.0]])   # no usual, or no price: not in it
+        self.assertEqual(wm.lists(rows, "tokens")["hot"], out)       # cost against usual, whatever the size
+
+    def test_gone_quiet_under_half_of_usual(self):
+        rows = [lr(1, cost=0.5, baseline=1.0), lr(2, cost=0.49, baseline=1.0), lr(3, cost=0.1, baseline=2.0),
+                lr(4, cost=0.1, baseline=0), lr(5, cost=0.1), self.UNATTRIBUTED]
+        self.assertEqual(wm.lists(rows, "cost")["quiet"], [["#3", 0.05, 2.0], ["#2", 0.49, 1.0]])
+
+    def test_gone_quiet_takes_idle_issues_with_spend_in_the_longer_window(self):
+        idle = dict(cost=0, tokens=0, lines=0, outcomes=0)
+        rows = [lr(1, cost=0.2, baseline=1.0), lr(2, baseline=0.5, **idle), lr(3, **idle), lr(9, cost=1.0)]
+        longer = [lr(2, cost=3.0, lines=40), lr(3, cost=0, tokens=0, lines=0, outcomes=1),
+                  lr(4, cost=1.0, lines=7), lr(5, cost=6.0, lines=1), lr(9, cost=2.0),
+                  {**lr(None, cost=5.0), "ref": "unattributed"}]
+        out = wm.lists(rows, "cost", longer)["quiet"]
+        # idle first, the largest longer-window figure first; #3 only had an outcome; #9 isn't idle
+        self.assertEqual(out, [["#5", None, 6.0], ["#2", None, 3.0], ["#4", None, 1.0], ["#1", 0.2, 1.0]])
+        self.assertEqual(refs(wm.lists(rows, "lines", longer)["quiet"]), ["#2", "#4", "#5", "#1"])
+        # with no longer window, only the share of usual counts: #2 spent nothing, against a usual
+        self.assertEqual(wm.lists(rows, "cost")["quiet"], [["#2", 0.0, 0.5], ["#1", 0.2, 1.0]])
+
+    def test_best_yield_per_size(self):
+        rows = [lr(1, cost=2.0, outcomes=1), lr(2, cost=1.0, outcomes=2), lr(3, cost=0, outcomes=3),
+                lr(4, cost=5.0), self.UNATTRIBUTED]
+        self.assertEqual(wm.lists(rows, "cost")["yield"], [["#2", 200.0, None], ["#1", 50.0, None]])
+        self.assertEqual(refs(wm.lists(rows, "tokens")["yield"]), ["#3", "#2", "#1"])
+        self.assertEqual(wm.lists(rows, "tokens")["yield"][0][1], 30000.0)   # 3 per 100 tokens, per million
+
+    def test_an_issue_may_be_in_several_and_counts_are_every_match(self):
+        r = lr(1, cost=4.0, baseline=1.0, needs_you=True, stage="blocked")
+        rows = [r] + [lr(n, cost=float(n), needs_you=True) for n in range(2, 9)]
+        out = wm.lists(rows, "cost")
+        for key in ("needs", "blocked", "spend", "hot"):
+            self.assertIn("#1", refs(out[key]), key)
+        self.assertEqual(len(out["needs"]), 8)   # all of them: the page shows five
+        self.assertEqual(set(out), set(wm.LISTS))
+
+    def test_desk_lists_per_window_and_size_with_no_month(self):
+        idle = dict(cost=0, tokens=0, lines=0, outcomes=0)
+        windows = {"hour": [lr(1, **idle)], "day": [lr(1), lr(2, **idle)], "week": [lr(1), lr(2), lr(3, **idle)]}
+        d = wm.desk_lists(windows)
+        self.assertEqual(set(d), {"hour", "day", "week"})
+        self.assertEqual(set(d["day"]), set(wm.SIZES))
+        self.assertEqual(refs(d["hour"]["cost"]["quiet"]), ["#1"])    # hour -> day
+        self.assertEqual(refs(d["day"]["cost"]["quiet"]), ["#2"])     # day -> week
+        self.assertEqual(refs(d["week"]["cost"]["quiet"]), [])        # week -> month: the Desk reads none
+        self.assertEqual(wm.LONGER, {"hour": "day", "day": "week", "week": "month"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -72,7 +72,7 @@ class PageTest(unittest.TestCase):
         page = wp.page(model(), "t", "")
         self.assertNotRegex(wp.render(model()).lower(), r"\btotal")
         d = json_block(page)
-        self.assertEqual(set(d), {"built_at", "method", "windows", "days"})
+        self.assertEqual(set(d), {"built_at", "method", "windows", "days", "lists"})
         self.assertEqual(set(d["days"]), {"dates", "of"})   # per issue, keyed by ref
         self.assertNotIn("$", page.split('id="wm-data"')[0])   # no amount in the drawn HTML
 
@@ -155,6 +155,67 @@ class SelectedTest(unittest.TestCase):
                   "emptyPanel", "Click a box, or an item in a list below, to see it here."):
             self.assertIn(x, js)
         self.assertEqual(wp.EMPTY, "Click a box, or an item in a list below, to see it here.")
+
+
+class ListsTest(unittest.TestCase):
+    """The six lists under the Briefing (#1084)."""
+
+    def lists(self) -> str:
+        html = wp.render(model())
+        return re.search(r'<div class="wm-lists".*?</ol></section></div>', html, re.S).group(0)
+
+    def test_six_lists_in_order_each_empty_until_drawn(self):
+        h = self.lists()
+        self.assertEqual(re.findall(r'data-list="(\w+)"', h), ["needs", "blocked", "spend", "hot", "quiet", "yield"])
+        self.assertEqual(re.findall(r'<h3 class="wm-lh"><span>([^<]+)</span>', h),
+                         ["NEEDS YOU", "BLOCKED", "SPEND, NO OUTCOME", "RUNNING HOT", "GONE QUIET", "BEST YIELD"])
+        self.assertEqual(h.count('<span class="wm-lc">–</span>'), 6)
+        self.assertEqual(h.count('<p class="wm-ld"'), 6)
+        self.assertEqual(h.count('<ol class="wm-lol"></ol>'), 6)
+        self.assertEqual(len(re.findall(r'data-empty="[^"]+"', h)), 6)
+        import workmap
+        self.assertEqual(tuple(k for k, *_ in wp.LISTS), workmap.LISTS)
+
+    def test_page_data_carries_each_windows_lists_for_each_size(self):
+        m = model()
+        m["workmap"]["desk"]["windows"]["day"] = [row(10, needs_you=True, stage="blocked", baseline=0.5),
+                                                  row(11, cost=0, tokens=0, baseline=None)]
+        m["workmap"]["desk"]["windows"]["hour"] = [row(11, cost=0, tokens=0)]
+        d = json_block(wp.page(m, "t", ""))
+        self.assertEqual(set(d["lists"]), {"hour", "day", "week"})
+        self.assertEqual(set(d["lists"]["day"]), {"cost", "tokens", "lines"})
+        day = d["lists"]["day"]["cost"]
+        self.assertEqual(day["needs"], [["#10", 1.0, None]])
+        self.assertEqual(day["blocked"], [["#10", 1.0, None]])
+        self.assertEqual(day["hot"], [["#10", 2.0, 0.5]])
+        # idle in the hour after spend in the day: #10, not on the hour's map; #11 spent nothing
+        self.assertEqual(d["lists"]["hour"]["cost"]["quiet"], [["#10", None, 1.0]])
+
+    def test_fixed_heights_so_nothing_moves(self):
+        css = layout.CSS
+        ol = re.search(r"\.wm-lol \{([^}]*)\}", css).group(1)
+        self.assertIn("height:250px", ol)
+        self.assertIn("overflow:hidden", ol)
+        self.assertIn("height:50px", re.search(r"\.wm-lol li \{([^}]*)\}", css).group(1))
+        self.assertIn("height:50px", re.search(r"\.wm-li \{([^}]*)\}", css).group(1))
+        for cls in ("wm-lh", "wm-ld"):
+            rule = re.search(rf"\.{cls} \{{([^}}]*)\}}", css).group(1)
+            self.assertRegex(rule, r"(?<![-\w])height:\d+px")
+            self.assertIn("white-space:nowrap", rule)
+        self.assertIn("text-overflow:ellipsis", re.search(r"\.wm-ln \{([^}]*)\}", css).group(1))
+
+    def test_three_then_two_then_one_column(self):
+        css = layout.CSS
+        self.assertRegex(css, r"\.wm-lists \{[^}]*grid-template-columns:repeat\(3, minmax\(0, 1fr\)\)")
+        self.assertRegex(css, r"@media \(max-width:900px\) \{ \.wm-lists \{ grid-template-columns:repeat\(2, minmax\(0, 1fr\)\)")
+        self.assertRegex(css, r"@media \(max-width:600px\) \{ \.wm-lists \{ grid-template-columns:minmax\(0, 1fr\)")
+
+    def test_script_draws_the_lists_and_selects_from_them(self):
+        js = wp.script()
+        for x in ("drawLists", "data-wm-ref", "var SHOW = 5", "st.zoom", "findRow(it[0])", '"idle"',
+                  "wm-lf-you", "wm-lf-blk", '" · was "', "which the Desk doesn't read"):
+            self.assertIn(x, js)
+        self.assertIn("function draw() { drawMap(); drawLists(); }", js)
 
 
 class BriefingTest(unittest.TestCase):
