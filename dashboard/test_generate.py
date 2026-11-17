@@ -6,6 +6,7 @@ touches GitHub.
 import datetime as dt
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -17,6 +18,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import generate as g  # noqa: E402
 import live  # noqa: E402
+import workmap_page  # noqa: E402
 
 REPO = "open-agentos/agentfleetos"
 NOW = dt.datetime(2026, 11, 2, 12, 0, tzinfo=dt.timezone.utc)
@@ -174,19 +176,25 @@ class PageTest(unittest.TestCase):
 
     def test_every_page_keeps_the_shell(self):
         pages = g.render(self.model())
-        self.assertEqual(list(pages), ["bridge.html", "commissions.html", "agents.html", "index.html", "effort.html", "operations.html", "decisions.html",
+        self.assertEqual(list(pages), ["workmap.html", "bridge.html", "commissions.html", "agents.html", "index.html", "effort.html", "operations.html", "decisions.html",
                                        "authority.html"])   # the Bridge (#926) leads the footer
         for name, page in pages.items():
             head = page.split("</head>")[0]
             self.assertIn('<meta name="robots" content="noindex, nofollow">', head, name)
             self.assertIn('<meta http-equiv="refresh" content="300">', head, name)
             self.assertIn('<meta name="viewport" content="width=device-width, initial-scale=1">', head, name)
-            # Only the desk carries a script: the live refresh, allowed by hash (#411).
+            # Only the desk and the Work map carry a script, each allowed by hash (#411, #1082).
             rest = page.replace(f"<script>{live.script()}</script>", "") if name == "index.html" else page
+            if name == "workmap.html":
+                rest = re.sub(r'<script type="application/json" id="wm-data">.*?</script>', "",
+                              rest.replace(f"<script>{workmap_page.script()}</script>", ""), flags=re.S)
+                # Its buttons only change the view: type="button", outside any form.
+                self.assertEqual(rest.count("<button"), rest.count('<button type="button"'), name)
+                rest = rest.replace("<button", "")
             self.assertNotIn("<script", rest.lower(), name)
             # Read-only until Google login (#664): no form or button to post anything with.
             for tag in ("<form", "<button", "<input"):
-                self.assertNotIn(tag, page.lower(), name)
+                self.assertNotIn(tag, rest.lower(), name)
             self.assertIn('http-equiv="Content-Security-Policy"', head, name)
             self.assertIn("#F4F3EE", head, name)   # one look (layout.py)
             self.assertIn('src:url("fonts/IBMPlexSans-Regular-Latin1.woff2")', head, name)

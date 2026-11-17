@@ -1,6 +1,6 @@
 # Swarm dashboard
 
-Read-only pages showing what every agent session is doing and how the swarm is governed. Built by `generate.py`: Python stdlib only, static HTML files. The desk carries one small inline script that [refreshes it](#live-refresh) from `state.json` (option 2 of gov question #396, which reversed #26's "no JavaScript"); the other pages carry none, and every page is complete with JavaScript off.
+Read-only pages showing what every agent session is doing and how the swarm is governed. Built by `generate.py`: Python stdlib only, static HTML files. The desk carries one small inline script that [refreshes it](#live-refresh) from `state.json` (option 2 of gov question #396, which reversed #26's "no JavaScript"), and the [Work map](#the-work-map) one that draws its treemap; the other pages carry none. Every page but the Work map's treemap is complete with JavaScript off.
 
 ## Generate it
 
@@ -15,11 +15,12 @@ It reads GitHub through `gh api`, so inside a swarm session it acts as the role'
 
 ## Pages
 
-One build writes eight pages, and the fonts, into the `--out` page's directory (#401, part of #397):
+One build writes nine pages, and the fonts, into the `--out` page's directory (#401, part of #397):
 
 | Page | What it shows |
 |---|---|
-| `bridge.html`, the **Bridge** | The owner's home, served at `/` on the live Desk (#1035), read-only, after the owner's "v5 · the bridge" mock-up ([the Bridge](#the-bridge), #926): the lead's daily briefing, status, decisions waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub. |
+| `workmap.html`, the **Work map** | The owner's home, served at `/` on the live Desk (#1082): a treemap of what each issue cost and what it returned ([the Work map](#the-work-map)), with the lead's daily briefing under it |
+| `bridge.html`, the **Bridge** | Read-only, after the owner's "v5 · the bridge" mock-up ([the Bridge](#the-bridge), #926): status, decisions waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub. |
 | `commissions.html` | Each open Goal and Area, grouped by what it needs from the owner, with a focus drawer ([Commissions](#commissions), #931) |
 | `agents.html` | One row per role, working or idle, with a focus drawer ([Agents](#agents), #932) |
 | `index.html`, the **desk** | Today's report and the plan (#712), the trouble panel per Goal and Area (#903: `swarm trouble`'s report, built by `generate.py` without the owner-acts sync, so M4's acts criterion reads unmeasured here; no spend), [On the floor](#on-the-floor), [the wire](#the-wire), the [committee desk](#committee-desk) while a committee is open, [What the numbers say](#what-the-numbers-say), [How the questions went](#how-the-questions-went), [precedent in use](#precedent-in-use), a card per [past committee](#past-committees), and a one-line pointer to the other pages. #397's later issues add the desk's other panels here. |
@@ -28,7 +29,7 @@ One build writes eight pages, and the fonts, into the `--out` page's directory (
 | `decisions.html` | The [governance](#governance) section with the **full** decision log from `governance/INDEX.md`, open and lapsed gov questions, the [Committees](#committees) section with each open committee's round grid, and ended committees as "Past committees" with their round grids |
 | `authority.html` | The [authority map](#authority-map): who may decide what, one row per domain in `governance/jurisdictions.yml` |
 
-Every page opens with the [header](#header) and carries `noindex` and a [Content-Security-Policy](#live-refresh), reloads itself every 300 seconds, fits a phone's width (only `.scroll` boxes scroll sideways), and ends with a footer linking the eight pages. `generate.render(model)` returns the pages by file name.
+Every page opens with the [header](#header) and carries `noindex` and a [Content-Security-Policy](#live-refresh), reloads itself every 300 seconds, fits a phone's width (only `.scroll` boxes scroll sideways), and ends with a footer linking the nine pages. `generate.render(model)` returns the pages by file name.
 
 ### Look
 
@@ -36,18 +37,37 @@ Every page opens with the [header](#header) and carries `noindex` and a [Content
 
 The fonts are **self-hosted**, so the public page loads nothing from a third party. `static/fonts/` holds the Latin-1 subset, as woff2, of only the four faces the CSS uses (Sans 400 and 600, Mono 400, Sans Condensed 600), from IBM's `@ibm/plex-sans` 1.1.0, `@ibm/plex-mono` 2.5.0 and `@ibm/plex-sans-condensed` 2.0.0 packages, with their SIL Open Font License. Together they add 82,776 bytes (87,232 with the licence) to the published site. `generate.py` copies them to `fonts/` beside the pages on every build, before writing the pages. A character outside Latin-1 (an arrow, say) falls back to the system font.
 
+## The Work map
+
+`workmap.html` (`workmap_page.py` and `workmap.js`, #1082, FEAT-9 under M9 #1080) draws the [Work map data](#work-map-data) as a squarified treemap: one box per issue, inside one box per group. The live Desk serves it at `/` (`launcher/desk.py`; without it, the Bridge, then the desk). It adds no API calls: the build passes it the same data it writes to `map.json`. Top to bottom, beside the left column it shares with the Bridge:
+
+- **Title and key:** "Work map" and one line saying what size, shade and the markers mean.
+- **Controls**, segmented buttons, the current one filled ink: Group by (Effort, Goal, Role, Stage; default Effort), Size (Cost, Tokens, Lines changed; default Cost, per GOV-0049), Colour (Yield, Velocity, Change; default Yield) and Window (Hour, Day, Week, Month; default Day). The viewer's choices are kept in this browser's `localStorage` (`agentfleetos.workmap`), wrapped in `try`; without it the defaults stand.
+- **Breadcrumb**, e.g. "All effort types › Capability". Clicking a group's header zooms into that group; the breadcrumb's first part zooms back out.
+- **The treemap**, `clamp(460px, 68vh, 640px)` tall, beside the Selected panel's space. A group's header shows its name and its share of what's shown as a percentage, never an amount. Issues with no size in the window are left off, and the legend says how many. A box big enough shows its title on one line, cut with an ellipsis, and under it, in mono, its size and its colour measure. Hover or focus shows its title, number, Goal, effort, role and stage, then its cost, tokens, lines and outcomes. Clicking a box, or pressing Enter on it, selects it; boxes are reached with Tab.
+- **Shade**, one warm ramp from light to dark (`#F3EFE7` … `#64523E`), with light text on the three darkest. **Yield** is outcomes per $100, per million tokens or per 1k lines (the size chosen), with the median of what's shown at the middle and twice the median or more darkest (if the median is 0, any outcome is darkest). **Velocity** is tokens per hour across the window, on a square-root scale from 0 to the most shown. **Change** is log2(this window's cost ÷ baseline), from ¼ of usual (lightest) to 4× (darkest). A row with no baseline, or an unpriced cost, is hatched and says so; one with a baseline of 0 is darkest and says "new".
+- **Markers**, each a shape as well as a colour, so none relies on colour alone: no outcome (spend in the window, no outcome) is an umber folded corner, top right; needs you a 3px amber inset outline; blocked a 5px red left edge; selected a 2px dashed outline.
+- **Legend** under the map: the ramp with its end labels for the colour chosen, a swatch per marker, and how many issues were left off.
+- **Briefing**, moved from the Bridge (M8, #1029): the lead's newest daily briefing, whole, one paragraph per chapter, from the report issue's comments the desk already reads (`report.py` takes the newest planner comment starting `**Briefing`, without its first line or signature). It links to the comment, and says so when it's from before today. It shows here only.
+- The lists' space, for their own features.
+
+The map's rows are in the page itself, in a `<script type="application/json">` block with `<`, `>` and `&` escaped, so it draws on GitHub Pages and the live Desk without fetching. `workmap.js` reads it and builds nodes with `createElement` and text nodes only (no `innerHTML`, no `eval`); the page's CSP allows it by hash. With JavaScript off the page says the map needs it, and the Briefing still shows. Each row's 14-day series is left out of the page (`map.json` keeps it).
+
+**No total** (GOV-0033): boxes show their own issue's figures, headers a percentage, and the tooltip one issue's. Selecting a box or changing a control changes nothing's size or position outside the map: the breadcrumb is one line and the legend a fixed height.
+
+**Month** isn't in `map.json`: the Desk reads 14 days of heartbeats, too few for a month and its baseline. Picking it says so and points to `swarm map --window month`.
+
 ## The Bridge
 
 `bridge.html` (`bridge.py`, #926, under M3 #685) is the Bridge from the owner's "v5 · the bridge" mock-up, built read-only from data the build already reads, so it adds no API calls. Top to bottom:
 
-- **Briefing**, first (M8, #1029): the lead's newest daily briefing, whole, one paragraph per chapter, from the report issue's comments the desk already reads (`report.py` takes the newest planner comment starting `**Briefing`, without its first line or signature). It links to the comment, and says so when it's from before today.
 - **Status:** open Goals and Areas and how many are flagged; agents working (the floor's cards) of the live sessions; decisions waiting, with the oldest one's age; and authority used in `swarm trouble`'s window. A Goal or Area is **flagged** when something under it is stuck, one of its criteria is failing, or its date is missed.
 - **Decisions waiting**, in owner amber: what `swarm trouble` says waits on the owner, then open gov questions it doesn't already list (not ruled, no session blocked on them), oldest first, at most 12. Each links to where it's answered on GitHub; there are no buttons until the desk can write (#752).
 - **Reports**, newest first, at most 12, each with its role: today's daily report (a red flag when it's late), each item `swarm trouble` says is stuck (a flag), and the PRs a role's App had merged in the last 7 days (`SHIPPED`, or `DELIVERED` for a PR whose title starts "Brief").
 - **In flight:** each open Goal and Area with its criteria met of total and a dot: red if flagged, amber if it waits on the owner, blue otherwise. If the trouble report wasn't read, it falls back to the plan's sub-issues done of total. Each Goal also shows its merged PRs for the last 7 days by kind of work, e.g. "5 PRs · 2 capability · 1 upkeep · 1 governance · 1 knowledge · 1 fix", from the [effort cache](#effort); without a cache it shows nothing.
 - **Orders received:** the owner's acts on GitHub from the repo's events (the header's read), newest first, at most 8, with chair "GitHub". Branch creation and deletion are left out.
 
-The left column, shared with the Commissions and Agents pages (`bridge.nav_html`), links Commissions to `commissions.html` and Agents to `agents.html`. "Your chairs", "Lead recommends", "Discuss with…" and spend aren't shown: chairs and writes come later (#760), and GOV-0033 sets no engine total. Links go only to github.com or a page beside it. The page carries no script.
+The lead's Briefing moved to the [Work map](#the-work-map) (#1082). The left column, shared with the Work map, Commissions and Agents pages (`bridge.nav_html`), links the Work map to `workmap.html`, Commissions to `commissions.html` and Agents to `agents.html`. "Your chairs", "Lead recommends", "Discuss with…" and spend aren't shown: chairs and writes come later (#760), and GOV-0033 sets no engine total. Links go only to github.com or a page beside it. The page carries no script.
 
 ## Commissions
 
@@ -92,7 +112,7 @@ The cache, schema 1 (#1012 writes it; this is what the desk reads):
 
 ## Work map data
 
-`workmap.py` (#1081, FEAT-8 under M9 #1080) works out what each issue cost and what it returned, for the Work map page (FEAT-9 to come) and `launcher/swarm map`. The build writes it to **`map.json`** beside the pages: the rows for the last hour, day and week (`DESK_WINDOWS`), each window ending with the current UTC hour. Per GOV-0049 it may publish cost per issue on both Desks. It never sums cost across issues (GOV-0033): no total field, no total line, and nothing of it reaches `state.json`. If its read fails, the pages are still written and `map.json` isn't.
+`workmap.py` (#1081, FEAT-8 under M9 #1080) works out what each issue cost and what it returned, for the [Work map page](#the-work-map) and `launcher/swarm map`. The build writes it to **`map.json`** beside the pages: the rows for the last hour, day and week (`DESK_WINDOWS`), each window ending with the current UTC hour. Per GOV-0049 it may publish cost per issue on both Desks. It never sums cost across issues (GOV-0033): no total field, no total line, and nothing of it reaches `state.json`. If its read fails, the pages are still written and `map.json` isn't.
 
 - **Spend.** Each session's token deltas between consecutive heartbeat events go to the issue of its latest `working_on` before the later event, so a switch splits them; tokens before any `working_on` go to the `unattributed` row. Deltas are priced with `spend.py`'s prices for the event's model (list-price equivalent, not what was billed). An unknown model gives tokens and no cost: the row's `unpriced_tokens` counts them, and `cost` is null if none were priced. Spend and outcomes are kept per issue per UTC hour.
 - **Outcomes**, each once, in its hour: a PR closing the issue merged, the reviewer App's first approval at that PR's head, the issue closed. They count equally.
@@ -175,7 +195,7 @@ With JavaScript on, an open desk redraws itself from `state.json` every 15 secon
 - **Boxes.** The desk draws each panel inside `<div data-panel="NAME">` (an empty panel still gets its box), and the masthead is `data-panel="mast"`. The script redraws each box whose name `state.json` carries. A new panel joins by adding itself to `generate.desk_panels()`.
 - **Only forward.** The script fetches `state.json?t=…` with `cache: "no-store"`, same origin, every 15 seconds while the tab is visible, and applies it only if its `built_at` is newer than the data on screen (the `data-built-at` on `<body>`), since Pages' cache can serve an older copy than the page.
 - **Stale mark.** When the data on screen is more than 15 minutes old, the script adds `stale` to the masthead's LIVE mark (#402), which greys it out. Builds often run further apart than that (see [How often it rebuilds](#how-often-it-rebuilds)), so a grey mark is common and honest.
-- **CSP.** Every page carries a `<meta http-equiv="Content-Security-Policy">`: `default-src 'none'`, `script-src` the live script's `sha256` hash on the desk and `'none'` elsewhere, `style-src 'unsafe-inline'` (the page's `<style>` and the precedent table's cell shading), `font-src`, `connect-src 'self'`, `base-uri 'none'` and `form-action 'none'`. `live.script()` fills `poll.js`'s settings and allow lists in at build time, and the hash is of that exact text.
+- **CSP.** Every page carries a `<meta http-equiv="Content-Security-Policy">`: `default-src 'none'`, `script-src` the live script's `sha256` hash on the desk, `workmap.js`'s on the Work map (#1082) and `'none'` elsewhere, `style-src 'unsafe-inline'` (the page's `<style>` and the precedent table's cell shading), `font-src`, `connect-src 'self'`, `base-uri 'none'` and `form-action 'none'`. `live.script()` fills `poll.js`'s settings and allow lists in at build time, and the hash is of that exact text.
 - **JavaScript off.** Nothing changes: the page is complete as built, and the meta refresh stays.
 
 It adds **no API calls** per build: browser fetches hit Pages, not the API, and need no token.

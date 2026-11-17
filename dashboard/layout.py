@@ -6,8 +6,9 @@ static/fonts/LICENSE.txt), self-hosted: generate.py copies them beside the pages
 public page loads nothing from a third party. Only the Latin-1 subset of the four faces the
 CSS uses is shipped; other characters (arrows, for one) fall back to the system font.
 
-Stdlib only. Every page carries a Content-Security-Policy; only the desk carries a script,
-the live refresh (live.py, #411, option 2 of #396), and the policy allows it by hash alone.
+Stdlib only. Every page carries a Content-Security-Policy. Two pages carry a script, each
+allowed by its hash alone: the desk's live refresh (live.py, #411, option 2 of #396) and the
+Work map's treemap (workmap.js, #1082).
 """
 from __future__ import annotations
 
@@ -36,7 +37,7 @@ LATIN1 = ("U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6
           "U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02")
 
 # The pages, in footer order: (file, name).
-PAGES = (("bridge.html", "Bridge"), ("commissions.html", "Commissions"), ("agents.html", "Agents"),
+PAGES = (("workmap.html", "Work map"), ("bridge.html", "Bridge"), ("commissions.html", "Commissions"), ("agents.html", "Agents"),
          ("index.html", "Desk"), ("effort.html", "Effort"), ("operations.html", "Operations"),
          ("decisions.html", "Decisions"), ("authority.html", "Authority"))
 
@@ -305,6 +306,66 @@ a.cm-row .br-av { align-self:flex-start; }
 .ef-trend h3 { margin-top:16px; }
 svg.ef-line { display:block; max-width:100%; height:auto; fill:none; stroke:var(--agent); stroke-width:1.5; }
 svg.ef-line circle { fill:var(--agent); stroke:none; }
+/* The Work map (#1082): workmap_page.py and workmap.js. One warm ramp; markers by shape too. */
+.wm-keyline { margin:4px 0 0; font-size:14px; color:var(--muted); max-width:80ch; }
+.wm-ctls { display:flex; flex-wrap:wrap; gap:10px 22px; }
+.wm-ctl { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.wm-ctl .br-kind { margin:0; }
+.wm-seg { display:flex; flex-wrap:wrap; border:1px solid var(--ink); width:max-content; max-width:100%; }
+.wm-seg button { font:13px/1 var(--sans); padding:7px 10px; border:0; border-right:1px solid var(--ink);
+  background:var(--card); color:var(--ink); cursor:pointer; }
+.wm-seg button:last-child { border-right:0; }
+.wm-seg button[aria-pressed="true"] { background:var(--ink); color:var(--paper); }
+.wm-seg button:disabled { cursor:default; }
+.wm-seg button:focus-visible, .wm-gh:focus-visible, .wm-back:focus-visible { outline:3px solid var(--agent); outline-offset:1px; }
+.wm-top { display:flex; flex-wrap:wrap; gap:16px 20px; align-items:flex-start; }
+.wm-mapcol { flex:999 1 300px; min-width:0; }
+.wm-crumb { margin:0 0 6px; height:24px; font:13px/24px var(--mono); white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; }
+.wm-back { font:inherit; padding:0; border:0; background:none; color:var(--ink); text-decoration:underline;
+  text-decoration-color:var(--quiet); text-underline-offset:2px; cursor:pointer; }
+.wm-frame { position:relative; height:clamp(460px, 68vh, 640px); }
+.wm-map { position:absolute; inset:0; overflow:hidden; background:var(--line); }
+.wm-empty { margin:0; padding:16px; }
+.wm-g { position:absolute; border:1px solid var(--paper); }
+.wm-gh { position:absolute; left:0; top:0; right:0; height:20px; display:flex; justify-content:space-between;
+  gap:6px; padding:0 6px; border:0; background:var(--ink); color:var(--paper); font:600 12px/20px var(--cond);
+  text-transform:uppercase; letter-spacing:.04em; text-align:left; cursor:zoom-in; overflow:hidden;
+  white-space:nowrap; }
+.wm-gh:disabled { cursor:default; }
+.wm-gn { overflow:hidden; text-overflow:ellipsis; min-width:0; } .wm-gp { flex:none; font-family:var(--mono); }
+.wm-box { position:absolute; overflow:hidden; border:1px solid var(--paper); padding:3px 6px 3px 8px;
+  display:flex; flex-direction:column; gap:1px; color:var(--ink); cursor:pointer; }
+.wm-box.wm-dark { color:var(--paper); }
+.wm-box:focus-visible { outline:3px solid var(--agent); outline-offset:-3px; z-index:2; }
+.wm-t { font:600 12px/1.3 var(--sans); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wm-m { font:11px/1.3 var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wm-hatch { background:repeating-linear-gradient(135deg, #F3EFE7 0 4px, #E2D8C7 4px 8px); }
+.wm-needs { box-shadow:inset 0 0 0 3px var(--owner); }
+.wm-blocked { box-shadow:inset 5px 0 0 0 var(--red); }
+.wm-needs.wm-blocked { box-shadow:inset 5px 0 0 0 var(--red), inset 0 0 0 3px var(--owner); }
+.wm-fold { position:absolute; top:0; right:0; width:12px; height:12px;
+  background:linear-gradient(to bottom left, var(--paper) 50%, #64523E 50%); }
+.wm-sel::after { content:""; position:absolute; inset:2px; border:2px dashed var(--ink); pointer-events:none; }
+.wm-dark.wm-sel::after { border-color:var(--paper); }
+.wm-tip { position:absolute; z-index:5; max-width:min(340px, 100%); display:flex; flex-direction:column; gap:2px;
+  padding:8px 10px; background:var(--card); border:1px solid var(--ink); font-size:13px; pointer-events:none;
+  overflow-wrap:anywhere; }
+.wm-tip .mono { font-size:12px; } .wm-tip[hidden] { display:none; }
+.wm-legend { height:64px; overflow:hidden; display:flex; flex-wrap:wrap; align-content:flex-start;
+  gap:4px 14px; margin-top:8px; font-size:12px; }
+.wm-ramp, .wm-key { display:inline-flex; align-items:center; gap:4px; }
+.wm-ramp { gap:0; } .wm-ramp .wm-end { padding:0 6px; }
+.wm-sw { display:inline-block; width:16px; height:12px; position:relative; }
+.wm-key .wm-sw { background:#E2D8C7; }
+.wm-key .wm-k-fold { background:linear-gradient(to bottom left, var(--paper) 50%, #64523E 50%) top right / 8px 8px no-repeat, #E2D8C7; }
+.wm-key .wm-k-needs { box-shadow:inset 0 0 0 3px var(--owner); }
+.wm-key .wm-k-blocked { box-shadow:inset 5px 0 0 0 var(--red); }
+.wm-key .wm-k-sel { outline:2px dashed var(--ink); outline-offset:-2px; }
+.wm-selected { flex:1 1 200px; max-width:280px; min-height:120px; background:var(--card);
+  border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+.wm-selected .br-kind, .wm-selected .br-note { margin:0; padding:0; }
+.wm-brief { width:100%; }
 """
 
 
@@ -342,14 +403,17 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "") -> st
 
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
-         live_refresh: bool = False) -> str:
+         live_refresh: bool = False, script: str | None = None) -> str:
     """One whole page in the shared shell: head (noindex, CSP, refresh, CSS), masthead (#402),
     the body, and the footer linking every page. With `live_refresh`, the page also carries the
-    live refresh script, which polls state.json (#411); only the desk does."""
+    live refresh script, which polls state.json (#411); only the desk does. `script` is another
+    page's own inline script (the Work map's, #1082); the CSP allows it by its hash."""
     built_at = built.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if live_refresh else None
     name = dict(PAGES)[current]
-    js = live.script() if built_at else None
-    box = ' data-panel="mast"' if js else ""
+    js = live.script() if built_at else script
+    if js is not None and "</" in js:
+        raise ValueError("an inline script can't contain '</'")
+    box = ' data-panel="mast"' if built_at else ""
     return "\n".join(part for part in [
         '<!doctype html><html lang="en"><head><meta charset="utf-8">',
         f'<meta http-equiv="Content-Security-Policy" content="{live.csp(js)}">',
