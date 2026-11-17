@@ -3,7 +3,8 @@
 Shows where each GOV-0015 stage stands, the eval bar's result, the planted-defect gate (#331)
 and the red check's count (#330). Read-only, and needs no new token permission:
 
-- **Stages** come from PRODUCT.md's v3 tables in the checkout. Each stage's issue states come
+- **Stages** come from `docs/history.md`'s v3 tables in the checkout (they moved there from
+  PRODUCT.md when the brief became an overview). Each stage's issue states come
   from one GraphQL query (`issues: read`), since closed ones may be older than `--days`.
 - **The eval bar** is the `**Result: …**` line under "Against the bar" in `evals/results.md`.
 - **The gate** is #331's state. Its result comment has no fixed wording, so it isn't parsed.
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 GATE_ISSUE = 331        # the planted-defect gate
 RED_ISSUE = 330         # the red check
 RESULTS = "evals/results.md"
+HISTORY = "docs/history.md"   # the v3 tables; PRODUCT.md held them until it became an overview
 
 V3_RE = re.compile(r"^## v3\b.*?(?=^## |\Z)", re.M | re.S)
 STAGE_RE = re.compile(r"^### Stage\s+(.+?)\s*$", re.M)
@@ -48,7 +50,7 @@ def cells(line: str) -> list[str]:
 
 
 def parse_stages(product: str) -> list[dict]:
-    """GOV-0015's stages from PRODUCT.md's v3 section: one per `### Stage …` heading, with
+    """GOV-0015's stages from docs/history.md's v3 section: one per `### Stage …` heading, with
     the issue numbers in its table's `Issue` column. Rows with no `#N` there are skipped."""
     m = V3_RE.search(product or "")
     if not m:
@@ -80,7 +82,7 @@ def parse_stages(product: str) -> list[dict]:
 
 def c_stage_2(product: str) -> str:
     m = V3_RE.search(product or "")
-    return "not planned (GOV-0015)" if m and NOT_PLANNED_RE.search(m.group(0)) else "see PRODUCT.md"
+    return "not planned (GOV-0015)" if m and NOT_PLANNED_RE.search(m.group(0)) else f"see {HISTORY}"
 
 
 def bar_result(results: str | None) -> str | None:
@@ -142,7 +144,7 @@ def red_reviews(repo: str, numbers: list[int]) -> dict[int, list[dict]]:
 def fetch(repo: str, gh_json, root: Path = ROOT) -> dict:
     """Everything the section needs. A part that fails to read is recorded as an error, so
     one bad call doesn't stop the page from publishing."""
-    product = read(root / "PRODUCT.md") or ""
+    product = read(root / HISTORY) or ""
     out = {"product": product, "results": read(root / RESULTS), "states": None, "red": None,
            "errors": {}}
     numbers = sorted({n for s in parse_stages(product) for n in s["issues"]} | {GATE_ISSUE})

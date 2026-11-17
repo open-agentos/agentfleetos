@@ -114,7 +114,7 @@ class Stages(unittest.TestCase):
 
     def test_no_v3_section(self):
         self.assertEqual(p.parse_stages("# nothing"), [])
-        self.assertEqual(p.c_stage_2("# nothing"), "see PRODUCT.md")
+        self.assertEqual(p.c_stage_2("# nothing"), "see docs/history.md")
 
     def test_counts_and_c_stage_2(self):
         m = model()
@@ -193,7 +193,8 @@ class Fetch(unittest.TestCase):
                                             "i173": None}}}
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            (root / "PRODUCT.md").write_text(PRODUCT)
+            (root / "docs").mkdir()
+            (root / p.HISTORY).write_text(PRODUCT)
             orig = p._red_check
             p._red_check = lambda: (_ for _ in ()).throw(RuntimeError("no network"))
             try:
@@ -213,12 +214,12 @@ class Fetch(unittest.TestCase):
 
 class RealFiles(unittest.TestCase):
     def test_this_checkout_parses(self):
-        """The real PRODUCT.md and results.md still have the shape the section reads."""
-        st = p.parse_stages((p.ROOT / "PRODUCT.md").read_text())
+        """The real docs/history.md and results.md still have the shape the section reads."""
+        st = p.parse_stages((p.ROOT / p.HISTORY).read_text())
         self.assertEqual([s["name"].split(":")[0] for s in st], ["B", "F", "C1"])
         self.assertTrue(st[0]["done"])
         self.assertTrue(all(s["issues"] for s in st))
-        self.assertEqual(p.c_stage_2((p.ROOT / "PRODUCT.md").read_text()), "not planned (GOV-0015)")
+        self.assertEqual(p.c_stage_2((p.ROOT / p.HISTORY).read_text()), "not planned (GOV-0015)")
         self.assertIsNotNone(p.bar_result((p.ROOT / p.RESULTS).read_text()))
 
 
