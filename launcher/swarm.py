@@ -1114,6 +1114,18 @@ def dashboard():
     return generate
 
 
+def work_map(launcher: Launcher, repo: str, window: str, as_json: bool = False,
+             idle_minutes: int = 15, gather=None) -> int:
+    """`swarm map` (#1081): dashboard/workmap.py's map for one window, as text or JSON. One row
+    per issue and the unattributed row; no total (GOV-0033). Raises RuntimeError."""
+    dashboard()
+    import workmap
+    now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    m = workmap.build((gather or workmap.gather)(repo, now, window, idle_minutes), now, window)
+    launcher.out(json.dumps(m, indent=1) if as_json else workmap.text(m))
+    return 0
+
+
 def snapshot(repo: str, idle_minutes: int, now: dt.datetime) -> tuple[dict, dict]:
     """The dashboard's raw GitHub data and the model it builds from it. Raises RuntimeError."""
     g = dashboard()
@@ -2342,6 +2354,13 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
                            help="window for what agents did on the owner's authority (default: 24)")
     p_trouble.add_argument("--repo", help="owner/name (default: this checkout's origin)")
     p_trouble.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
+    p_map = sub.add_parser("map", help="per issue: cost, tokens, lines, outcomes, Goal, effort, role and "
+                                       "stage for a window, with no total (#1081)")
+    p_map.add_argument("--window", choices=("hour", "day", "week", "month"), default="day",
+                       help="the window, ending with the current UTC hour (default: day)")
+    p_map.add_argument("--json", action="store_true", dest="as_json", help="the map as JSON")
+    p_map.add_argument("--repo", help="owner/name (default: this checkout's origin)")
+    p_map.add_argument("--idle-minutes", type=int, default=15, help="a live session is idle after this long")
     p_launch = sub.add_parser("launch", help="start one session on a given issue")
     p_launch.add_argument("role")
     p_launch.add_argument("--issue", required=True,
@@ -2457,7 +2476,7 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
             launcher.out(f"swarm watch: {e}")
             return 2
     repo = None
-    if args.cmd in ("ls", "launch", "inbox", "watch", "cost", "merges", "daily", "acts", "trouble", "specs"):
+    if args.cmd in ("ls", "launch", "inbox", "watch", "cost", "merges", "daily", "acts", "trouble", "specs", "map"):
         repo = args.repo or dashboard().default_repo()
         if not repo:
             launcher.out(f"swarm {args.cmd}: can't tell the repo; pass --repo owner/name")
@@ -2510,6 +2529,8 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
             return daily(launcher, repo, args.manifest)
         if args.cmd == "acts":
             return owner_acts(launcher, repo, args.manifest, args.day, args.as_json)
+        if args.cmd == "map":
+            return work_map(launcher, repo, args.window, args.as_json, args.idle_minutes)
         if args.cmd == "trouble":
             return trouble(launcher, repo, args.manifest, args.hours, args.as_json)
         if args.cmd == "watch":

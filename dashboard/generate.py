@@ -934,7 +934,7 @@ def default_repo() -> str | None:
 # The trouble panel (#903, trouble.gather without the acts sync) adds about 10 to 15 REST calls
 # (open issues, recent comments, the report issue's comments, other repos' Goals) and 15 to 25
 # GraphQL queries (open and merged PRs, this week's merges, one scope query per 25 issues).
-PAGE_NEEDS = {"core": 140, "graphql": 90}
+PAGE_NEEDS = {"core": 140, "graphql": 95}   # +5 for the Work map's PR search (#1081)
 DIGEST_NEEDS = {"core": 30, "graphql": 30}
 SPACING = dt.timedelta(minutes=5)       # a nudged rebuild waits this long after a published one
 WORKFLOW = "dashboard.yml"
@@ -999,6 +999,23 @@ def too_soon(repo: str, now: dt.datetime) -> str | None:
 STATE_FILE = "state.json"   # the page's data, written beside it (state.py, #400)
 
 
+def write_map(data: dict, model: dict, now: dt.datetime, out_dir: Path, days: int = DAYS,
+              fetch_prs=None) -> str:
+    """The Work map's data, map.json, beside the pages (workmap.py, #1081): cost per issue,
+    which GOV-0049 lets both Desks publish, never a total (GOV-0033). It reuses this build's
+    data and adds one PR search. If that fails, no map.json is written and the pages still are."""
+    import workmap   # here, not at the top: workmap imports this module
+    try:
+        since = now - dt.timedelta(days=days)
+        prs = (fetch_prs or workmap.fetch_prs)(data["repo"], since)
+        g = {"data": data, "model": model, "prs": prs, "effort": data.get("effort"), "since": since}
+        text = json.dumps(workmap.desk_file(g, now), indent=1) + "\n"
+    except (RuntimeError, OSError, subprocess.SubprocessError, ValueError) as e:
+        return f"generate.py: {workmap.FILE} not written: {e}"
+    (out_dir / workmap.FILE).write_text(text, encoding="utf-8")
+    return f"wrote {workmap.FILE}"
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Render the swarm dashboard's static HTML pages.")
     ap.add_argument("--repo", help="owner/name (default: this checkout's origin)")
@@ -1042,6 +1059,7 @@ def main(argv: list[str]) -> int:
     for name, page in pages.items():
         (out if name == "index.html" else out.parent / name).write_text(page, encoding="utf-8")
     (out.parent / STATE_FILE).write_text(data_json, encoding="utf-8")   # #400
+    print(write_map(data, model, now, out.parent, args.days))
     live = sum(s["status"] != "stopped" for s in model["sessions"])
     others = ", ".join(n for n in pages if n != "index.html")
     print(f"wrote {out}, {others}, {STATE_FILE} and {layout.FONTS_DIR}/ beside it: "

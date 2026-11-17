@@ -1,6 +1,6 @@
 # Launcher
 
-The v1 local launcher (GOV-0005). It starts sessions through `ops/swarm-session` unchanged. It covers the manifest (L1), `swarm up / ls / stop` (L2), `swarm launch` (L3), the warn-only spend cap (L4) and `swarm inbox` (L5). `swarm watch` is v2, the wake-up loop (GOV-0009). `swarm cost` (#176) prints the cost per PR of the runs `swarm watch` recorded, locally, `swarm status` (#457) prints what the loop is doing now, with cost, `swarm daily` (#707) lists the daily reports and who started each, `swarm spent` (#662) prints run spend from the runs ledger, and `swarm trouble` (#803) reports what is stuck per Goal and Area. The reviewer runs by default (L6) because `swarm.toml` lists it, so `up` starts it like any other role.
+The v1 local launcher (GOV-0005). It starts sessions through `ops/swarm-session` unchanged. It covers the manifest (L1), `swarm up / ls / stop` (L2), `swarm launch` (L3), the warn-only spend cap (L4) and `swarm inbox` (L5). `swarm watch` is v2, the wake-up loop (GOV-0009). `swarm cost` (#176) prints the cost per PR of the runs `swarm watch` recorded, locally, `swarm status` (#457) prints what the loop is doing now, with cost, `swarm daily` (#707) lists the daily reports and who started each, `swarm spent` (#662) prints run spend from the runs ledger, `swarm trouble` (#803) reports what is stuck per Goal and Area, and `swarm map` (#1081) prints what each issue cost and returned. The reviewer runs by default (L6) because `swarm.toml` lists it, so `up` starts it like any other role.
 
 ## swarm up / ls / stop
 
@@ -297,6 +297,16 @@ Stage 1 of #760. For each open Goal and Area the owner opened (GOV-0031), and fo
 It only reads GitHub; locally it syncs `swarm.db`'s owner acts as `swarm acts` does. Stage 2 has the daily report and the check-in read it.
 
 **Time (#858).** A run takes about 13 seconds, and about 20 on the first run after a working day ends, which reads that day's acts back from GitHub. Its reads run at once, not one after another. The acts backfill runs beside them and starts no new GitHub read after 20 seconds (`BUDGET_SECONDS`); `swarm acts` runs with no limit. Acts it found but didn't read back are read on the next run. A backfill of many days at once (the first ever, or after a long gap) can't finish in that time: the report says so under `not read`, and `launcher/swarm acts` finishes it.
+
+## swarm map: cost and outcomes per issue (#1081)
+
+```
+launcher/swarm map [--window hour|day|week|month] [--json] [--repo owner/name]
+```
+
+One row per issue: cost, tokens, lines, outcomes (merged/approved/closed), Goal, effort, role, stage and whether it is in the needs-you list, with its baseline (mean cost of the four windows before) and 14 days of cost and outcomes, then the `unattributed` row for spend before any `working_on`. The window (default `day`) ends with the current UTC hour. There is no total line and no total field (GOV-0033). Cost is the API list-price equivalent, as in `spend.py`; a `*` marks a row with tokens from a model with no list price. `--json` prints the same rows with every field. How it attributes spend, and the fields, are in [dashboard/README.md](../dashboard/README.md#work-map-data); the Desk build writes the same data to `map.json`.
+
+It reads what the Desk build reads for sessions, PRs, the plan and the needs-you list, plus one search for the PRs updated in the data's span. It reads 14 days of heartbeats, or as many as the window and its four baseline windows need (36 for a week, 151 for a month), so a month takes longer.
 
 ## swarm classify eval: score a classifier (#1010)
 
