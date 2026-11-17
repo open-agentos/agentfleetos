@@ -281,9 +281,9 @@ def render(e: dict | None) -> str:
 
 
 def page_body(e: dict | None, repo: str) -> str:
-    """effort.html: each open Goal's PRs by window and label, for the desk's bar segments."""
+    """effort.html: each open Goal's PRs by window and label, for Crew's Effort bar segments."""
     out = ['<h1>Effort</h1>',
-           '<p class="muted">The PRs behind the <a href="index.html">desk</a>\'s Effort bars, '
+           '<p class="muted">The PRs behind <a href="crew.html#effort">Crew</a>\'s Effort bars, '
            'from <code>classify/cache/effort.json</code>. A PR marked fix fixes something merged '
            'in the 14 days before it.</p>']
     if not e or e["status"] != "ok":

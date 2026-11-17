@@ -4,8 +4,6 @@ How AgentFleetOS got here: the versions before the current plan, with the issues
 
 The product brief as it stood before it became an overview is [PRODUCT.md at 8fb86d5](https://github.com/open-agentos/agentfleetos/blob/8fb86d523fda89b3d8bad86e955929aefa763891/PRODUCT.md). That version has the department goal, its rulings (Q2 to Q5) and the operating model, with their issue numbers.
 
-The Desk's v3 progress panel (`dashboard/progress.py`) reads the `## v3` section below. Keep its `### Stage` tables in this shape.
-
 ## v0 to v3
 
 v0–v3 are the infrastructure the department goal stands on.

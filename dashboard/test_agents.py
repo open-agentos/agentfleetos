@@ -1,4 +1,4 @@
-"""Tests for the Agents page (#932). Run: python3 -m unittest discover -s dashboard"""
+"""Tests for the crew's roles (#932; on Crew since #1113). Run: python3 -m unittest discover -s dashboard"""
 from __future__ import annotations
 
 import datetime as dt
@@ -10,7 +10,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import agents  # noqa: E402
-import layout  # noqa: E402
 from test_strip import NOW, REPO, model  # noqa: E402
 
 
@@ -63,10 +62,12 @@ class BuildTest(unittest.TestCase):
 
 
 class RenderTest(unittest.TestCase):
-    def test_rows_link_to_drawers(self):
+    def test_rows_open_the_work_maps_role_view(self):
+        # #1113: the drawer became the Work map's role view (#1115); each row links there.
         html = agents.render(agents.build(amodel()))
-        self.assertEqual(re.findall(r'class="cm-row" href="#a-([a-z]+)"', html),
-                         re.findall(r'class="cm-drawer" id="a-([a-z]+)"', html))
+        roles = re.findall(r'class="cm-row" href="workmap.html\?group=role#role-([a-z]+)"', html)
+        self.assertEqual(sorted(roles), sorted(r for r, _ in agents.ROLES))
+        self.assertNotIn("cm-drawer", html)
         self.assertIn("WORKING · 3", html)
         self.assertIn("IDLE · 4", html)
 
@@ -75,33 +76,12 @@ class RenderTest(unittest.TestCase):
         for row in re.findall(r'<a class="cm-row".*?</a>', html):
             self.assertEqual(row.count("<a "), 1)
 
-    def test_drawer_contents(self):
-        html = agents.render(agents.build(amodel()))
-        b = html[html.index('id="a-builder"'):html.index("</section>", html.index('id="a-builder"'))]
-        for text in ("LAST 14 DAYS", "Changes requested", "M4 drill", "Desk: trouble panel",
-                     "left for you: protected path", "<code>Ask: builder: …</code>", "issues/249"):
-            self.assertIn(text, b)
-        mg = html[html.index('id="a-merger"'):html.index("</section>", html.index('id="a-merger"'))]
-        self.assertNotIn("ASK IT SOMETHING", mg)
-        an = html[html.index('id="a-analyst"'):html.index("</section>", html.index('id="a-analyst"'))]
-        self.assertIn("BLOCKED", an)
-
     def test_empty_model(self):
         empty = {"repo": REPO, "now": NOW, "sessions": [], "prs": [], "merged": [], "grants": None,
                  "report": None, "trouble": None, "plan": None}
         html = agents.render(agents.build(empty))
         self.assertIn("Nothing merged in the window.", html)
-        self.assertIn("No live session.", html)
-        self.assertIn("the report issue", html)
-
-    def test_page_shell(self):
-        page = agents.page(amodel(), "t", "")
-        self.assertNotIn("<script", page)
-        for href in re.findall(r'href="([^"]+)"', page):
-            self.assertRegex(href, r"^(https://github\.com/|[a-z]+\.html$|#[a-z0-9-]+$)")
-        self.assertNotIn('<nav class="br-nav"', page)   # the Bridge's left column went (#1114)
-        self.assertIn(("agents.html", "Agents"), layout.PAGES)
-
+        self.assertIn("IDLE · 7", html)
 
 if __name__ == "__main__":
     unittest.main()

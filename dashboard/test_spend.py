@@ -2,7 +2,6 @@
 
 Run: python3 -m unittest discover -s dashboard
 """
-import datetime as dt
 import sys
 import unittest
 from pathlib import Path
@@ -51,24 +50,6 @@ class EstimateTest(unittest.TestCase):
                          ["—", "$0.00", "<$0.01", "$0.42", "$1,234.50"])
 
 
-class DailyTest(unittest.TestCase):
-    def test_increase_split_at_utc_midnight(self):
-        def e(ts, out):
-            return {"ts": ts, "model": "claude-opus-5-5", "token_counts": tok(o=out)}
-        events = [e("2026-11-01T23:00:00Z", M), e("2026-11-01T23:50:00Z", 2 * M),
-                  {"ts": "2026-11-02T00:10:00Z", "model": "claude-opus-5-5"},
-                  e("2026-11-02T01:00:00Z", 3 * M)]
-        d = spend.daily(events, g.parse_ts)
-        self.assertEqual(d, {dt.date(2026, 11, 1): 40.0, dt.date(2026, 11, 2): 20.0})
-
-    def test_counter_reset_is_not_negative(self):
-        def e(ts, out):
-            return {"ts": ts, "model": "claude-opus-5-5", "token_counts": tok(o=out)}
-        d = spend.daily([e("2026-11-02T01:00:00Z", 2 * M), e("2026-11-02T02:00:00Z", M),
-                         e("2026-11-02T03:00:00Z", 3 * M)], g.parse_ts)
-        self.assertEqual(d, {dt.date(2026, 11, 2): 60.0})
-
-
 class PageTest(unittest.TestCase):
     def model(self):
         a = [ev("s1", "session_started", 26 * 60, token_counts=tok()),
@@ -78,21 +59,18 @@ class PageTest(unittest.TestCase):
         return build([tracking(50, "s1"), tracking(51, "s2")],
                      {50: [comment(a)], 51: [comment(b)]})
 
-    def test_totals(self):
+    def test_each_sessions_own_figure(self):
         m = self.model()
-        self.assertAlmostEqual(m["spend"]["today"], 4.0)
-        self.assertAlmostEqual(m["spend"]["per_day"][NOW.date() - dt.timedelta(days=1)], 20.0)
-        self.assertEqual(len(m["spend"]["per_day"]), g.SPEND_DAYS)
-        self.assertEqual([s["session_id"] for s in m["spend"]["unpriced"]], ["s2"])
         self.assertEqual({s["session_id"]: s["cost"] for s in m["sessions"]}, {"s1": 24.0, "s2": None})
+        self.assertNotIn("spend", m)   # no spend per day or total (#1113, GOV-0033)
 
-    def test_page_states_method_and_figures(self):
-        page = g.render(self.model())["operations.html"]
-        self.assertIn("spent today (est.)", page)
+    def test_crew_states_method_and_figures(self):
+        page = g.render(self.model())["crew.html"]
         self.assertIn("$24.00", page)
         self.assertIn("API list-price equivalent", page)
         self.assertIn(spend.PRICES_AS_OF, page)
-        self.assertIn("Left out of totals", page)
+        for gone in ("spent today", "Spend per day", "Left out of totals"):
+            self.assertNotIn(gone, page)
 
 
 if __name__ == "__main__":

@@ -74,8 +74,7 @@ class OverCapTest(unittest.TestCase):
 
     def test_page_marks_over_cap(self):
         m, _ = self.sessions({"builder": 15, "reviewer": 5})
-        page = g.render(m)["operations.html"]
-        self.assertIn("[over cap] reviewer session r-way-ov", page)
+        page = g.render(m)["crew.html"]   # the sessions table moved to Crew (#1113)
         self.assertIn('<span class="pill s-blocked">over cap $15.00</span>', page)
 
 

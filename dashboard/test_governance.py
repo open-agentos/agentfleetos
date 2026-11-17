@@ -123,9 +123,10 @@ class LapsedTest(unittest.TestCase):
 class PageTest(unittest.TestCase):
     def test_section_replaces_old_table(self):
         page = g.render(build([question(5, labels=["gov:deliberating"], ttl="2026-11-01"),
-                               question(6, labels=["gov:lapsed"])]))["decisions.html"]
+                               question(6, labels=["gov:lapsed"])]))["governance.html"]
         self.assertNotIn("<h2>Open gov questions</h2>", page)
-        self.assertIn("<h2>Governance</h2>", page)
+        self.assertIn('<section class="sec" id="rulings"><h2>Rulings</h2>', page)   # #1113
+        self.assertIn('<section class="sec" id="questions"><h2>Questions</h2>', page)
         self.assertIn('href="https://github.com/open-agentos/agentfleetos/blob/main/governance/'
                       'decisions/GOV-0010-d.md">GOV-0010</a>', page)
         self.assertLess(page.index("GOV-0010"), page.index("GOV-0003"))
@@ -137,10 +138,10 @@ class PageTest(unittest.TestCase):
         self.assertIn("gov:deliberating", page)   # labels the old table showed stay
         self.assertIn("By shape: authoritative 2", page)
         self.assertIn("is not precedent", page)
-        self.assertNotIn("<script", page)
+        self.assertNotIn("<script>", page)   # only the live refresh, from js/ (#1106)
 
     def test_missing_index_and_no_questions(self):
-        page = g.render(build([], index=None))["decisions.html"]
+        page = g.render(build([], index=None))["governance.html"]
         self.assertIn("governance/INDEX.md not found", page)
         self.assertIn("None open or closed in the last 14 days.", page)
 

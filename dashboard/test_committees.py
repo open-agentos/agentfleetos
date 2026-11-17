@@ -356,8 +356,8 @@ class CommitteeTest(Fixture):
         model = g.build(data, now, dt.timedelta(minutes=15))
         self.assertEqual(model["committees"]["committees"][0]["status"], "record GOV-0021")
         pages = g.render(model)
-        self.assertNotIn('class="desk"', pages["index.html"])            # it ended: no desk (#404)
-        self.assertIn("<h2>Past committees</h2>", pages["decisions.html"])   # it ended
+        self.assertNotIn('class="desk"', pages["governance.html"])        # it ended: no desk (#404)
+        self.assertIn("<h2>Past committees</h2>", pages["governance.html"])   # it ended
         # The Work map shows cost per issue by design (GOV-0049); test_workmap_page checks it.
         page = "".join(v for k, v in pages.items() if k != workmap_page.FILE)
         self.assertNotIn("<script", page.replace(g.layout.script_tag(live.FILE, live.script()), "").lower())
@@ -466,8 +466,11 @@ class RenderTest(Fixture):
         self.assertEqual(self.page([], notes=["no Committees Discussion category"]), "")
         data = {"repo": REPO, "issues": [], "comments": {}, "prs": [], "reviews": {}, "committees": None}
         now = dt.datetime(2026, 11, 4, 15, 0, tzinfo=dt.timezone.utc)
-        for page in g.render(g.build(data, now, dt.timedelta(minutes=15))).values():
-            self.assertNotIn("Committees", page)
+        pages = g.render(g.build(data, now, dt.timedelta(minutes=15)))
+        for name, page in pages.items():   # Governance keeps its #committees section (#1113)
+            self.assertNotIn("Committees" if name != "governance.html" else "Past committees", page)
+        self.assertIn('<section class="sec" id="committees"><h2>Committees</h2>', pages["governance.html"])
+        self.assertIn("No open committees.", pages["governance.html"])
 
     def test_open_committees_are_on_the_desk(self):
         # g.build reads the checkout's records, where #311 has GOV-0021: use a question without one.
@@ -477,11 +480,12 @@ class RenderTest(Fixture):
                                "questions": {9999: question(False, False)}, "notes": []}}
         now = dt.datetime(2026, 11, 4, 15, 0, tzinfo=dt.timezone.utc)
         pages = g.render(g.build(data, now, dt.timedelta(minutes=15)))
-        self.assertIn('<section class="desk">', pages["index.html"])     # the desk (#404)
-        self.assertNotIn('<table class="grid">', pages["index.html"])
-        self.assertIn("<h2>Committees</h2>", pages["decisions.html"])     # the grid moved (#404)
-        self.assertIn('<table class="grid">', pages["decisions.html"])
-        self.assertNotIn("Committees</h2>", pages["operations.html"])
+        gov = pages["governance.html"]   # #1113: the desk and the grid, one #committees section
+        self.assertIn('<section class="desk">', gov)     # the desk (#404)
+        self.assertEqual(gov.count("<h2>Committees</h2>"), 1)
+        self.assertLess(gov.index('<section class="desk">'), gov.index('<table class="grid">'))
+        self.assertNotIn("No open committees.", gov)
+        self.assertNotIn("Committees</h2>", pages["crew.html"])
 
     def test_parts(self):
         open_one = discussion(comments=[post(*POSTS_314[0])])
@@ -641,8 +645,8 @@ class PastTest(Fixture):
         self.assertEqual(p["minutes"], 7)          # 14:18 to 14:25
         self.assertEqual((p["swing"], p["seats"]), (3, 3))   # every seat moved from round 1
 
-        desk = g.render(m)["index.html"]
-        self.assertIn("<h2>Past committees</h2>", desk)
+        desk = g.render(m)["governance.html"]
+        self.assertEqual(desk.count("<h2>Past committees</h2>"), 1)   # cards and grids merged (#1113)
         self.assertIn(f'<div class="past"><div class="rec"><a href="https://github.com/{REPO}/blob/main/'
                       'governance/decisions/GOV-0021-when.md">GOV-0021</a></div>', desk)
         self.assertIn("<blockquote>“Reviewer requests changes only for a numbered block-list finding", desk)
@@ -651,8 +655,9 @@ class PastTest(Fixture):
         self.assertIn("<li><code>claude-opus-5-5</code>, <code>claude-sonnet-5-5</code> · §7.2 met</li>", desk)
         self.assertIn("<li>7 minutes first to last post</li>", desk)
         self.assertIn("<li>swing: 3 of 3 seats changed</li>", desk)
-        self.assertNotIn('<table class="grid">', desk)                 # the grids stay on decisions
-        self.assertIn('<table class="grid">', g.render(m)["decisions.html"])
+        # the round grids follow the cards, collapsed
+        self.assertLess(desk.index('<div class="past">'), desk.index("Round grids of the 1 ended committee"))
+        self.assertIn('<table class="grid">', desk)
 
     def test_no_record_yet(self):
         (self.decisions / "GOV-0021-when.md").unlink()
@@ -661,7 +666,7 @@ class PastTest(Fixture):
         self.assertIsNone(p["record"])
         self.assertIsNone(p["summary"])
         self.assertEqual(p["consensus"]["text"], "dissent: proposer")
-        desk = g.render(m)["index.html"]
+        desk = g.render(m)["governance.html"]
         self.assertIn('<div class="rec"><span class="muted">no record yet</span></div>', desk)
         self.assertIn('<p class="muted">no ruling recorded</p>', desk)
 
@@ -678,7 +683,7 @@ class PastTest(Fixture):
         (p,) = c.past_states(m["committees"], g.rulings(m), REPO)
         self.assertEqual(p["consensus"], {"text": "consensus after round 1", "consensus": True, "dissent": []})
         self.assertEqual((p["rounds_used"], p["stopped_early"], p["minutes"], p["swing"]), (1, True, 12, 0))
-        desk = g.render(m)["index.html"]
+        desk = g.render(m)["governance.html"]
         self.assertIn('<div class="call">consensus after round 1</div>', desk)
         self.assertIn("<li>1 of 3 rounds · stopped early</li>", desk)
         self.assertIn("<li>swing: 0 of 3 seats changed</li>", desk)
@@ -687,7 +692,7 @@ class PastTest(Fixture):
         (self.decisions / "GOV-0021-when.md").unlink()
         m = self.model([discussion()], {311: question(False, False)})
         self.assertEqual(c.past_states(m["committees"], g.rulings(m), REPO), [])
-        self.assertNotIn("Past committees", g.render(m)["index.html"])
+        self.assertNotIn("Past committees", g.render(m)["governance.html"])
         self.assertEqual(c.past(None, {}, REPO), "")
 
     def test_state_json_carries_the_cards(self):

@@ -131,7 +131,7 @@ class RenderTest(unittest.TestCase):
         self.assertIn("always one-way", html)
         self.assertIn("Treat as one-way.", html)
         self.assertIn("nobody: ask", html)
-        self.assertIn('<a href="decisions.html">2 in force</a>', html)
+        self.assertIn('<a href="#rulings">2 in force</a>', html)
         self.assertIn("review date passed: GOV-0002", html)
         self.assertIn("domains the file doesn't list: nowhere", html)
         self.assertIn("quorum of 0.5", html)

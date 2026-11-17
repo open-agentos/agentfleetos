@@ -5,15 +5,16 @@ Method (the default in gov question #28, pending a ruling):
   - cache writes are priced at the 1-hour rate (Claude Code sessions use the 1-hour
     cache; the heartbeat records one cache-creation total, not a split by TTL);
   - a non-null `cost_usd` on an event wins over the estimate;
-  - an unknown model or missing token counts gives no figure, and the session is
-    left out of totals.
+  - an unknown model or missing token counts gives no figure.
+
+Each session's own figure shows in Crew's sessions table; the pricing is also what the
+Work map's costs use (`swarm map`). There is no spend per day or total (GOV-0033, #1113).
 
 It is what the tokens would cost at API list price, not what was billed: sessions
 on a subscription aren't charged per token.
 """
 from __future__ import annotations
 
-import datetime as dt
 import re
 
 # $ per million tokens, from https://platform.claude.com/docs/en/about-claude/pricing
@@ -69,21 +70,6 @@ def event_cost(ev: dict) -> float | None:
 def session_cost(events: list[dict]) -> float | None:
     """Latest known cumulative cost (events oldest first)."""
     return next((c for c in map(event_cost, reversed(events)) if c is not None), None)
-
-
-def daily(events: list[dict], parse_ts) -> dict[dt.date, float]:
-    """A session's cost increase per UTC day (events oldest first)."""
-    out: dict[dt.date, float] = {}
-    prev = 0.0
-    for ev in events:
-        c = event_cost(ev)
-        if c is None:
-            continue
-        day = parse_ts(ev["ts"]).astimezone(dt.timezone.utc).date()
-        # Cumulative counts shouldn't fall; if they do (a restart), count nothing.
-        out[day] = out.get(day, 0.0) + max(0.0, c - prev)
-        prev = max(prev, c)
-    return out
 
 
 def usd(x: float | None) -> str:

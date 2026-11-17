@@ -1,8 +1,9 @@
-"""The Agents page (#932, under M3 #685): the owner's "v5 · the bridge" mock-up, read-only.
+"""The crew: one row per role (#932, under M3; on Crew since #1113), read-only.
 
-`agents.html` has one row per role (the files in roles/, plus the merger App) and a focus
-drawer for the one picked. It is built from the model generate.build() already makes, so it
-costs no API calls of its own:
+Crew (`crew.html`) opens with one row per role (the files in roles/, plus the merger App),
+each linking to that role's view in the Work map's Selected panel (#1115), which shows what
+the Agents page's focus drawer did; `agents.html` sends the browser to Crew. build() is the
+source of both, and costs no API calls of its own:
 
   - sessions (tracking issues and their heartbeat events): who is working, on what, and how
     many sessions each role ran in the build's window;
@@ -11,9 +12,8 @@ costs no API calls of its own:
   - grants: the merger's calls in the last 24 hours, counted for the role whose PR it was.
 
 Groups: working (a live session that is active or blocked; for the merger, a call in the
-last 24 hours), then idle. The drawer opens through CSS `:target`, as on Commissions, so it
-needs no script. To ask a role something, the owner comments `Ask: <role>: ...` on the
-report issue (GOV-0029); the drawer says so and links there.
+last 24 hours), then idle. To ask a role something, the owner comments `Ask: <role>: ...` on
+the report issue (GOV-0029); the role view says so and links there.
 
 No spend, caps or cost per result (GOV-0033), and no first-pass review rate or reverts: the
 build doesn't read merged PRs' reviews. Stdlib only.
@@ -23,10 +23,11 @@ from __future__ import annotations
 import datetime as dt
 
 import strip
-import layout
 from layout import esc
 
-FILE = "agents.html"
+# Where a role's row goes: its role view in the Work map's Selected panel (#1115). workmap.html,
+# not /, so the query survives on Pages, where / is index.html's redirect.
+MAP_ROLE = "workmap.html?group=role#role-{role}"
 # (role, what it does), in the order the page lists them.
 ROLES = (("planner", "Runs the plan and writes your daily report"),
          ("builder", "Builds and ships code"),
@@ -35,7 +36,6 @@ ROLES = (("planner", "Runs the plan and writes your daily report"),
          ("designer", "Specs, and how the product reads to you"),
          ("docs", "Records, rulings and docs"),
          ("merger", "Merges under your standing grant (GOV-0027)"))
-RECENT = 6
 CHANGES = "CHANGES_REQUESTED"
 
 
@@ -104,7 +104,7 @@ def _line(r: dict, now: dt.datetime) -> str:
 
 
 def row_html(r: dict, b: dict) -> str:
-    return (f'<a class="cm-row" href="#a-{r["role"]}">{_badge(r["role"], r["group"])}'
+    return (f'<a class="cm-row" href="{esc(MAP_ROLE.format(role=r["role"]))}">{_badge(r["role"], r["group"])}'
             f'<span class="cm-name"><span class="br-title">{esc(r["role"].capitalize())}</span>'
             f'<span class="muted">{esc(r["does"])}</span><span class="muted">{_line(r, b["now"])}</span></span>'
             f'<span class="mono ag-n">{_count(r)}</span></a>')
@@ -117,73 +117,17 @@ def _count(r: dict) -> str:
     return f'{len(r["merged"])} merged'
 
 
-def _tile(label: str, n: int, sub: str, red: bool = False) -> str:
-    cls = " br-red" if red and n else ""
-    return (f'<div class="ag-tile"><span class="muted">{esc(label)}</span>'
-            f'<span class="mono{cls}">{n}</span><span class="muted">{esc(sub)}</span></div>')
-
-
-def _list(head: str, items: list[str], none: str) -> str:
-    body = (f'<ul class="cm-list">{"".join(f"<li>{x}</li>" for x in items)}</ul>' if items
-            else f'<p class="muted">{esc(none)}</p>')
-    return f'<div class="cm-sec"><p class="br-kind">{esc(head)}</p>{body}</div>'
-
-
-GROUP_WORD = {"merged": "merged under", "enqueued": "enqueued under", "would": "would merge:", "left": "left for you:"}
-
-
-def drawer_html(r: dict, b: dict) -> str:
-    now, days, repo = b["now"], b["days"], b["repo"]
-    pill = ("BLOCKED", "owner") if r["blocked"] else ("WORKING", "agent") if r["group"] == "working" else ("IDLE", "ink")
-    out = [f'<section class="cm-drawer" id="a-{r["role"]}" aria-label="{esc(r["role"])}">',
-           '<p class="br-kind">IN FOCUS · AGENT</p>',
-           f'<div class="ag-head">{_badge(r["role"], r["group"])}<div><h2 class="br-h cm-dtitle">'
-           f'{esc(r["role"].capitalize())}</h2><p class="muted cm-crumb">{esc(r["does"])}</p></div></div>',
-           f'<p><span class="cm-pill {pill[1]}">{pill[0]}</span> '
-           f'<span class="muted">{"last seen " + esc(strip.when(r["last_ts"], now)) if r["last_ts"] else ""}</span></p>',
-           f'<div class="cm-sec"><p class="br-kind">LAST {days} DAYS</p><div class="ag-tiles">'
-           + _tile("Merged", len(r["merged"]), "PRs by its App")
-           + _tile("Open now", len(r["open"]), "PRs by its App")
-           + _tile("Changes requested", len(r["changes"]), "at head, open PRs", red=True)
-           + _tile("Sessions", r["sessions"], "run in the window")
-           + "</div></div>"]
-    out.append(_list("WORKING ON", [f'{strip.a(x["url"], esc(x["ref"]))} {esc(x["title"])}'
-                                    + (' <span class="owner">blocked</span>' if x["status"] == "blocked" else "")
-                                    for x in r["on"]], "No live session."))
-    out.append(_list("RECENTLY MERGED", [
-        f'{strip.a(p.get("url"), "#" + str(p.get("number")))} {esc(p.get("title") or "")} '
-        f'<span class="muted">· {esc(strip.when(strip._ts(p.get("merged_at")), now))}</span>'
-        for p in r["merged"][:RECENT]], "Nothing merged in the window."))
-    out.append(_list("AUTHORITY USED, LAST 24 HOURS", [
-        f'{strip.a(c.get("link"), "PR #" + str(c.get("number")))} {esc(GROUP_WORD.get(c.get("group"), ""))} '
-        f'{esc(c.get("reason") or "")}' for c in r["authority"]], "None."))
-    if r["ask"]:
-        issue = b.get("report_issue")
-        where = (strip.a(f"https://github.com/{repo}/issues/{issue}", f"#{issue}") if issue
-                 else "the report issue")
-        out.append(f'<div class="cm-sec"><p class="br-kind">ASK IT SOMETHING</p><p>Comment '
-                   f'<code>Ask: {esc(r["role"])}: …</code> on {where}. <span class="muted">It starts '
-                   f'once and answers there (GOV-0029).</span></p></div>')
-    out.append('<p class="cm-sec"><a href="#top">Back to the list</a></p></section>')
-    return "".join(out)
-
-
 def render(b: dict) -> str:
+    """Crew's roles (#1113): one row per role, working first, each opening its role view on the
+    Work map (MAP_ROLE), the view the Agents drawer became (#1115)."""
     rows = b["rows"]
     working = sum(r["group"] == "working" for r in rows)
-    out = [f'<div class="br-titlebar"><h1>Agents</h1><span class="mono muted">{working} working · '
+    out = [f'<div class="br-titlebar"><h1>Crew</h1><span class="mono muted">{working} working · '
            f'{len(rows) - working} idle · {esc(b["now"].strftime("%a %d %b, %H:%M UTC"))}</span></div>',
-           '<p class="muted">The team that runs the plan for you. Pick one to see its record.</p>']
+           '<p class="muted">The team that runs the plan for you. Pick one to see its record, what it\'s '
+           'working on, the authority it used and how to ask it something.</p>']
     for g, name in (("working", "Working"), ("idle", "Idle")):
         rs = [r for r in rows if r["group"] == g]
         if rs:
             out.append(f'<p class="cm-grp">{name.upper()} · {len(rs)}</p>' + "".join(row_html(r, b) for r in rs))
-    aside = ('<aside class="cm-aside" aria-label="In focus"><p class="cm-pick muted">Pick an agent to see '
-             'what it merged, what it\'s working on, the authority it used and how to ask it something.</p>'
-             + "".join(drawer_html(r, b) for r in rows) + "</aside>")
-    return f'<div class="cm-wrap"><div class="cm-main" id="top">{"".join(out)}</div>{aside}</div>'
-
-
-def page(m: dict, title: str, owner_line: str) -> str:
-    """agents.html, in the shared page shell."""
-    return layout.page(FILE, title, m["repo"], m["now"], render(build(m)), owner_line)
+    return "".join(out)

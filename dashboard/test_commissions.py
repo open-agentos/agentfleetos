@@ -1,9 +1,8 @@
-"""Tests for the Commissions page (#931). Run: python3 -m unittest discover -s dashboard"""
+"""Tests for commissions.build (#931), the Work map's Goal view source since #1113. Run: python3 -m unittest discover -s dashboard"""
 from __future__ import annotations
 
 import datetime as dt
 import json
-import re
 import sys
 import unittest
 from pathlib import Path
@@ -11,7 +10,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import commissions as cm  # noqa: E402
-import layout  # noqa: E402
 from test_strip import NOW, REPO, item, model, scope  # noqa: E402
 
 TROUBLE = json.loads((HERE.parent / "launcher" / "testdata" / "trouble.json").read_text())
@@ -52,55 +50,6 @@ class BuildTest(unittest.TestCase):
     def test_falls_back_to_the_plan_when_trouble_failed(self):
         rows = cm.build(cmodel(trouble={"error": "boom"}))["rows"]
         self.assertEqual([(r["number"], r["group"]) for r in rows], [(685, "running"), (686, "running"), (684, "delivered")])
-
-
-class RenderTest(unittest.TestCase):
-    def html(self, **over):
-        return cm.render(cm.build(cmodel(**over)))
-
-    def test_rows_link_to_their_drawer_and_each_drawer_exists(self):
-        html = self.html()
-        rows = re.findall(r'class="cm-row" href="#c-(\d+)"', html)
-        drawers = re.findall(r'class="cm-drawer" id="c-(\d+)"', html)
-        self.assertEqual(rows, drawers)
-        self.assertEqual(len(rows), 5)
-
-    def test_drawer_shows_the_done_test_stuck_waiting_and_work(self):
-        html = self.html()
-        m4 = html[html.index('id="c-686"'):html.index("</section>", html.index('id="c-686"'))]
-        self.assertIn("<b>failing</b> drill", m4)
-        self.assertIn("PR #894", m4)
-        self.assertIn("changes requested, no push, nothing restarts it", m4)
-        m3 = html[html.index('id="c-685"'):html.index("</section>", html.index('id="c-685"'))]
-        self.assertIn("overstep: needs the owner", m3)
-        self.assertIn("OPEN WORK UNDER IT", m3)
-        self.assertIn('href="https://github.com/o/r/pull/933">PR #933</a>', m3)
-        self.assertIn("WAITS ON YOU", m3)
-
-    def test_group_headings_and_status_words(self):
-        html = self.html()
-        for text in ("NEEDS A LOOK · 1", "WAITS ON YOU · 1", "RUNNING · 1", "KEEP IT SO · 1",
-                     "DELIVERED THIS WEEK · 1", "1 stuck", "1 wait on you", "steady", "closed Tue 12:00"):
-            self.assertIn(text, html)
-        self.assertNotIn("M0", html)   # delivered too long ago
-
-    def test_unmeasured_never_reads_as_on_track(self):
-        html = cm.render(cm.build(model(trouble=TROUBLE)))
-        if "unmeasured" in json.dumps(TROUBLE):
-            self.assertIn("unmeasured: not known to be on track", html)
-        self.assertNotIn("javascript:", html)
-
-    def test_empty(self):
-        html = cm.render(cm.build(model(trouble={"scopes": [], "outside": {}}, plan=None)))
-        self.assertIn("No open Goal or Area, and none delivered this week.", html)
-
-    def test_page_has_no_script_and_safe_links(self):
-        page = cm.page(cmodel(), "t", "")
-        self.assertNotIn("<script", page)
-        for href in re.findall(r'href="([^"]+)"', page):
-            self.assertRegex(href, r"^(https://github\.com/|[a-z]+\.html$|#[a-z0-9-]+$)")
-        self.assertNotIn('<nav class="br-nav"', page)   # the Bridge's left column went (#1114)
-        self.assertIn(("commissions.html", "Commissions"), layout.PAGES)
 
 
 if __name__ == "__main__":

@@ -169,25 +169,25 @@ class PageTest(unittest.TestCase):
             self.assertEqual(g.read_state(f), {"built_at": "2026-11-09T08:00:00Z"})
 
     def test_render_escapes_and_links(self):
-        page = g.render(self.model())["operations.html"]
-        self.assertNotIn("<b>generator</b>", page)
-        self.assertIn("Add &lt;b&gt;generator&lt;/b&gt;", page)
-        self.assertIn("Dashboard &lt;generator&gt;", page)
-        self.assertIn(f"https://github.com/{REPO}/issues/26", page)
-        self.assertIn("1 stopped", page)
+        pages = g.render(self.model())
+        for name, page in pages.items():
+            self.assertNotIn("<b>generator</b>", page, name)
+        self.assertIn("Dashboard &lt;generator&gt;", pages["crew.html"])
+        self.assertIn("1 stopped", pages["crew.html"])
+        self.assertIn('<a href="https://x/26">#26</a> GOV-Q: build?', pages["governance.html"])
 
     def test_every_page_keeps_the_shell(self):
         pages = g.render(self.model())
-        self.assertEqual(list(pages), ["workmap.html", "commissions.html", "agents.html", "index.html", "effort.html", "operations.html", "decisions.html",
-                                       "authority.html"])   # the Work map leads the footer; the Bridge went (#1114)
+        # The three top-level pages in nav order, then Effort's drill-down (#1113).
+        self.assertEqual(list(pages), ["workmap.html", "crew.html", "governance.html", "effort.html"])
         for name, page in pages.items():
             head = page.split("</head>")[0]
             self.assertIn('<meta name="robots" content="noindex, nofollow">', head, name)
             self.assertIn('<meta http-equiv="refresh" content="300">', head, name)
             self.assertIn('<meta name="viewport" content="width=device-width, initial-scale=1">', head, name)
-            # Only the desk and the Work map load a script, each from js/ and allowed by hash
-            # (#411, #1082, #1106); no page carries an inline one.
-            rest = page.replace(g.layout.script_tag("poll.js", live.script()), "") if name == "index.html" else page
+            # Crew and Governance load the live refresh and the Work map its treemap, each from js/
+            # and allowed by hash (#411, #1082, #1106); no page carries an inline one.
+            rest = page.replace(g.layout.script_tag("poll.js", live.script()), "")
             if name == "workmap.html":
                 rest = re.sub(r'<script type="application/json" id="wm-data">.*?</script>', "",
                               rest.replace(g.layout.script_tag("workmap.js", workmap_page.script()), ""),
@@ -204,43 +204,66 @@ class PageTest(unittest.TestCase):
             self.assertIn('src:url("fonts/IBMPlexSans-Regular-Latin1.woff2")', head, name)
             # Nothing loaded from a third party: the only URLs in the head are the fonts.
             self.assertNotIn("//", head.replace("http-equiv", ""), name)
-            foot = page.split('<footer class="foot">')[1]
-            for other in pages:
-                if other == name:
-                    self.assertIn('aria-current="page"', foot)
+            # One nav on every page, Map · Crew · Governance, and no footer page list (#1113).
+            self.assertNotIn("<footer", page, name)
+            nav = re.findall(r'<nav class="top" aria-label="Pages">(.*?)</nav>', page)
+            self.assertEqual(len(nav), 1, name)
+            for f, label in g.layout.PAGES:
+                if f == name:
+                    self.assertIn(f'<span class="here" aria-current="page">{label}</span>', nav[0], name)
                 else:
-                    self.assertIn(f'href="{other}"', foot, name)
+                    self.assertIn(f'<a href="{f}">{label}</a>', nav[0], name)
+            self.assertEqual(re.findall(r">([^<]+)</(?:a|span)>", nav[0]), ["Map", "Crew", "Governance"], name)
 
     def test_each_section_lands_on_its_page(self):
-        m = self.model()
-        m["progress"] = None   # progress.render's own tests cover it; it needs its own data
-        pages = g.render(m)
+        pages = g.render(self.model())
         where = {
-            "index.html": ["<h1>The desk</h1>"],
-            "operations.html": ["<h2>Needs you (", "spent today (est.)", "<h2>Sessions</h2>",
-                                "<h2>Open pull requests</h2>", "<h2>Actions reviewer</h2>",
-                                "<h2>Spend per day (est.)</h2>"],
-            "decisions.html": ["<h2>Governance</h2>", "<h3>Decision log (",
-                               "<h3>Open gov questions (", "<h3>Lapsed questions</h3>"],
+            "crew.html": ["<h1>Crew</h1>", 'id="roles"', 'id="floor"', 'id="sessions"', "<h2>Sessions</h2>",
+                          'id="reviewer"', "<h2>Actions reviewer</h2>", 'id="grants"', 'id="effort"'],
+            "governance.html": ["<h1>Governance</h1>", 'id="rulings"', "<h3>Decision log (",
+                                'id="questions"', "<h3>Open gov questions (", "<h3>Lapsed questions</h3>",
+                                'id="committees"', 'id="authority"', "<h2>Authority map</h2>",
+                                'id="precedent"', 'id="trends"'],
         }
         for name, heads in where.items():
             for h in heads:
                 self.assertIn(h, pages[name], h)
                 for other in set(pages) - {name}:
                     self.assertNotIn(h, pages[other], f"{h} also on {other}")
-        self.assertIn('href="operations.html"', pages["index.html"].split("<footer")[0])
-        self.assertIn('href="decisions.html"', pages["index.html"].split("<footer")[0])
+        for gone in ("v3 progress", "Spend per day", "spent today", "Open pull requests", "Needs you (",
+                     "The desk</h1>", "Today's report</h2>", "<h2>Plan</h2>", "<h2>Trouble</h2>"):
+            for name, page in pages.items():
+                self.assertNotIn(gone, page, f"{gone} on {name}")
 
-    def test_decisions_page_has_the_full_log(self):
+    def test_governance_has_the_full_log(self):
         rows = "\n".join(f"| [GOV-{n:04d}](decisions/GOV-{n:04d}-x.md) | Ruling {n} | ops | rule | in force | 2027-06-01 |"
                          for n in range(1, 13))
         index = "| ID | Ruling | Domain | Shape | Status | Review by |\n|---|---|---|---|---|---|\n" + rows
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": [], "index": index}, NOW, IDLE)
         pages = g.render(m)
-        self.assertIn("<h3>Decision log (12)</h3>", pages["decisions.html"])
+        self.assertIn("<h3>Decision log (12)</h3>", pages["governance.html"])
         for n in range(1, 13):
-            self.assertIn(f">GOV-{n:04d}</a>", pages["decisions.html"])
-        self.assertNotIn("Decision log", pages["operations.html"] + pages["index.html"])
+            self.assertIn(f">GOV-{n:04d}</a>", pages["governance.html"])
+        self.assertNotIn("Decision log", pages["crew.html"] + pages["workmap.html"])
+
+    def test_retired_pages_redirect(self):
+        # #1113: each retired page sends the browser to its new home, and to nothing else.
+        homes = {"index.html": "workmap.html", "commissions.html": "workmap.html?group=goal",
+                 "agents.html": "crew.html", "operations.html": "crew.html",
+                 "decisions.html": "governance.html", "authority.html": "governance.html#authority",
+                 "bridge.html": "./"}
+        r = g.redirects()
+        self.assertEqual(set(r), set(homes))
+        for f, to in homes.items():
+            self.assertIn(f'<meta http-equiv="refresh" content="0; url={to}">', r[f], f)
+            self.assertIn(f'<a href="{to}">Go there</a>', r[f], f)
+            self.assertIn('<meta name="robots" content="noindex, nofollow">', r[f], f)
+            self.assertNotIn("<script", r[f], f)
+            self.assertNotIn(f, g.render(self.model()))   # not a page any more
+        # A redirect never lands on another redirect, so none loops on Pages, where / is index.html.
+        for to in homes.values():
+            target = to.split("?")[0].split("#")[0]
+            self.assertTrue(target in ("./",) or target in g.render(self.model()), to)
 
 
 FAKE_GH = r"""#!/usr/bin/env python3
@@ -296,9 +319,12 @@ class EndToEndTest(unittest.TestCase):
                         os.environ[k] = v
             self.assertEqual(rc, 0)
             out = d / "out"
-            self.assertIn("<h1>The desk</h1>", (out / "index.html").read_text())
-            self.assertIn("<h2>Governance</h2>", (out / "decisions.html").read_text())
-            self.assertIn("<h1>Authority map</h1>", (out / "authority.html").read_text())
+            # #1113: index.html, the --out page that Pages serves at /, sends the browser to the Work map.
+            self.assertIn('<meta http-equiv="refresh" content="0; url=workmap.html">', (out / "index.html").read_text())
+            self.assertIn("<h1>Crew</h1>", (out / "crew.html").read_text())
+            self.assertIn("<h2>Authority map</h2>", (out / "governance.html").read_text())
+            for f in g.REDIRECTS:
+                self.assertTrue((out / f).read_text().startswith("<!doctype html>"), f)
             # #1114: the Bridge is retired; its old address sends the browser to /.
             self.assertIn('<meta http-equiv="refresh" content="0; url=./">', (out / "bridge.html").read_text())
             for f in g.layout.FONT_FILES:   # self-hosted beside the pages
@@ -306,7 +332,7 @@ class EndToEndTest(unittest.TestCase):
                                  (g.layout.FONTS_SRC / f).read_bytes())
             # Each page's scripts are served from js/ beside it, the very bytes its CSP hashes (#1106).
             self.assertEqual(sorted(p.name for p in (out / "js").iterdir()), ["poll.js", "workmap.js"])
-            for name in ("index.html", "workmap.html"):
+            for name in ("crew.html", "governance.html", "workmap.html"):
                 page = (out / name).read_text()
                 srcs = re.findall(r'<script src="([^"]+)" integrity="sha256-([^"]+)">', page)
                 self.assertEqual(len(srcs), 1, name)
@@ -314,12 +340,10 @@ class EndToEndTest(unittest.TestCase):
                 body = (out / src).read_bytes()
                 self.assertEqual(digest, base64.b64encode(hashlib.sha256(body).digest()).decode(), name)
                 self.assertIn(f"script-src 'self' 'sha256-{digest}';", page, name)
-            page = (out / "operations.html").read_text()
+            page = (out / "crew.html").read_text()
             self.assertIn("#4 Dashboard generator", page)
             self.assertIn("s-active", page)
-            self.assertIn("<h2>v3 progress</h2>", page)
-            self.assertIn("(<a href=\"https://github.com/open-agentos/agentfleetos/issues/331\">#331</a>): not run", page)
-            self.assertIn("not started: no reds count until", page)
+            self.assertNotIn("v3 progress", page)   # retired (#1113)
             st = json.loads((d / "out" / "state.json").read_text())   # beside the page (#400)
             self.assertEqual((st["schema"], st["repo"]), (1, REPO))
             self.assertEqual([s["issue"] for s in st["sessions"]], [4])
@@ -416,7 +440,7 @@ class VendoredLibrariesTest(unittest.TestCase):
             libs = g.layout.libs("lib.js", src=src)
             with self.assertRaises(ValueError):
                 g.layout.libs("nope.js", src=src)
-        page = g.layout.page("index.html", "t", REPO, NOW, "<p>x</p>", script=("own.js", "own();"), libs=libs)
+        page = g.layout.page("workmap.html", "t", REPO, NOW, "<p>x</p>", script=("own.js", "own();"), libs=libs)
         lib_hash, own_hash = live.script_hash(self.LIB), live.script_hash("own();")
         self.assertIn(f"script-src 'self' {lib_hash} {own_hash};", page)
         self.assertLess(page.index('src="js/lib.js"'), page.index('src="js/own.js"'))

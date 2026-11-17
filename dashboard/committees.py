@@ -553,14 +553,15 @@ def one(c: dict, repo: str) -> str:
     return "\n".join(out)
 
 
-def render(m: dict | None, repo: str, part: str = "all") -> str:
+def render(m: dict | None, repo: str, part: str = "all", heading: bool = True) -> str:
     """The "Committees" section: open committees, then ended ones collapsed. Empty when there
     are no committees and nothing to say about reading them.
 
-    part="open" is the open committees with the unparsed and read-problem lines (on the
-    decisions page since #404; the desk shows desk() instead);
-    part="ended" is only the ended ones, as "Past committees" (the decisions page, #401), and
-    empty when none have ended."""
+    part="open" is the open committees with the unparsed and read-problem lines (Governance's
+    #committees, under desk());
+    part="ended" is only the ended ones, as "Past committees" (#401), and empty when none have
+    ended. Without `heading`, neither part has its own <h2>: Governance's #committees puts the
+    open grids under the committee desk and the ended ones under the past-committee cards (#1113)."""
     m = m or {"committees": [], "notes": []}
     parsed = [c for c in m["committees"] if c["status"] != "unparsed"]
     unparsed = [c for c in m["committees"] if c["status"] == "unparsed"]
@@ -570,11 +571,12 @@ def render(m: dict | None, repo: str, part: str = "all") -> str:
     if part == "ended":
         if not done:
             return ""
-        return "\n".join(["<h2>Past committees</h2>", f"<details><summary>{len(done)} ended</summary>",
-                          *[one(c, repo) for c in done], "</details>"])
+        summary = f"{len(done)} ended" if heading else f"Round grids of the {plural(len(done), 'ended committee')}"
+        return "\n".join([*(["<h2>Past committees</h2>"] if heading else []),
+                          f"<details><summary>{summary}</summary>", *[one(c, repo) for c in done], "</details>"])
     if not m["committees"] and not notes:
         return ""
-    out = ["<h2>Committees</h2>"]
+    out = ["<h2>Committees</h2>"] if heading else []
     out += [one(c, repo) for c in live]
     if not live:
         out.append('<p class="muted">No open committees.</p>')
@@ -742,9 +744,9 @@ def code_spans(text: str) -> str:
 
 
 def past(m: dict | None, rulings: dict[str, str], repo: str) -> str:
-    """"Past committees" on the desk: a card per ended committee with its record, the
+    """"Past committees" on Governance (#1113): a card per ended committee with its record, the
     record's one-line ruling, consensus or dissent, rounds used, models, minutes and swing.
-    Empty when none has ended. The round grids stay on the decisions page."""
+    Empty when none has ended. The round grids follow it (render(part="ended"))."""
     cards = []
     for p in past_states(m, rulings, repo):
         rec = p["record"]

@@ -162,15 +162,15 @@ class GenerateTest(unittest.TestCase):
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": [], "trouble": trouble,
                      "effort": effort.load(FIXTURE)}, NOW, dt.timedelta(minutes=15))
         pages = g.render(m)
-        self.assertIn("ef-row", pages["index.html"])
-        self.assertIn('data-panel="effort"', pages["index.html"])
+        self.assertIn("ef-row", pages["crew.html"])
+        self.assertIn('data-panel="effort"', pages["crew.html"])
         self.assertIn('id="e-o-r-987-this-capability"', pages["effort.html"])
         self.assertIsNotNone(state.state(m)["desk"]["effort"])   # the live refresh can draw it
         self.assertEqual(state.state(m)["effort"]["goals"][0]["this"]["total"], 5)
 
     def test_build_without_a_cache_shows_the_empty_state(self):
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": []}, NOW, dt.timedelta(minutes=15))
-        self.assertIn("isn't there", g.render(m)["index.html"])
+        self.assertIn("isn't there", g.render(m)["crew.html"])
 
     def test_state_json_carries_counts_not_html(self):
         s = effort.state(model(effort.load(FIXTURE))["effort"])

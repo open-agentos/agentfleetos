@@ -111,9 +111,9 @@ class PageTest(unittest.TestCase):
         """#1114: the Bridge's shared left column went with it."""
         page = wp.page(model(), "t", "")
         self.assertNotIn("<nav class=\"br-nav\"", page)
-        foot = re.search(r'<footer class="foot">.*?</footer>', page, re.S).group(0)
-        self.assertNotIn('bridge.html', foot)
-        self.assertEqual(layout.PAGES[0], ("workmap.html", "Work map"))
+        nav = re.search(r'<nav class="top" aria-label="Pages">.*?</nav>', page, re.S).group(0)
+        self.assertNotIn('bridge.html', nav)
+        self.assertEqual(layout.PAGES[0], ("workmap.html", "Map"))   # first in the nav (#1113)
         for href in re.findall(r'href="([^"]+)"', page):
             self.assertRegex(href, r"^(https://github\.com/|[a-z]+\.html)")
 

@@ -70,8 +70,9 @@ class StateTest(unittest.TestCase):
         self.assertEqual(self.s["repo"], REPO)
         self.assertEqual(self.s["built_at"], "2026-11-02T12:00:00Z")
         for k in ("sessions", "needs_you", "prs", "gov_questions", "governance", "committees",
-                  "progress", "reviewer_runs"):
+                  "reviewer_runs"):
             self.assertIn(k, self.s)
+        self.assertNotIn("progress", self.s)   # v3 progress retired (#1113)
 
     def test_is_json(self):
         self.assertEqual(json.loads(json.dumps(self.s)), self.s)

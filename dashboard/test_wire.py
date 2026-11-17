@@ -160,12 +160,14 @@ class RenderTest(unittest.TestCase):
 
 
 class PageTest(unittest.TestCase):
-    def test_desk_and_state_json_carry_the_wire(self):
+    def test_the_tape_and_state_json_carry_the_wire(self):
         data = {"repo": REPO, "issues": [], "comments": {}, "prs": [],
                 "activity": {"events": [issues_event("labeled", 396, 76, label="gov:ruled")], "pages": 1}}
         with mock.patch.object(g.committees, "owner_login", return_value=OWNER):
             m = g.build(data, NOW, dt.timedelta(minutes=15))
-        self.assertIn("Owner ruled on #396", g.render(m)["index.html"])
+        pages = g.render(m)
+        self.assertIn("Owner ruled on #396", pages["workmap.html"])   # on the tape (#1114); the panel retired (#1113)
+        self.assertFalse(any("<h2>The wire</h2>" in p for p in pages.values()))
         s = json.loads(json.dumps(state.state(m)))
         self.assertEqual(s["wire"]["items"], [{"kind": "ruled", "time": "2026-11-05T09:14:00Z", "number": 396,
                                                "text": "Owner ruled on #396", "link": f"{BASE}/issues/396"}])
@@ -173,7 +175,7 @@ class PageTest(unittest.TestCase):
 
     def test_no_wire_without_events_or_questions(self):
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": []}, NOW, dt.timedelta(minutes=15))
-        self.assertNotIn("The wire", g.render(m)["index.html"])
+        self.assertFalse(any("The wire" in p for p in g.render(m).values()))
         self.assertIsNone(state.state(m)["wire"])
 
 

@@ -20,8 +20,8 @@ replayed event can at most cause one extra build (the reconciler's rule, GOV-002
              and no POST route until Google login.
     trouble  trouble_panel(report) renders `swarm trouble --json` per Goal and Area as a
              read-only HTML section (#889). generate.py builds the report itself, without
-             the owner-acts sync, and puts the panel on the desk (index.html) under the
-             plan (#903), so it needs no served path of its own.
+             the owner-acts sync (#903); the Desk no longer draws this panel (#1113): the
+             Work map's strip and each Goal's view show the report (#1114, #1115).
 
 Usage: swarm desk [--host 127.0.0.1] [--port 8080] [--repo owner/name]. generate.py reads
 GitHub with `gh`, so it uses GH_TOKEN from the environment: on the host, a read-only token.
@@ -45,9 +45,9 @@ GENERATE = ROOT / "dashboard" / "generate.py"
 DESK_DIR = "desk"            # under ~/.productswarm/launcher
 LIVE = "live"                # symlink to the build being served
 STATE = "state.json"
-# What / serves: the Work map (#1082), which retired the Bridge (#1114): /bridge.html is now a
-# page that sends the browser to /. The old desk stays at /index.html, and a build without the
-# Work map falls back to it.
+# What / serves: the Work map (#1082), which retired the Bridge (#1114). The old pages, the
+# desk at /index.html among them, only send the browser on to the Work map, Crew or Governance
+# (#1113). A build without the Work map falls back to index.html.
 HOME = "workmap.html"
 HOME_FALLBACKS = (HOME, "index.html")
 NUDGE_FILE = "nudge"         # webhooks.NUDGE_FILE; not imported so the desk needs no db

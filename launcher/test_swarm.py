@@ -1003,24 +1003,28 @@ class LaunchTest(Base):
 
 
 class InboxTest(unittest.TestCase):
-    """`swarm inbox` and the dashboard's first section show the same items in the same order."""
+    """`swarm inbox` and the Work map's Needs you list come from the same needs_you() (#1113)."""
 
-    def test_same_lines_as_the_page(self):
-        import html
-        import re
+    def test_same_items_as_the_work_map(self):
         g = swarm.dashboard()
         sys.path.insert(0, str(Path(g.__file__).parent))
         import test_needs
+        import workmap
         m = test_needs.model()
-        cli = swarm.inbox_text(g.needs_you(m), m["now"], g).splitlines()
+        items = g.needs_you(m)
+        cli = swarm.inbox_text(items, m["now"], g).splitlines()
         self.assertEqual(cli[0], "1. [blocked] #28 GOV-Q: someone waits · builder session blocked- "
                                  "is blocked on it · 50m ago")
         self.assertEqual(cli[1], "   https://github.com/open-agentos/agentfleetos/issues/28")
-        page = g.render(m)["operations.html"]   # the needs-you list (#401)
-        section = page[page.index('<ol class="inbox">'):page.index("</ol>")]
-        shown = [html.unescape(re.sub(r"<[^>]+>", "", li)).split(" · session")[0]
-                 for li in re.findall(r"<li[^>]*>(.*?)</li>", section)]
-        self.assertEqual([line.split(". ", 1)[1] for line in cli[0::2]], shown)
+        self.assertEqual([line.split(". ", 1)[1] for line in cli[0::2]], [g.needs_line(i, m["now"]) for i in items])
+        # The Work map marks the issues of the same items as needing you.
+        refs = {int(i["ref"].lstrip("#")) for i in items if i["kind"] in ("blocked", "question")}
+        self.assertTrue(refs)
+        self.assertLessEqual(refs, workmap.needs_issues(m))
+        # ...because it reads needs_you() too: without its items, only blocked sessions' issues stay.
+        with mock.patch.object(g, "needs_you", return_value=[]):
+            self.assertEqual(workmap.needs_issues(m),
+                             {s["issue"] for s in m["sessions"] if s["status"] == "blocked" and s.get("issue")})
 
     def test_empty(self):
         g = swarm.dashboard()

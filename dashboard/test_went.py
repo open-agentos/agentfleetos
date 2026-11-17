@@ -174,11 +174,11 @@ class PageTest(unittest.TestCase):
 
     def test_desk_shows_the_three_breakdowns_after_the_trends(self):
         pages = g.render(self.model())
-        desk = pages["index.html"]
+        desk = pages["governance.html"]
         self.assertIn("Asked by: agents 1, the owner 1.", desk)
         self.assertIn("Became: a record 1, direction only 0, nothing yet 1.", desk)
         self.assertLess(desk.index("What the numbers say"), desk.index("How the questions went"))
-        self.assertNotIn("How the questions went", pages["operations.html"])
+        self.assertNotIn("How the questions went", pages["crew.html"])
 
     def test_state_json_has_the_counts(self):
         s = json.loads(json.dumps(state.state(self.model())))["questions_went"]
@@ -193,7 +193,7 @@ class PageTest(unittest.TestCase):
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": []}, NOW,
                     dt.timedelta(minutes=15))
         self.assertIsNone(m["questions_went"])
-        self.assertNotIn("How the questions went", g.render(m)["index.html"])
+        self.assertNotIn("How the questions went", g.render(m)["governance.html"])
 
 
 if __name__ == "__main__":

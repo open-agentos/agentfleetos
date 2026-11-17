@@ -196,7 +196,7 @@ class HeaderTest(unittest.TestCase):
             m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": [],
                          "activity": {"events": events, "pages": 1}}, NOW, dt.timedelta(minutes=15))
         pages = g.render(m)
-        self.assertEqual(set(pages), {f for f, _ in layout.PAGES})
+        self.assertEqual(set(pages), set(layout.NAMES))
         for name, html in pages.items():
             with self.subTest(name):
                 self.assertIn('<span class="live">LIVE</span>', html)
