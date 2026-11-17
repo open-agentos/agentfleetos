@@ -803,6 +803,65 @@ The `notion` spec backend (`launcher/specs/notion.py`) reads the `productswarm` 
 
 It pins Notion API version `2022-06-28`, the last that treats a database as one table.
 
+## swarm memory: lessons, the format and the store (#1185)
+
+```bash
+launcher/swarm memory lessons [--role R] [--path P] [--status S] [--json] [--repo owner/name]
+launcher/swarm memory show L-0001 [--json]   # the lesson, its sources, its eval result
+launcher/swarm memory check                  # validate every lesson; exit 1 if any fails
+launcher/swarm memory index [--check]        # regenerate memory/INDEX.md; --check exits 1 if stale
+```
+
+A lesson is what the team has learned, one per file in `memory/lessons/L-NNNN-<slug>.md` (public in this repo, per GOV-0052). It is cited as `per L-NNNN`, the way rulings are cited as `per GOV-NNNN`. The frontmatter is modelled on a decision record's:
+
+```yaml
+---
+id: L-0001
+title: The lesson as one sentence.
+status: proposed            # proposed, active, dormant or retired
+scope: fleet                # or repo:<owner/name>
+applies_to:
+  roles: [builder]          # empty: every role
+  paths:                    # empty: every path; each must match something here
+    - launcher/**
+  situations:
+    - running the tests
+sources:                    # episode ids from memory/episodes/
+  - <episode id>
+  - <episode id>
+confidence: 0.6             # 0 to 1
+uses: 0
+last_used:
+created: 2026-11-17
+review_by: 2027-02-17
+eval_case:                  # its eval case; empty while proposed, required once active
+supersedes: []              # lessons only (L-NNNN)
+related_rulings: [GOV-0055]
+---
+```
+
+The body says the lesson in a few plain sentences, then has a `## Why` and an `## Example` section.
+
+**The validator** (`lessons.py`, run by `swarm memory check` and by `test_lessons.py` over the committed store) enforces GOV-0055 (option 1 of #1151) and the format:
+
+- every field above, a file name that matches the id, ids unique, and paths that match something in this repo (for fleet lessons and this repo's; another repo's paths aren't checked here);
+- at least two sources, independent: different sessions for notes, different source links for signals, so two quotes of one comment count once;
+- at least one source an engine-recorded signal (episode `type` in `ENGINE_TYPES`: `owner_act`, `review`, `revert`, `closed_unmerged`, `failed_run`, `cap_hit`, `gov_answer`); a session's `note` doesn't count, nor does a type it doesn't know;
+- every source by the owner, a swarm App (`identities.agents`) or a listed maintainer (an `identities.maintainers` block in `jurisdictions.yml`, read if the owner adds one; there is none today);
+- an active lesson has an `eval_case`;
+- every ruling it names is in force in `governance/INDEX.md`, and the text doesn't set a ruling aside ("ignore GOV-0055");
+- neither title nor body asks to change permissions, credentials, tools or governance. Any sentence pairing a change verb with such a target (`GH_TOKEN`, `allowed_tools`, `GOVERNANCE.md`, the `ready` label and so on) is refused, even a negated one: rulings already say "never", and a lesson needn't.
+
+**Episodes expire** after about 30 days (FEAT-14). A lesson created within that window must resolve every source. After it, a missing source shows as `expired` in `swarm memory show` and isn't an error: the lesson passed the source rules when it merged, because the tests run the validator on every PR. Sources still present are still checked.
+
+**What this reads from an episode:** `id`, `type`, `author`, `session` (notes) and `link` (signals), from `memory/episodes/*.jsonl`. Episodes are #1184's; nothing else in their schema matters here.
+
+**Listings are per repo.** `lessons` and `show` default to this checkout's repo and show fleet lessons plus that repo's `repo:<x>` lessons. A `repo:<x>` lesson never shows for another repo. `--role` and `--path` keep lessons that name the role or a matching path, or that name none.
+
+**The eval result** comes from the replay gate (#1189). Until it records results, `show` prints the eval case and `not run yet`.
+
+**`memory/INDEX.md`** is generated: one row per active or dormant lesson, like `governance/INDEX.md`. Don't edit it by hand; a test fails if it's stale.
+
 ## Tests
 
 ```bash
