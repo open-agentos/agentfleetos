@@ -1,4 +1,4 @@
-"""Tests for Effort on the Desk (#1013): the Bridge's Goal-card counts, the desk's Effort panel
+"""Tests for Effort on the Desk (#1013): the desk's Effort panel
 and effort.html, from a fixture cache. Run: python3 -m unittest discover -s dashboard"""
 from __future__ import annotations
 
@@ -12,13 +12,12 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import bridge  # noqa: E402
 import effort  # noqa: E402
 import generate as g  # noqa: E402
 import layout  # noqa: E402
 import live  # noqa: E402
 import state  # noqa: E402
-import test_bridge  # noqa: E402
+import test_strip  # noqa: E402
 
 REPO = "o/r"
 NOW = dt.datetime(2026, 11, 13, 12, 0, tzinfo=dt.timezone.utc)
@@ -26,12 +25,12 @@ FIXTURE = HERE.parent / "launcher" / "testdata" / "effort.json"
 
 
 def goal(n, title):
-    return test_bridge.scope(n, title)
+    return test_strip.scope(n, title)
 
 
 def model(cache=None, scopes=None) -> dict:
-    """The Bridge's test model, with the effort cache built in as generate.build() does."""
-    m = test_bridge.model()
+    """The Bridge's old test model (test_strip.py), with the effort cache built in as generate.build() does."""
+    m = test_strip.model()
     m["now"] = NOW
     m["trouble"]["scopes"] = scopes if scopes is not None else [
         goal(987, "M7: The Desk shows what kind of work the swarm ships"),
@@ -101,28 +100,6 @@ class ModelTest(unittest.TestCase):
         self.assertTrue(effort.daily_text(model({"prs": {}})["effort"]).endswith("  none"))
 
 
-class BridgeTest(unittest.TestCase):
-    def test_goal_cards_carry_the_counts(self):
-        flights = bridge.in_flight(model(effort.load(FIXTURE)))
-        by = {f["url"].rsplit("/", 1)[-1]: f for f in flights}
-        self.assertEqual(by["987"]["effort"],
-                         "5 PRs · 2 capability · 1 upkeep · 1 governance · 1 knowledge · 1 fix")
-        self.assertEqual(by["683"]["effort"],
-                         "3 PRs · 1 capability · 2 upkeep · 0 governance · 0 knowledge · 1 fix")
-        self.assertNotIn("effort", by["687"])   # an Area gets no counts
-        html = bridge.render(bridge.build(model(effort.load(FIXTURE)), "owner"))
-        self.assertIn("5 PRs · 2 capability", html)
-
-    def test_no_cache_adds_nothing(self):
-        flights = bridge.in_flight(model(None))
-        self.assertTrue(flights)
-        self.assertFalse(any("effort" in f for f in flights))
-
-    def test_a_goal_with_nothing_merged_reads_zero(self):
-        m = model(effort.load(FIXTURE), scopes=[goal(1, "M9: Quiet")])
-        self.assertTrue(bridge.in_flight(m)[0]["effort"].startswith("0 PRs · 0 capability"))
-
-
 class DeskTest(unittest.TestCase):
     def setUp(self):
         self.m = model(effort.load(FIXTURE))
@@ -188,7 +165,6 @@ class GenerateTest(unittest.TestCase):
         self.assertIn("ef-row", pages["index.html"])
         self.assertIn('data-panel="effort"', pages["index.html"])
         self.assertIn('id="e-o-r-987-this-capability"', pages["effort.html"])
-        self.assertIn("5 PRs · 2 capability", pages["bridge.html"])
         self.assertIsNotNone(state.state(m)["desk"]["effort"])   # the live refresh can draw it
         self.assertEqual(state.state(m)["effort"]["goals"][0]["this"]["total"], 5)
 

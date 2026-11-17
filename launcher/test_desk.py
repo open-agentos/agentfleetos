@@ -174,15 +174,17 @@ class HandleTest(unittest.TestCase):
             self.assertIn("noindex", headers["X-Robots-Tag"])
         self.assertEqual(desk.handle(self.live, "HEAD", "/")[0], 200)
 
-    def test_home_is_the_work_map_and_falls_back_to_the_bridge_then_the_desk(self):
+    def test_home_is_the_work_map_and_falls_back_to_the_desk_not_the_bridge(self):
         self.assertEqual(desk.HOME, "workmap.html")
         self.assertEqual(desk.handle(self.live, "GET", "/?t=1")[2], b"<p>map</p>")
-        self.assertEqual(desk.handle(self.live, "GET", "/bridge.html")[2], b"<p>bridge</p>")
         self.assertEqual(desk.handle(self.live, "GET", "/index.html")[2], b"<p>desk</p>")
         (self.live / desk.HOME).unlink()
-        self.assertEqual(desk.handle(self.live, "GET", "/")[2], b"<p>bridge</p>")
-        (self.live / "bridge.html").unlink()
-        self.assertEqual(desk.handle(self.live, "GET", "/")[2], b"<p>desk</p>")
+        self.assertEqual(desk.handle(self.live, "GET", "/")[2], b"<p>desk</p>")   # the Bridge retired (#1114)
+
+    def test_the_bridge_is_served_as_written(self):
+        """#1114: generate.py writes bridge.html as a page that sends the browser to / (its
+        test_generate checks the page); the desk serves it like any other page."""
+        self.assertEqual(desk.handle(self.live, "GET", "/bridge.html")[:3:2], (200, b"<p>bridge</p>"))
 
     def test_no_write_route(self):
         for method in ("POST", "PUT", "PATCH", "DELETE", "OPTIONS"):

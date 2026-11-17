@@ -14,7 +14,7 @@ import generate as g  # noqa: E402
 import layout  # noqa: E402
 import live  # noqa: E402
 import workmap_page as wp  # noqa: E402
-from test_bridge import NOW, REPO, model as bridge_model  # noqa: E402
+from test_strip import NOW, REPO, model as bridge_model  # noqa: E402
 
 
 def row(n, title="t", cost=1.0, **kw):
@@ -111,6 +111,8 @@ class PageTest(unittest.TestCase):
         """#1114: the Bridge's shared left column went with it."""
         page = wp.page(model(), "t", "")
         self.assertNotIn("<nav class=\"br-nav\"", page)
+        foot = re.search(r'<footer class="foot">.*?</footer>', page, re.S).group(0)
+        self.assertNotIn('bridge.html', foot)
         self.assertEqual(layout.PAGES[0], ("workmap.html", "Work map"))
         for href in re.findall(r'href="([^"]+)"', page):
             self.assertRegex(href, r"^(https://github\.com/|[a-z]+\.html)")
@@ -260,7 +262,7 @@ class GoalsRolesLinksTest(unittest.TestCase):
 
 
 class BriefingTest(unittest.TestCase):
-    """Moved from test_bridge.py with the Briefing (#1082)."""
+    """Moved from the Bridge's tests with the Briefing (#1082)."""
 
     def test_shown_whole_with_its_link(self):
         html = wp.render(model())

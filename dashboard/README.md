@@ -15,12 +15,11 @@ It reads GitHub through `gh api`, so inside a swarm session it acts as the role'
 
 ## Pages
 
-One build writes nine pages, and the fonts, into the `--out` page's directory (#401, part of #397):
+One build writes eight pages, and the fonts, into the `--out` page's directory (#401, part of #397):
 
 | Page | What it shows |
 |---|---|
-| `workmap.html`, the **Work map** | The owner's home, served at `/` on the live Desk (#1082): a treemap of what each issue cost and what it returned ([the Work map](#the-work-map)), with the lead's daily briefing under it |
-| `bridge.html`, the **Bridge** | Read-only, after the owner's "v5 · the bridge" mock-up ([the Bridge](#the-bridge), #926): status, decisions waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub. |
+| `workmap.html`, the **Work map** | The owner's home, served at `/` on the live Desk (#1082): a treemap of what each issue cost and what it returned ([the Work map](#the-work-map)), with the [counts strip](#the-strip-and-the-tape) above it and the lead's daily briefing, six lists and the [tape](#the-strip-and-the-tape) under it |
 | `commissions.html` | Each open Goal and Area, grouped by what it needs from the owner, with a focus drawer ([Commissions](#commissions), #931) |
 | `agents.html` | One row per role, working or idle, with a focus drawer ([Agents](#agents), #932) |
 | `index.html`, the **desk** | Today's report and the plan (#712), the trouble panel per Goal and Area (#903: `swarm trouble`'s report, built by `generate.py` without the owner-acts sync, so M4's acts criterion reads unmeasured here; no spend), [On the floor](#on-the-floor), [the wire](#the-wire), the [committee desk](#committee-desk) while a committee is open, [What the numbers say](#what-the-numbers-say), [How the questions went](#how-the-questions-went), [precedent in use](#precedent-in-use), a card per [past committee](#past-committees), and a one-line pointer to the other pages. #397's later issues add the desk's other panels here. |
@@ -29,7 +28,7 @@ One build writes nine pages, and the fonts, into the `--out` page's directory (#
 | `decisions.html` | The [governance](#governance) section with the **full** decision log from `governance/INDEX.md`, open and lapsed gov questions, the [Committees](#committees) section with each open committee's round grid, and ended committees as "Past committees" with their round grids |
 | `authority.html` | The [authority map](#authority-map): who may decide what, one row per domain in `governance/jurisdictions.yml` |
 
-Every page opens with the [header](#header) and carries `noindex` and a [Content-Security-Policy](#live-refresh), reloads itself every 300 seconds, fits a phone's width (only `.scroll` boxes scroll sideways), and ends with a footer linking the nine pages. `generate.render(model)` returns the pages by file name.
+Every page opens with the [header](#header) and carries `noindex` and a [Content-Security-Policy](#live-refresh), reloads itself every 300 seconds, fits a phone's width (only `.scroll` boxes scroll sideways), and ends with a footer linking the eight pages. `generate.render(model)` returns the pages by file name. The build also writes `bridge.html`, which only sends the browser to `/`: the Work map retired the Bridge (#1114).
 
 ### Look
 
@@ -39,9 +38,9 @@ The fonts are **self-hosted**, so the public page loads nothing from a third par
 
 ## The Work map
 
-`workmap.html` (`workmap_page.py` and `workmap.js`, #1082, FEAT-9 under M9 #1080) draws the [Work map data](#work-map-data) as a squarified treemap: one box per issue, inside one box per group. The live Desk serves it at `/` (`launcher/desk.py`; without it, the Bridge, then the desk). It adds no API calls: the build passes it the same data it writes to `map.json`. Top to bottom, beside the left column it shares with the Bridge:
+`workmap.html` (`workmap_page.py` and `workmap.js`, #1082, FEAT-9 under M9 #1080) draws the [Work map data](#work-map-data) as a squarified treemap: one box per issue, inside one box per group. The live Desk serves it at `/` (`launcher/desk.py`; without it, the desk). It adds no API calls: the build passes it the same data it writes to `map.json`. Top to bottom:
 
-- **Title and key:** "Work map" and one line saying what size, shade and the markers mean.
+- **Title**, then the [counts strip](#the-strip-and-the-tape), then the **key**: one line saying what size, shade and the markers mean.
 - **Controls**, segmented buttons, the current one filled ink: Group by (Effort, Goal, Role, Stage; default Effort), Size (Cost, Tokens, Lines changed; default Cost, per GOV-0049), Colour (Yield, Velocity, Change; default Yield) and Window (Hour, Day, Week, Month; default Day). The viewer's choices are kept in this browser's `localStorage` (`agentfleetos.workmap`), wrapped in `try`; without it the defaults stand. The URL wins over it (see [Links](#links)).
 - **Breadcrumb**, e.g. "All effort types › Capability". Clicking a group's header zooms into that group; the breadcrumb's first part zooms back out.
 - **The treemap**, `clamp(460px, 68vh, 640px)` tall, beside the [Selected panel](#the-selected-panel). A group's header shows its name and its share of what's shown as a percentage, never an amount. Issues with no size in the window are left off, and the legend says how many. A box big enough shows its title on one line, cut with an ellipsis, and under it, in mono, its size and its colour measure. Hover or focus shows its title, number, Goal, effort, role and stage, then its cost, tokens, lines and outcomes. Clicking a box, or pressing Enter on it, selects it; boxes are reached with Tab.
@@ -50,6 +49,7 @@ The fonts are **self-hosted**, so the public page loads nothing from a third par
 - **Legend** under the map: the ramp with its end labels for the colour chosen, a swatch per marker, and how many issues were left off.
 - **Briefing**, moved from the Bridge (M8, #1029): the lead's newest daily briefing, whole, one paragraph per chapter, from the report issue's comments the desk already reads (`report.py` takes the newest planner comment starting `**Briefing`, without its first line or signature). It links to the comment, and says so when it's from before today. It shows here only.
 - **Lists**, six of them under the Briefing ([the lists](#the-lists), #1084).
+- **Tape** at the foot of the page ([the strip and the tape](#the-strip-and-the-tape), #1114).
 
 ### The Selected panel
 
@@ -63,7 +63,7 @@ The panel (#1083, FEAT-10) tells one issue's story beside the map: 320px wide, t
 6. **Yield against its group**: one line from 0 to the largest yield, a light dot per issue on the map in the same group (the Group by chosen) and window, a tick at their median, and this issue as a large ink dot. Labelled 0, the median and the maximum; the header names the group and its size.
 7. **Numbers**, in two columns: cost, tokens, lines, outcomes, yield (per the chosen size unit) and change against usual (the window's cost against its baseline).
 
-**A Goal, Area or role** (#1115, FEAT-13). Grouped by Goal or Role, each group header has an "i" button that selects that Goal or role; clicking the header itself still zooms. The role and Goal in an issue's context line select them too, as does any element with `data-wm-sel="goal-N"`, `"role-NAME"` or `"#N"` (the tape and lists, when they come). The panel keeps its size: the head and title stay, and in place of the issue's sections one area scrolls inside the same box.
+**A Goal, Area or role** (#1115, FEAT-13). Grouped by Goal or Role, each group header has an "i" button that selects that Goal or role; clicking the header itself still zooms. The role and Goal in an issue's context line select them too, as does any element with `data-wm-sel="goal-N"`, `"role-NAME"` or `"#N"` (the [tape](#the-strip-and-the-tape)). The panel keeps its size: the head and title stay, and in place of the issue's sections one area scrolls inside the same box.
 
 - A Goal or Area: its type, criteria met of total and its date; the done test, each criterion with its status ("unmeasured: not known to be on track" for one that isn't measured); what's stuck and why nothing will start it; what waits on you; the authority used under it in the last 24 hours; its open sub-issues, each with its go status, its PR and its share of the Goal's size in the window, as a percentage (never a summed amount, GOV-0033); and a link to it on GitHub. It's what the Commissions drawer showed (`commissions.build`), carried in the page's JSON block under `scopes`.
 - A role: what it does and whether it's working, idle or blocked; what it's on now; its merged PRs and sessions in the window (Month shows the 14 days the Desk reads), its open PRs and those with changes requested at head; the merger's calls on its PRs in the last 24 hours; and how to ask it something (`Ask: <role>: …` on the report issue, GOV-0029). It's what the Agents drawer showed (`agents.build`), under `roles`.
@@ -86,7 +86,7 @@ Six lists under the Briefing (#1084, FEAT-11) name the exceptions a small box hi
 
 | List | Who's in it | Order | Value, and the line under |
 |---|---|---|---|
-| Needs you | issues in the needs-you list | largest size first | size; stage and role |
+| Needs you | issues in the needs-you list, then the [decisions waiting](#the-strip-and-the-tape) its rows don't show | largest size first, then the decisions oldest first | size; stage and role. A decision: how long it has waited; its ref, where it comes from and why |
 | Blocked | stage `blocked` | largest first | size; "was <stage>" (`blocked_at`) and role |
 | Spend, no outcome | size above zero in the window, no outcome | largest first | size; stage and role |
 | Running hot | cost at least 1.5× a baseline above zero | highest first | +N%; usual and now |
@@ -97,21 +97,34 @@ Running hot and Gone quiet compare cost, as the map's Change colour does. An iss
 
 `workmap.py`'s `lists()` holds the rules. The page carries every window's matches for every size, in order, as `lists` → window → size → list → `[ref, value, figure]`, and `workmap.js` keeps those in the zoomed group. Gone quiet's idle issues are left off the map, so a row may come from another window's data, and the Selected panel says "idle this window". The Desk reads no month, so in the week window Gone quiet has no idle part, and its description says so. In the month window each list says the Desk has no month data.
 
-## The Bridge
+## The strip and the tape
 
-`bridge.html` (`bridge.py`, #926, under M3 #685) is the Bridge from the owner's "v5 · the bridge" mock-up, built read-only from data the build already reads, so it adds no API calls. Top to bottom:
+The Work map retired the Bridge (#1114, FEAT-12): `bridge.html` only sends the browser to `/`, and its shared left column went. What it showed is on the Work map: the Briefing (#1082), what waits on the owner in Needs you and stuck items in Blocked (#1084), each Goal's criteria when it is selected (#1115), and the rest in the strip and the tape. `strip.py` builds both from data the build already reads, so they add no API calls.
 
-- **Status:** open Goals and Areas and how many are flagged; agents working (the floor's cards) of the live sessions; decisions waiting, with the oldest one's age; and authority used in `swarm trouble`'s window. A Goal or Area is **flagged** when something under it is stuck, one of its criteria is failing, or its date is missed.
-- **Decisions waiting**, in owner amber: what `swarm trouble` says waits on the owner, then open gov questions it doesn't already list (not ruled, no session blocked on them), oldest first, at most 12. Each links to where it's answered on GitHub; there are no buttons until the desk can write (#752).
-- **Reports**, newest first, at most 12, each with its role: today's daily report (a red flag when it's late), each item `swarm trouble` says is stuck (a flag), and the PRs a role's App had merged in the last 7 days (`SHIPPED`, or `DELIVERED` for a PR whose title starts "Brief").
-- **In flight:** each open Goal and Area with its criteria met of total and a dot: red if flagged, amber if it waits on the owner, blue otherwise. If the trouble report wasn't read, it falls back to the plan's sub-issues done of total. Each Goal also shows its merged PRs for the last 7 days by kind of work, e.g. "5 PRs · 2 capability · 1 upkeep · 1 governance · 1 knowledge · 1 fix", from the [effort cache](#effort); without a cache it shows nothing.
-- **Orders received:** the owner's acts on GitHub from the repo's events (the header's read), newest first, at most 8, with chair "GitHub". Branch creation and deletion are left out.
+**The strip** sits between the title and the map controls, one line high (it wraps on a phone). Counts only, never money (GOV-0033):
 
-The lead's Briefing moved to the [Work map](#the-work-map) (#1082). The left column, shared with the Work map, Commissions and Agents pages (`bridge.nav_html`), links the Work map to `workmap.html`, Commissions to `commissions.html` and Agents to `agents.html`. "Your chairs", "Lead recommends", "Discuss with…" and spend aren't shown: chairs and writes come later (#760), and GOV-0033 sets no engine total. Links go only to github.com or a page beside it. The page carries no script.
+- **Goals and Areas flagged**, of the open ones. A Goal or Area is flagged when something under it is stuck, one of its criteria is failing, or its date is missed.
+- **Decisions waiting**, with the oldest one's age.
+- **Agents working**, of the live sessions.
+- **Authority used** in `swarm trouble`'s window.
+
+Picking "flagged" or "decisions waiting" sets Group by to Goal and outlines the matching boxes: a red frame round each flagged Goal, or an ink outline on each issue a decision is about (the needs-you issues, the questions, and the issues a waiting PR closes). Picking it again clears the outline. It never resizes anything. With JavaScript off the counts still show and the two picks are disabled.
+
+**Decisions waiting** (`strip.decisions()`) are as the Bridge listed them, each issue or PR once, oldest first: `swarm trouble`'s waiting items, open gov questions not ruled, sessions blocked on a question, PRs the merger left for the owner or that GOV-0011 hands to the owner, and today's daily report's asks. Those the Needs you list's own rows don't already show join it, after its rows, when the map isn't zoomed (a decision belongs to no group). The list then shows all its items, scrolling inside its five rows' height, and counts them all. A decision about an issue on the map selects it; any other links to where it's answered on GitHub. `needs_you()`, and so `swarm inbox`, are unchanged.
+
+**The tape** sits at the foot of the page, under the lists. It is newest first, holds at most 20 items, and sits in a 360px box that scrolls inside itself. It shows:
+
+- the daily report (`LATE`, in red, when it's late);
+- each item `swarm trouble` says is stuck (`STUCK`, in red);
+- the PRs a role's App merged in the last 7 days (`SHIPPED`, or `DELIVERED` for a title starting "Brief");
+- the owner's acts on GitHub (`ORDER`, the Bridge's Orders received), with branch creation and deletion left out;
+- today's governance events from [the wire](#the-wire).
+
+Each item has a time, a role or "owner", and a link to GitHub. Its text is a template filled from fields, never a summary of anyone's text. An item about an issue on the map is a button that selects it in the [Selected panel](#the-selected-panel). On a phone, each item's text goes under its time, role and kind.
 
 ## Commissions
 
-`commissions.html` (`commissions.py`, #931, under M3) is the Commissions page from the same mock-up, read-only and with no API calls of its own. Each open Goal and Area the owner opened goes in the first group that fits: **needs a look** (flagged, as on the Bridge), **waits on you**, **running** (Goals) or **keep it so** (Areas). After those, **delivered this week** lists the owner's Goals and Areas closed in the last 7 days. Each row shows its type, its open and done sub-issues from the plan, a bar of criteria met of total from `swarm trouble`, and a status word.
+`commissions.html` (`commissions.py`, #931, under M3) is the Commissions page from the same mock-up, read-only and with no API calls of its own. Each open Goal and Area the owner opened goes in the first group that fits: **needs a look** (flagged, as in the [strip](#the-strip-and-the-tape)), **waits on you**, **running** (Goals) or **keep it so** (Areas). After those, **delivered this week** lists the owner's Goals and Areas closed in the last 7 days. Each row shows its type, its open and done sub-issues from the plan, a bar of criteria met of total from `swarm trouble`, and a status word.
 
 Picking a row opens its **focus drawer** without a script: the row links to `#c-<number>`, and CSS `:target` shows that drawer. The drawer has the done test (an unmeasured criterion reads "unmeasured: not known to be on track"), what's stuck and why nothing will start it, what waits on the owner, what was done on the owner's authority, the open sub-issues with their go status and PRs, and a link to it on GitHub. If the trouble report wasn't read, the page lists the plan alone. There's no cost, no shape filter and no pause, steer or halt buttons yet (GOV-0033, #760).
 
@@ -134,7 +147,6 @@ There's no spend, cap or cost per result (GOV-0033), no first-pass review rate o
 `effort.py` (#1013, FEAT-4 under M7 #987) shows what kind of work the swarm ships. It reads only `classify/cache/effort.json`, which `swarm classify run effort` writes (#1012): no model call, no credential and no API call. `main()` reads it from the checkout.
 
 - **The desk's Effort panel:** a stacked bar per open Goal for the last 7 days and the 7 before, one segment per label (capability blue, governance amber, knowledge ink, upkeep grey: layout.py's colours), with the share that fixes recent work hatched. Each segment links to its PRs on `effort.html`. Below, the capability share of all merged PRs in the cache by week (from Monday, UTC, the last 8 weeks) as a line and a sentence. With no cache it says so; an unreadable cache says why.
-- **The Bridge:** each Goal card's counts (above).
 - **`swarm daily`:** an "Effort risks" section for the report's Risks and mitigations: a line for each Goal where upkeep is more than half of its PRs merged in the last 7 days.
 
 The cache, schema 1 (#1012 writes it; this is what the desk reads):

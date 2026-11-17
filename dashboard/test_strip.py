@@ -105,18 +105,14 @@ def strip_of(page: str) -> str:
     return re.search(r'<section class="sp".*?</section>', page, re.S).group(0)
 
 
-# What the Bridge shows on these fixtures.
-def _bridge() -> dict:
-    import bridge
-    b = bridge.build(model(), OWNER)
-    return {"status": {k: b[k] for k in ("commissions", "flagged", "working", "agents", "authority")},
-            "decisions": [x["ref"] for x in b["decisions"]],
-            "report_urls": [r["url"] for r in b["reports"] if r["url"]],
-            "order_urls": [o["link"] for o in b["orders"]],
-            "flights": [f["url"].rsplit("/", 1)[1] for f in b["flights"]]}
-
-
-BRIDGE = _bridge()
+# What the Bridge showed on these fixtures: bridge.build()'s output, recorded by the first
+# commit of #1114 while bridge.py was still there, before its render code went.
+BRIDGE = {"status": {"commissions": 3, "flagged": 1, "working": 1, "agents": 2, "authority": 1},
+          "decisions": ["#901", "PR #930", "Ask"],
+          "report_urls": ["https://github.com/o/r/pull/925", "https://github.com/o/r/issues/249#c1",
+                          "https://github.com/o/r/pull/920", "https://github.com/o/r/pull/894"],
+          "order_urls": ["https://github.com/o/r/issues/903", "https://github.com/o/r/issues/888#c2"],
+          "flights": ["685", "686", "683"]}
 
 
 class BridgeItemsOnTheWorkMapTest(unittest.TestCase):

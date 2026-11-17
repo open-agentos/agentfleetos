@@ -13,7 +13,7 @@ first sentence; then, on a Monday, the check-in's first sentence. With no report
 whether one is due, late or not expected, and shows the last one's first sentence.
 
 The daily briefing (M8, #1029) comes from the same comments: the newest one by the planner App
-whose body starts `**Briefing`, for the Bridge to show first. Its day is the date on its first
+whose body starts `**Briefing`, for the Work map to show (#1082). Its day is the date on its first
 line, else its posting date. It is kept whole, as paragraphs, without its first line or the
 `-- planner (...)` signature.
 

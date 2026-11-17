@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import agents  # noqa: E402
 import layout  # noqa: E402
-from test_bridge import NOW, REPO, model  # noqa: E402
+from test_strip import NOW, REPO, model  # noqa: E402
 
 
 def amodel(**over):
@@ -99,7 +99,7 @@ class RenderTest(unittest.TestCase):
         self.assertNotIn("<script", page)
         for href in re.findall(r'href="([^"]+)"', page):
             self.assertRegex(href, r"^(https://github\.com/|[a-z]+\.html$|#[a-z0-9-]+$)")
-        self.assertIn('<span class="br-navi here" aria-current="page">Agents', page)
+        self.assertNotIn('<nav class="br-nav"', page)   # the Bridge's left column went (#1114)
         self.assertIn(("agents.html", "Agents"), layout.PAGES)
 
 
