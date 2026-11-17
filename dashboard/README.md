@@ -1,6 +1,6 @@
 # Swarm dashboard
 
-Read-only pages showing what every agent session is doing and how the swarm is governed. Built by `generate.py`: Python stdlib only, static HTML files. The desk carries one small inline script that [refreshes it](#live-refresh) from `state.json` (option 2 of gov question #396, which reversed #26's "no JavaScript"), and the [Work map](#the-work-map) one that draws its treemap; the other pages carry none. Every page but the Work map's treemap is complete with JavaScript off.
+Read-only pages showing what every agent session is doing and how the swarm is governed. Built by `generate.py`: Python stdlib only, static HTML files. The desk loads one small script that [refreshes it](#live-refresh) from `state.json` (option 2 of gov question #396, which reversed #26's "no JavaScript"), and the [Work map](#the-work-map) one that draws its treemap; the other pages load none. Each script is a same-origin file in `js/` beside the pages, allowed by its hash (#1106, option 3 of #1102). Every page but the Work map's treemap is complete with JavaScript off.
 
 ## Generate it
 
@@ -9,7 +9,7 @@ python3 dashboard/generate.py            # writes dashboard/out/ (git-ignored)
 open dashboard/out/index.html
 ```
 
-Options: `--repo owner/name` (default: this checkout's `origin`), `--out PATH` (the desk page; the other pages and `fonts/` are written beside it), `--days N` (include sessions that stopped in the last N days, default 14), `--idle-minutes N` (default 15).
+Options: `--repo owner/name` (default: this checkout's `origin`), `--out PATH` (the desk page; the other pages, `fonts/` and `js/` are written beside it), `--days N` (include sessions that stopped in the last N days, default 14), `--idle-minutes N` (default 15).
 
 It reads GitHub through `gh api`, so inside a swarm session it acts as the role's App.
 
@@ -64,7 +64,7 @@ The panel (#1083, FEAT-10) tells one issue's story beside the map: 320px wide, t
 
 Empty, it keeps the same sections and size, with grey placeholder bars, dashes and "Click a box, or an item in a list below, to see it here." Clicking a box selects it, and clicking it again clears it. Any element in the page with a `data-wm-ref` attribute (the Work map's lists, when they come) selects that issue the same way. The panel redraws when the window, size or grouping changes.
 
-The map's rows are in the page itself, in a `<script type="application/json">` block with `<`, `>` and `&` escaped, so it draws on GitHub Pages and the live Desk without fetching. `workmap.js` reads it and builds nodes with `createElement` and text nodes only (no `innerHTML`, no `eval`); the page's CSP allows it by hash. With JavaScript off the page says the map needs it, and the Briefing still shows. Each issue's 14-day series is the same in every window, so the page carries it once, under `days`: `dates` and `of` (ref → `[cost, outcomes]` per day).
+The map's rows are in the page itself, in a `<script type="application/json">` block with `<`, `>` and `&` escaped, so it draws on GitHub Pages and the live Desk without fetching. `workmap.js` reads it and builds nodes with `createElement` and text nodes only (no `innerHTML`, no `eval`); it's served as `js/workmap.js` and the page's CSP allows it by hash. With JavaScript off the page says the map needs it, and the Briefing still shows. Each issue's 14-day series is the same in every window, so the page carries it once, under `days`: `dates` and `of` (ref → `[cost, outcomes]` per day).
 
 **No total** (GOV-0033): boxes show their own issue's figures, headers a percentage, and the tooltip and Selected panel one issue's. Selecting a box or changing a control changes nothing's size or position outside the map: the breadcrumb is one line and the legend a fixed height.
 
@@ -208,7 +208,8 @@ With JavaScript on, an open desk redraws itself from `state.json` every 15 secon
 - **Boxes.** The desk draws each panel inside `<div data-panel="NAME">` (an empty panel still gets its box), and the masthead is `data-panel="mast"`. The script redraws each box whose name `state.json` carries. A new panel joins by adding itself to `generate.desk_panels()`.
 - **Only forward.** The script fetches `state.json?t=…` with `cache: "no-store"`, same origin, every 15 seconds while the tab is visible, and applies it only if its `built_at` is newer than the data on screen (the `data-built-at` on `<body>`), since Pages' cache can serve an older copy than the page.
 - **Stale mark.** When the data on screen is more than 15 minutes old, the script adds `stale` to the masthead's LIVE mark (#402), which greys it out. Builds often run further apart than that (see [How often it rebuilds](#how-often-it-rebuilds)), so a grey mark is common and honest.
-- **CSP.** Every page carries a `<meta http-equiv="Content-Security-Policy">`: `default-src 'none'`, `script-src` the live script's `sha256` hash on the desk, `workmap.js`'s on the Work map (#1082) and `'none'` elsewhere, `style-src 'unsafe-inline'` (the page's `<style>` and the precedent table's cell shading), `font-src`, `connect-src 'self'`, `base-uri 'none'` and `form-action 'none'`. `live.script()` fills `poll.js`'s settings and allow lists in at build time, and the hash is of that exact text.
+- **CSP.** Every page carries a `<meta http-equiv="Content-Security-Policy">`: `default-src 'none'`, `script-src 'self'` plus the live script's `sha256` hash on the desk, `'self'` plus `workmap.js`'s on the Work map (#1082) and `'none'` elsewhere, `style-src 'unsafe-inline'` (the page's `<style>` and the precedent table's cell shading), `font-src`, `connect-src 'self'`, `base-uri 'none'` and `form-action 'none'`. `live.script()` fills `poll.js`'s settings and allow lists in at build time, and the hash is of that exact text.
+- **Scripts as files** (#1106, option 3 of #1102). No page carries an inline script. `generate.py` writes each script a page loads into `js/` beside the pages (`js/poll.js`, `js/workmap.js`) before it writes any page, and the page loads it with `<script src="js/<file>" integrity="sha256-…">`, the same hash its CSP names, so the browser runs only the bytes the page was built with. A test fails the build if any Desk script contains `eval(`, `new Function` or `innerHTML` (#396's rule, carried over by #1102). The live Desk serves `js/` too (`launcher/desk.py`).
 - **JavaScript off.** Nothing changes: the page is complete as built, and the meta refresh stays.
 
 It adds **no API calls** per build: browser fetches hit Pages, not the API, and need no token.

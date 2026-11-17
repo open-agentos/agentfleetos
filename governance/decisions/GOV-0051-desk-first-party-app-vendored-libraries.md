@@ -1,5 +1,5 @@
 ---
-id: GOV-0050
+id: GOV-0051
 title: The Desk may run a first-party client-side app, with vendored and pinned third-party libraries
 status: in-force
 kind: ruling
