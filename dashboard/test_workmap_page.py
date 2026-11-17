@@ -72,15 +72,17 @@ class PageTest(unittest.TestCase):
         page = wp.page(model(), "t", "")
         self.assertNotRegex(wp.render(model()).lower(), r"\btotal")
         d = json_block(page)
-        self.assertEqual(set(d), {"built_at", "method", "windows", "days"})
+        self.assertEqual(set(d), {"built_at", "method", "windows", "days", "repo", "scopes", "roles"})
+        for sc in d["scopes"].values():   # a Goal's view: no amount of its own, only its issues' rows
+            self.assertFalse({"cost", "tokens", "total"} & set(sc))
         self.assertEqual(set(d["days"]), {"dates", "of"})   # per issue, keyed by ref
         self.assertNotIn("$", page.split('id="wm-data"')[0])   # no amount in the drawn HTML
 
     def test_a_failed_read_says_why(self):
         d = json_block(wp.page(model(workmap={"error": "gh api graphql failed"}), "t", ""))
-        self.assertEqual(d, {"error": "gh api graphql failed"})
-        self.assertEqual(json_block(wp.page(model(workmap=None), "t", "")),
-                         {"error": "no map data in this build"})
+        self.assertEqual(d["error"], "gh api graphql failed")
+        self.assertNotIn("windows", d)
+        self.assertEqual(json_block(wp.page(model(workmap=None), "t", ""))["error"], "no map data in this build")
 
     def test_controls_with_their_defaults(self):
         html = wp.controls_html()
@@ -142,7 +144,7 @@ class SelectedTest(unittest.TestCase):
         self.assertIn("320px", sel)
         self.assertIn("overflow:hidden", sel)
         heights = {}
-        for cls in ("head", "title", "stage", "days", "peers", "nums"):
+        for cls in ("head", "title", "stage", "deps", "days", "peers", "nums"):
             rule = re.search(rf"\.wm-ss-{cls} \{{([^}}]*)\}}", css).group(1)
             heights[cls] = int(re.search(r"(?<![-\w])height:(\d+)px", rule).group(1))
         # the sections, the padding and the border fit the smallest map height
@@ -155,6 +157,46 @@ class SelectedTest(unittest.TestCase):
                   "emptyPanel", "Click a box, or an item in a list below, to see it here."):
             self.assertIn(x, js)
         self.assertEqual(wp.EMPTY, "Click a box, or an item in a list below, to see it here.")
+
+
+class GoalsRolesLinksTest(unittest.TestCase):
+    """#1115 (FEAT-13): a Goal, Area or role in the Selected panel, what an issue holds up, and links."""
+
+    def test_goal_data_from_the_commissions_drawer(self):
+        d = json_block(wp.page(model(), "t", ""))
+        self.assertTrue(d["scopes"])
+        sc = next(iter(d["scopes"].values()))
+        for k in ("number", "type", "title", "url", "criteria", "met", "stuck", "waiting", "authority", "subs"):
+            self.assertIn(k, sc)
+        for c in sc["criteria"]:
+            self.assertNotIn("**", c["text"])
+
+    def test_role_data_from_the_agents_drawer(self):
+        d = json_block(wp.page(model(), "t", ""))
+        self.assertEqual(set(d["roles"]["of"]), {r for r, _ in __import__("agents").ROLES})
+        r = d["roles"]["of"]["builder"]
+        for k in ("does", "on", "merged", "open", "changes", "sessions", "calls", "ask"):
+            self.assertIn(k, r)
+        self.assertFalse(d["roles"]["of"]["merger"]["ask"])
+
+    def test_panel_swaps_views_inside_the_same_fixed_box(self):
+        p = re.search(r'<aside class="wm-selected.*?</aside>', wp.render(model()), re.S).group(0)
+        self.assertEqual(p.count("wm-ss-i "), 5)   # stage, deps, days, peers, numbers
+        self.assertIn('id="wm-sel-alt"', p)
+        self.assertIn('id="wm-sel-by"', p)
+        self.assertIn('id="wm-sel-blocks"', p)
+        css = layout.CSS
+        self.assertIn(".wm-sel-other .wm-ss-i { display:none; }", css)
+        self.assertRegex(css, r"\.wm-sel-other \.wm-alt \{[^}]*min-height:0; overflow:auto")
+
+    def test_script_keeps_the_view_in_the_url(self):
+        js = wp.script()
+        for x in ("URLSearchParams", "pushState", "replaceState", "popstate", "#issue-", "goal-", "role-",
+                  'window: "w"', "data-wm-sel", "wm-gi", "wm-dep", "blocked_by", "unmeasured: not known to be on track",
+                  "Ask: "):
+            self.assertIn(x, js)
+        # the URL is read after localStorage, so it wins
+        self.assertLess(js.index("localStorage.getItem"), js.index("readUrl();"))
 
 
 class BriefingTest(unittest.TestCase):

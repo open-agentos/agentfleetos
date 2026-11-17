@@ -5,6 +5,11 @@
 // share as a percentage: no amount is ever summed across issues for display (GOV-0033).
 // The Selected panel (#1083) shows one issue: its 14-day cost is that issue's own sum, a
 // per-issue figure, not a sum across issues.
+// Since #1115 (FEAT-13) the panel also shows a Goal, Area or role (the "i" in a group header, or
+// any element with data-wm-sel), each issue's links (what it waits on and holds up), and the URL
+// keeps the view: ?group=&size=&colour=&w=&zoom= and #issue-N, #goal-N, #role-NAME. The URL
+// wins over localStorage, and Back and Forward step through selections. A Goal's view shows
+// each issue's share of it, never a summed amount.
 (function () {
   "use strict";
   var KEY = "agentfleetos.workmap";
@@ -33,6 +38,46 @@
       if (saved && CHOICES[k].indexOf(saved[k]) >= 0) st[k] = saved[k];
     });
   } catch (e) { /* no storage: the defaults stand */ }
+
+  // ------------------------------------------------------------ the URL (#1115)
+
+  var PARAM = { group: "group", size: "size", colour: "colour", window: "w" };
+  function refToHash(ref) {
+    if (!ref) return "";
+    return ref.charAt(0) === "#" ? "#issue-" + ref.slice(1) : "#" + ref;
+  }
+  function hashToRef(h) {
+    h = (h || "").replace(/^#/, "");
+    var m = /^issue-(\d+)$/.exec(h);
+    if (m) return "#" + m[1];
+    if (/^(goal-\d+|role-[a-z]+|unattributed)$/.test(h)) return h;
+    return null;
+  }
+  function readUrl() {
+    var q;
+    try { q = new URLSearchParams(window.location.search); } catch (e) { return; }
+    Object.keys(PARAM).forEach(function (k) {
+      var v = q.get(PARAM[k]);
+      if (v !== null && CHOICES[k].indexOf(v) >= 0) st[k] = v;
+    });
+    st.zoom = q.get("zoom");
+    st.selected = hashToRef(window.location.hash);
+  }
+  function url() {
+    var q = new URLSearchParams();
+    Object.keys(PARAM).forEach(function (k) { q.set(PARAM[k], st[k]); });
+    if (st.zoom !== null && st.zoom !== undefined) q.set("zoom", st.zoom);
+    return window.location.pathname + "?" + q.toString() + refToHash(st.selected);
+  }
+  // A new selection is a history entry; a control, zoom or a dropped selection replaces it.
+  function writeUrl(push) {
+    try {
+      var u = url();
+      if (u === window.location.pathname + window.location.search + window.location.hash) return;
+      if (push) window.history.pushState(null, "", u); else window.history.replaceState(null, "", u);
+    } catch (e) { /* a page opened from a file may refuse it: the view still works */ }
+  }
+  readUrl();
 
   function save() {
     try {
@@ -79,6 +124,12 @@
     if (st.group === "goal") return r.goal ? (r.goal.lead || ("#" + r.goal.number)) : "No Goal";
     if (st.group === "role") return r.role ? cap(r.role) : "No role";
     return r.stage ? cap(r.stage) : (r.state === "closed" ? "Closed" : "No stage");
+  }
+  // The Goal or role a group stands for, as a selection, or null (#1115).
+  function groupSel(r) {
+    if (st.group === "goal") return r.goal ? "goal-" + r.goal.number : null;
+    if (st.group === "role") return r.role ? "role-" + r.role : null;
+    return null;
   }
   function goalText(r) {
     if (!r.goal) return "no Goal";
@@ -198,12 +249,12 @@
     var groups = new Map();
     shown.forEach(function (r) {
       var g = groupOf(r);
-      if (!groups.has(g)) groups.set(g, { name: g, rows: [], value: 0 });
+      if (!groups.has(g)) groups.set(g, { name: g, rows: [], value: 0, sel: groupSel(r) });
       var e = groups.get(g); e.rows.push(r); e.value += sizeOf(r);
     });
     var whole = 0;
     groups.forEach(function (g) { whole += g.value; });
-    if (st.zoom !== null && !groups.has(st.zoom)) st.zoom = null;
+    if (st.zoom !== null && !groups.has(st.zoom)) { st.zoom = null; writeUrl(false); }
     crumb(st.zoom === null ? [] : [st.zoom]);
     var list = Array.from(groups.values()).filter(function (g) { return st.zoom === null || g.name === st.zoom; });
     list.sort(function (a, b) { return b.value - a.value || (a.name < b.name ? -1 : 1); });
@@ -223,9 +274,20 @@
       head.appendChild(el("span", "wm-gp", (pct >= 1 || pct === 0 ? Math.round(pct) : "<1") + "%"));
       head.setAttribute("aria-label", g.name + ", " + Math.round(pct) + "% of what's shown" +
         (st.zoom === null ? ": zoom in" : ""));
-      if (st.zoom === null) head.addEventListener("click", function () { st.zoom = g.name; draw(); });
+      if (st.zoom === null) head.addEventListener("click", function () { st.zoom = g.name; writeUrl(false); draw(); });
       else head.disabled = true;
       box.appendChild(head);
+      if (g.sel && dim.w >= 60) {   // the "i": select the Goal or role; the header still zooms
+        head.classList.add("wm-gh-i");
+        var info = el("button", "wm-gi", "i");
+        info.type = "button";
+        info.setAttribute("aria-label", "Show " + g.name + " in the Selected panel");
+        info.setAttribute("aria-controls", "wm-sel");
+        info.setAttribute("aria-pressed", st.selected === g.sel ? "true" : "false");
+        info.setAttribute("data-sel", g.sel);
+        info.addEventListener("click", function () { select(g.sel); });
+        box.appendChild(info);
+      }
       mapEl.appendChild(box);
       var items = g.rows.map(function (r) { return { value: sizeOf(r), row: r }; })
         .sort(function (a, b) { return b.value - a.value; });
@@ -279,16 +341,27 @@
 
   function select(ref) {
     st.selected = st.selected === ref ? null : ref;
+    writeUrl(true);
     markSelected();
     panel();
   }
 
+  // The selected box, the boxes the selected issue holds up (a thin dashed outline, #1115),
+  // and the pressed "i".
   function markSelected() {
+    var found = st.selected && st.selected.charAt(0) === "#" ? findRow(st.selected) : null;
+    var holds = (found && found.row.blocks) || [];
     var boxes = mapEl.querySelectorAll(".wm-box");
     for (var i = 0; i < boxes.length; i++) {
-      var on = boxes[i].getAttribute("data-ref") === st.selected;
+      var ref = boxes[i].getAttribute("data-ref");
+      var on = ref === st.selected;
       boxes[i].classList.toggle("wm-sel", on);
+      boxes[i].classList.toggle("wm-dep", holds.indexOf(Number(ref.slice(1))) >= 0);
       boxes[i].setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    var is = mapEl.querySelectorAll(".wm-gi");
+    for (var j = 0; j < is.length; j++) {
+      is[j].setAttribute("aria-pressed", is[j].getAttribute("data-sel") === st.selected ? "true" : "false");
     }
   }
 
@@ -297,7 +370,7 @@
     if (!path.length) { crumbEl.appendChild(el("span", "", root)); return; }
     var back = el("button", "wm-back", root);
     back.type = "button";
-    back.addEventListener("click", function () { st.zoom = null; draw(); });
+    back.addEventListener("click", function () { st.zoom = null; writeUrl(false); draw(); });
     crumbEl.appendChild(back);
     crumbEl.appendChild(document.createTextNode(" › "));
     crumbEl.appendChild(el("span", "", path[0]));
@@ -313,7 +386,8 @@
       var h = el("span", "wm-key"); h.appendChild(el("span", "wm-sw wm-hatch")); h.appendChild(document.createTextNode("no baseline or unpriced"));
       legendEl.appendChild(h);
     }
-    [["wm-k-fold", "no outcome"], ["wm-k-needs", "needs you"], ["wm-k-blocked", "blocked"], ["wm-k-sel", "selected"]]
+    [["wm-k-fold", "no outcome"], ["wm-k-needs", "needs you"], ["wm-k-blocked", "blocked"], ["wm-k-sel", "selected"],
+     ["wm-k-dep", "held up by the selected"]]
       .forEach(function (k) {
         var s = el("span", "wm-key"); s.appendChild(el("span", "wm-sw " + k[0])); s.appendChild(document.createTextNode(k[1]));
         legendEl.appendChild(s);
@@ -360,8 +434,14 @@
   function panel() {
     var box = $("wm-sel");
     if (!box) return;
-    var found = st.selected === null ? null : findRow(st.selected);
-    if (!found) { st.selected = null; emptyPanel(box); return; }
+    var kind = st.selected ? st.selected.split("-")[0] : null;
+    if (kind === "goal" || kind === "role") {
+      if ((kind === "goal" ? goalPanel : rolePanel)(box, st.selected.slice(5))) return;
+    }
+    var found = st.selected === null || kind === "goal" || kind === "role" ? null : findRow(st.selected);
+    if (!found) { if (st.selected !== null) { st.selected = null; writeUrl(false); } emptyPanel(box); return; }
+    box.classList.remove("wm-sel-other");
+    setText("wm-sel-kind", "SELECTED");
     var r = found.row, here = found.here;
     // An idle issue has nothing this window. Its row is another window's, so that row's baseline
     // is a usual for a window of another length: don't show it as this window's usual.
@@ -377,13 +457,16 @@
     t.title = r.title || r.ref;
 
     var c = $("wm-sel-ctx"); clear(c);
-    var parts = [r.effort ? cap(r.effort) : "no effort", r.role || "no role", r.goal ? (r.goal.lead || "#" + r.goal.number) : "no Goal"];
-    c.appendChild(document.createTextNode(parts.join(" · ")));
+    c.appendChild(document.createTextNode((r.effort ? cap(r.effort) : "no effort") + " · "));
+    c.appendChild(r.role ? pick("role-" + r.role, r.role) : document.createTextNode("no role"));
+    c.appendChild(document.createTextNode(" · "));
+    c.appendChild(r.goal ? pick("goal-" + r.goal.number, r.goal.lead || "#" + r.goal.number) : document.createTextNode("no Goal"));
     if (r.needs_you) { c.appendChild(document.createTextNode(" · ")); c.appendChild(el("span", "wm-flag", "◆ needs you")); }
     if (idle) { c.appendChild(document.createTextNode(" · ")); c.appendChild(el("span", "", "idle this window")); }
     c.title = goalText(r);
 
     stagePanel(r);
+    depsPanel(r);
     daysPanel(r.ref);
     peersPanel(r, here);
     var y = here ? yieldOf(r) : null;
@@ -469,9 +552,184 @@
     }
   }
 
+  // A button that selects `sel` (an issue "#N", "goal-N" or "role-NAME").
+  function pick(sel, text) {
+    var b = el("button", "wm-pick", text);
+    b.type = "button";
+    b.setAttribute("data-wm-sel", sel);
+    b.setAttribute("aria-controls", "wm-sel");
+    return b;
+  }
+  // An issue number as a selector if the map has it, else as a link to it on GitHub.
+  function issueRef(n, text) {
+    if (findRow("#" + n)) return pick("#" + n, text || "#" + n);
+    return link("https://github.com/" + (data.repo || "") + "/issues/" + n, text || "#" + n);
+  }
+  function link(href, text) {
+    if (typeof href !== "string" || href.indexOf("https://github.com/") !== 0) return el("span", "", text);
+    var a = el("a", "", text); a.href = href; return a;
+  }
+
+  // What the issue waits on and what it holds up (#1115): each one selects that issue.
+  function depsPanel(r) {
+    [["wm-sel-by", r.blocked_by], ["wm-sel-blocks", r.blocks]].forEach(function (x) {
+      var e = $(x[0]); clear(e);
+      var ns = x[1] || [];
+      if (!ns.length) { e.appendChild(document.createTextNode(r.ref === "unattributed" ? "–" : "nothing")); return; }
+      ns.forEach(function (n) { e.appendChild(issueRef(n)); });
+      e.title = ns.map(function (n) { return "#" + n; }).join(" ");
+    });
+  }
+
+  // ------------------------------------------------------------ a Goal, Area or role (#1115)
+
+  var CRIT = { met: "met", progress: "in progress", failing: "failing", counted: "counted",
+               unmeasured: "unmeasured: not known to be on track" };
+
+  function other(box, kind, ref, title, href, ctx) {
+    box.classList.remove("wm-sel-empty");
+    box.classList.add("wm-sel-other");
+    setText("wm-sel-kind", kind);
+    setText("wm-sel-ref", ref);
+    var t = $("wm-sel-title"); clear(t); t.title = title;
+    t.appendChild(link(href, title));
+    setText("wm-sel-ctx", ctx);
+    $("wm-sel-ctx").title = ctx;
+    var alt = $("wm-sel-alt"); clear(alt); alt.scrollTop = 0;
+    return alt;
+  }
+  function head(alt, name, right) {
+    var h = el("p", "wm-sh");
+    h.appendChild(el("span", "", name));
+    h.appendChild(el("span", "", right || ""));
+    alt.appendChild(h);
+  }
+  function list(alt, items, none, each) {
+    if (!items.length) { alt.appendChild(el("p", "muted", none)); return; }
+    var ul = el("ul");
+    items.forEach(function (x) { var li = el("li"); each(li, x); ul.appendChild(li); });
+    alt.appendChild(ul);
+  }
+  function why(li, x) {
+    li.appendChild(x.ref && /^#\d+$/.test(x.ref) ? issueRef(Number(x.ref.slice(1))) : link(x.url, x.ref || ""));
+    li.appendChild(document.createTextNode(" " + (x.reason || "")));
+  }
+  function since() {
+    var end = Date.parse((data && data.built_at) || "") || Date.now();
+    return st.window === "month" ? null : end - HOURS[st.window] * 3600 * 1000;
+  }
+  function windowText() {
+    return st.window === "month" ? "last 14 days (the Desk reads 14)" : "last " + st.window;
+  }
+
+  // Each issue's share of the Goal in this window: its own size over the Goal's, a percentage.
+  function shares(number) {
+    var mine = (rowsNow() || []).filter(function (r) { return r.goal && r.goal.number === number && sizeOf(r) > 0; });
+    var whole = 0, out = {};
+    mine.forEach(function (r) { whole += sizeOf(r); });
+    mine.forEach(function (r) { out[r.ref] = whole > 0 ? sizeOf(r) / whole * 100 : 0; });
+    return out;
+  }
+  function pct(x) { return x >= 1 || x === 0 ? Math.round(x) + "%" : "<1%"; }
+
+  // A Goal or Area: false if the map knows nothing of it.
+  function goalPanel(box, num) {
+    var n = Number(num), g = ((data && data.scopes) || {})[num];
+    var any = (rowsNow() || []).filter(function (r) { return r.goal && r.goal.number === n; })[0];
+    if (!g && !any) return false;
+    var lead = g ? g.lead : any.goal.lead, title = g ? g.title : any.goal.title;
+    var type = g ? g.type : (any.goal.kind || "Goal");
+    var crit = g ? g.criteria : [];
+    var ctx = type + (g ? " · " + (crit.length ? g.met + " of " + crit.length + " criteria met" : "no criteria")
+      + (g.date ? " · date " + g.date + (g.date_missed ? " (missed)" : "") : "") : "");
+    var alt = other(box, type.toUpperCase(), "#" + n, (lead ? lead + ": " : "") + (title || ""),
+                    (g && g.url) || "https://github.com/" + (data.repo || "") + "/issues/" + n, ctx);
+    if (!g) { alt.appendChild(el("p", "muted", "This build didn't read its done test or the work under it.")); return true; }
+    head(alt, "Done test", crit.length ? g.met + " of " + crit.length + " met" : "");
+    list(alt, crit, "No criteria found in its body.", function (li, c) {
+      li.appendChild(el("b", c.status === "failing" ? "wm-bad" : "", CRIT[c.status] || c.status || ""));
+      li.appendChild(document.createTextNode(" " + c.text + (c.detail ? " (" + c.detail + ")" : "")));
+    });
+    head(alt, "Stuck, and why nothing will start it", g.stuck.length ? String(g.stuck.length) : "");
+    list(alt, g.stuck, "Nothing is stuck.", why);
+    head(alt, "Waits on you", g.waiting.length ? String(g.waiting.length) : "");
+    list(alt, g.waiting, "Nothing waits on you.", why);
+    head(alt, "Authority used under it", "last 24 hours");
+    list(alt, g.authority, "None.", why);
+    var sh = shares(n);
+    head(alt, "Open work under it", "share of " + (st.size === "lines" ? "lines" : st.size) + ", " + windowText());
+    list(alt, g.subs, "No open sub-issue.", function (li, x) {
+      li.appendChild(x.number ? issueRef(x.number, x.ref || "#" + x.number) : link(x.url, x.ref));
+      li.appendChild(document.createTextNode(" " + x.title + " · "));
+      li.appendChild(el("span", x.go === "go" ? "" : "muted", x.status || x.go || "–"));
+      if (x.pr) { li.appendChild(document.createTextNode(" · ")); li.appendChild(link(x.pr.url, "PR #" + x.pr.number)); }
+      var share = sh[x.ref || "#" + x.number];
+      if (share !== undefined) li.appendChild(el("span", "mono muted", " · " + pct(share)));
+    });
+    var p = el("p", "wm-sh"); p.appendChild(link(g.url, "Open it on GitHub")); alt.appendChild(p);
+    return true;
+  }
+
+  function rolePanel(box, name) {
+    var roles = (data && data.roles) || {}, r = (roles.of || {})[name];
+    if (!r) return false;
+    var state = r.blocked ? "blocked" : r.working ? "working" : "idle";
+    var alt = other(box, "ROLE", name, cap(name), null, r.does + " · " + state);
+    head(alt, "On now");
+    list(alt, r.on, "No live session.", function (li, x) {
+      var m = /^#(\d+)$/.exec(x.ref);
+      li.appendChild(m ? issueRef(Number(m[1])) : link(x.url, x.ref));
+      li.appendChild(document.createTextNode(" " + x.title + (x.status === "blocked" ? " (blocked)" : "")));
+    });
+    var from = since();
+    function inWindow(t) { var v = Date.parse(t || ""); return from === null || (v && v >= from); }
+    var merged = r.merged.filter(function (p) { return inWindow(p.merged_at); });
+    var runs = r.sessions.filter(inWindow);
+    head(alt, "PRs and sessions", windowText());
+    var tiles = el("dl", "wm-tiles");
+    [["Merged", merged.length], ["Open now", r.open.length], ["Changes requested at head", r.changes.length],
+     ["Sessions run", runs.length]].forEach(function (t) {
+      var d = el("div", "wm-num"); d.appendChild(el("dt", "", t[0])); d.appendChild(el("dd", "", String(t[1])));
+      tiles.appendChild(d);
+    });
+    alt.appendChild(tiles);
+    function pr(li, p) {
+      li.appendChild(link(p.url, "#" + p.number));
+      li.appendChild(document.createTextNode(" " + p.title));
+    }
+    head(alt, "Merged", windowText());
+    list(alt, merged, "Nothing merged in the window.", pr);
+    head(alt, "Open");
+    list(alt, r.open, "No open PR.", pr);
+    head(alt, "Changes requested at head");
+    list(alt, r.changes, "None.", pr);
+    head(alt, name === "merger" ? "Its calls" : "The merger's calls on its PRs", "last 24 hours");
+    list(alt, r.calls, "None.", function (li, c) {
+      li.appendChild(link(c.url, "PR #" + c.number));
+      li.appendChild(document.createTextNode(" " + c.group + (c.reason ? ": " + c.reason : "")));
+    });
+    if (r.ask) {
+      head(alt, "Ask it something");
+      var a = el("p");
+      a.appendChild(document.createTextNode("Comment "));
+      a.appendChild(el("code", "", "Ask: " + name + ": …"));
+      a.appendChild(document.createTextNode(" on "));
+      a.appendChild(roles.report_issue
+        ? link("https://github.com/" + (data.repo || "") + "/issues/" + roles.report_issue, "#" + roles.report_issue)
+        : document.createTextNode("the report issue"));
+      a.appendChild(document.createTextNode(". It starts once and answers there (GOV-0029)."));
+      alt.appendChild(a);
+    }
+    return true;
+  }
+
   function emptyPanel(box) {
     box.classList.add("wm-sel-empty");
+    box.classList.remove("wm-sel-other");
+    setText("wm-sel-kind", "SELECTED");
     setText("wm-sel-ref", "–");
+    setText("wm-sel-by", "–"); setText("wm-sel-blocks", "–");
+    clear($("wm-sel-alt"));
     var t = $("wm-sel-title"); clear(t); t.title = "";
     t.appendChild(document.createTextNode("Click a box, or an item in a list below, to see it here."));
     setText("wm-sel-ctx", "–");
@@ -493,9 +751,12 @@
   }
 
   // Any element with data-wm-ref (the Work map's lists) selects that issue.
+  // Any element with data-wm-sel (an issue "#N", "goal-N" or "role-NAME", #1115) selects it.
   document.addEventListener("click", function (ev) {
     var t = ev.target && ev.target.closest ? ev.target.closest("[data-wm-ref]") : null;
-    if (t) select(t.getAttribute("data-wm-ref"));
+    if (t) { select(t.getAttribute("data-wm-ref")); return; }
+    var s2 = ev.target && ev.target.closest ? ev.target.closest("[data-wm-sel]") : null;
+    if (s2 && st.selected !== s2.getAttribute("data-wm-sel")) select(s2.getAttribute("data-wm-sel"));
   });
 
   // ------------------------------------------------------------ tooltip
@@ -534,9 +795,12 @@
     bs[i].addEventListener("click", function (ev) {
       var k = ev.currentTarget.getAttribute("data-k"), v = ev.currentTarget.getAttribute("data-v");
       if (k === "group" && st.group !== v) st.zoom = null;
-      st[k] = v; save(); draw();
+      st[k] = v; save(); writeUrl(false); draw();
     });
   }
+
+  // Back and Forward: the URL's view and selection, as on opening it.
+  window.addEventListener("popstate", function () { readUrl(); draw(); });
 
   var nojs = document.getElementById("wm-nojs");
   if (nojs) nojs.hidden = true;
