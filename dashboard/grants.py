@@ -16,7 +16,8 @@ When main requires a merge queue (#663) the merger enqueues instead of merging, 
 merges later (#746): an enqueued PR moves to Merged once GitHub has merged it. The reason is
 the merger's own words, without the sha or `-- merger`. Above them, one line
 for the merger's mode from `[merger] mode` in swarm.toml on main (merger.load_switch, so a
-bad table reads as off, as it does for the merger itself). Times are UTC.
+bad table reads as off, as it does for the merger itself). Times are UTC. crew.js draws the
+panel from state()'s plain fields (#1139).
 
 API calls: the repo's issue comments since 24 hours ago, 1 or 2 REST calls (`?since=` filters
 on the last update, so a comment's own time is checked again here), and one REST call per PR
@@ -30,19 +31,14 @@ import re
 import subprocess
 from typing import Callable
 
-from layout import esc
-
 MERGER = "productswarm-merger[bot]"   # merger.MERGER: the only App whose comments count
 SIGN = "-- merger"
 WINDOW = dt.timedelta(hours=24)
-GROUPS = ("merged", "enqueued", "would", "left")  # page order
-HEADINGS = {"merged": "Merged", "enqueued": "Enqueued", "would": "Would merge (shadow)", "left": "Left for you"}
+GROUPS = ("merged", "enqueued", "would", "left")  # page order, as crew.js draws them
 MODES = {"shadow": "The merger is in shadow: it says what it would merge and merges nothing.",
          "live": "The merger is live.",
          "off": "The merger is off."}
 UNKNOWN_MODE = "The merger's mode couldn't be read from swarm.toml."
-NONE = "No merger calls in the last 24 hours."
-UNREADABLE = "Couldn't read the merger's calls."
 
 # The bodies merger.py writes (would_body, merged_body, enqueued_body, left_body), before the signature.
 SHA = r"[0-9a-f]{7,40}"
@@ -153,51 +149,11 @@ def build(raw: dict | None, now: dt.datetime) -> dict:
             "read": comments is not None, "calls": calls}
 
 
-def line(x: dict) -> str:
-    """What the merger did, in the panel's words."""
-    if x["group"] == "merged":
-        return f"merged under {x['reason']}" + (" via the queue" if x.get("queued") else "")
-    if x["group"] == "enqueued":
-        return f"enqueued under {x['reason']}"
-    if x["group"] == "would":
-        return f"would merge ({x['reason']})"
-    return f"left for you: {x['reason']}"
-
-
-def render(g: dict | None, repo: str) -> str:
-    """The desk's grants-in-use panel."""
-    if g is None:
-        return ""
-    base = f"https://github.com/{repo}"
-    out = ["<h2>Grants in use</h2>",
-           f'<p class="grants-mode">{esc(MODES.get(g["mode"], UNKNOWN_MODE))}</p>']
-    if not g["read"]:
-        out.append(f'<p class="muted">{esc(UNREADABLE)}</p>')
-    elif not g["calls"]:
-        out.append(f'<p class="muted">{esc(NONE)}</p>')
-    for group in GROUPS:
-        rows = [x for x in g["calls"] if x["group"] == group]
-        if not rows:
-            continue
-        out.append(f'<h3 class="{group}">{HEADINGS[group]}</h3><ol class="grants {group}">')
-        for x in rows:
-            n, title = x["number"], f' {esc(x["title"])}' if x.get("title") else ""
-            out.append(
-                f'<li><a href="{base}/pull/{n}">#{n}</a>{title}: '
-                f'<a href="{esc(x["link"])}">{esc(line(x))}, '
-                f'<time datetime="{stamp(x["time"])}">{x["time"].strftime("%H:%M")}</time></a></li>')
-        out.append("</ol>")
-    out.append('<p class="muted method">The merger\'s comments on PRs in the last 24 hours, '
-               "each PR's latest, newest first; times in UTC. Other uses of delegated authority "
-               "are in the daily report.</p>")
-    return "".join(out)
-
-
 def state(g: dict | None) -> dict | None:
-    """state.json's `grants`."""
+    """state.json's `grants`, which crew.js draws (#1139)."""
     if g is None:
         return None
-    return {"mode": g["mode"], "read": g["read"],
+    return {"mode": g["mode"], "mode_text": MODES.get(g["mode"], UNKNOWN_MODE), "read": g["read"],
             "calls": [{k: x.get(k) for k in ("number", "title", "group", "queued", "reason", "time",
                                                 "link")}
                       for x in g["calls"]]}

@@ -1,5 +1,5 @@
 ---
-id: GOV-0055
+id: GOV-0056
 title: Memory-only PRs merge under the standing grant; the librarian drafts gov:questions without a weekly cap; the owner model goes in full to the planner only
 status: in-force
 kind: ruling
