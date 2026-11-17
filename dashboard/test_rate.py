@@ -292,11 +292,13 @@ class CallCountTest(unittest.TestCase):
         # #402's header: the repo's events, one page here (fewer than 100, so the last).
         self.assertEqual([c for c in rest if "/events?" in " ".join(c)],
                          [["api", f"repos/{REPO}/events?per_page=100&page=1"]])
-        # The whole rebuild: 49 calls (30 before #406 added 4, #408 added 2, #402 added 1,
-        # #712 added 2, #713 added 1 and #903's trouble panel 9: three `pr list`s, open issues,
-        # recent comments, the report issue's comments and one scope query per 25 issues).
-        # On main before #392 the same data took 100.
-        self.assertLessEqual(len(calls), 49, "\n".join(map(str, calls)))
+        # The Work map (#1081): one paginated search for the PRs updated in the window.
+        self.assertEqual(sum("is:pr updated:>=" in " ".join(c) for c in graphql), 1)
+        # The whole rebuild: 50 calls (30 before #406 added 4, #408 added 2, #402 added 1,
+        # #712 added 2, #713 added 1, #903's trouble panel 9: three `pr list`s, open issues,
+        # recent comments, the report issue's comments and one scope query per 25 issues, and
+        # #1081's Work map 1). On main before #392 the same data took 100.
+        self.assertLessEqual(len(calls), 50, "\n".join(map(str, calls)))
         self.assertLess(len(rest), g.PAGE_NEEDS["core"])
         self.assertLess(len(graphql), g.PAGE_NEEDS["graphql"])
 
