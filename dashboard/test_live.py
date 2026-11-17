@@ -15,11 +15,13 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import committees  # noqa: E402
+import effort  # noqa: E402
 import floor  # noqa: E402
 import grants  # noqa: E402
 import generate as g  # noqa: E402
 import live  # noqa: E402
 import precedent  # noqa: E402
+import questions  # noqa: E402
 import state as st  # noqa: E402
 import trends  # noqa: E402
 from test_floor import model as floor_model  # noqa: E402
@@ -102,13 +104,15 @@ class EveryPanelTest(unittest.TestCase):
                    mock.patch.object(committees, "past", checked(committees.past)),
                    mock.patch.object(trends, "render", checked(trends.render)),
                    mock.patch.object(precedent, "render", checked(precedent.render)),
-                   mock.patch.object(grants, "render", checked(grants.render))]
+                   mock.patch.object(grants, "render", checked(grants.render)),
+                   mock.patch.object(effort, "render", checked(effort.render)),
+                   mock.patch.object(questions, "render_went", checked(questions.render_went))]
         for p in patches:
             p.start()
         try:
             suite = unittest.defaultTestLoader.loadTestsFromNames(
                 ["test_floor", "test_committees", "test_trends", "test_precedent", "test_generate",
-                 "test_grants"])
+                 "test_grants", "test_effort", "test_went"])
             result = unittest.TestResult()
             suite.run(result)
         finally:
@@ -119,25 +123,30 @@ class EveryPanelTest(unittest.TestCase):
 
 
 class PageTest(unittest.TestCase):
+    """Crew and Governance carry the live refresh (#1113; the desk did, #411)."""
+    LIVE = ("crew.html", "governance.html")
+
     def setUp(self):
         self.m = desk_model()
         self.pages = g.render(self.m)
-        self.desk = self.pages["index.html"]
+        self.panels = {"crew.html": g.crew_panels(self.m), "governance.html": g.governance_panels(self.m)}
 
     def test_csp_hash_matches_the_script(self):
-        src, integrity = script_of(self.desk)
-        self.assertEqual(src, "js/poll.js")   # same-origin, beside the page (#1106)
         js = live.script()
         digest = base64.b64encode(hashlib.sha256(js.encode("utf-8")).digest()).decode()
-        csp = csp_of(self.desk)
-        self.assertEqual(csp["script-src"], ["'self'", f"'sha256-{digest}'"])   # that script, nothing else
-        self.assertEqual(integrity, f"sha256-{digest}")
-        self.assertEqual(csp["default-src"], ["'none'"])
-        self.assertEqual(csp["connect-src"], ["'self'"])
+        for name in self.LIVE:
+            src, integrity = script_of(self.pages[name])
+            self.assertEqual(src, "js/poll.js", name)   # same-origin, beside the page (#1106)
+            csp = csp_of(self.pages[name])
+            self.assertEqual(csp["script-src"], ["'self'", f"'sha256-{digest}'"], name)   # that script, nothing else
+            self.assertEqual(integrity, f"sha256-{digest}", name)
+            self.assertEqual(csp["default-src"], ["'none'"], name)
+            self.assertEqual(csp["connect-src"], ["'self'"], name)
 
     def test_csp_comes_before_anything_it_governs(self):
-        head = self.desk.split("</head>")[0]
-        self.assertLess(head.index("Content-Security-Policy"), head.index("<style>"))
+        for name in self.LIVE:
+            head = self.pages[name].split("</head>")[0]
+            self.assertLess(head.index("Content-Security-Policy"), head.index("<style>"), name)
 
     def test_script_builds_nodes_never_markup_or_code(self):
         js = live.script()
@@ -149,25 +158,36 @@ class PageTest(unittest.TestCase):
         self.assertNotRegex(js, r"/\*[A-Z_]+\*/")   # every placeholder filled in
         self.assertIn('querySelectorAll("header.mast .live")', js)   # #402's mark
 
-    def test_only_the_desk_has_a_script(self):
-        for name in ("operations.html", "decisions.html"):
-            self.assertNotIn("<script", self.pages[name].lower(), name)
-            self.assertEqual(csp_of(self.pages[name])["script-src"], ["'none'"], name)
+    def test_only_crew_and_governance_poll(self):
+        self.assertNotIn("<script", self.pages["effort.html"].lower())
+        self.assertEqual(csp_of(self.pages["effort.html"])["script-src"], ["'none'"])
+        self.assertNotIn("poll.js", self.pages["workmap.html"])
 
     def test_static_page_is_complete_without_the_script(self):
         # Each panel is drawn in full inside its box, and the meta refresh stays.
-        for name, fragment in g.desk_panels(self.m).items():
-            self.assertIn(f'<div data-panel="{name}">{fragment}</div>', self.desk)
-        self.assertIn("<h2>On the floor</h2>", self.desk)
-        self.assertIn('<meta http-equiv="refresh" content="300">', self.desk)
-        self.assertIn('<body data-built-at="2026-11-02T12:00:00Z">', self.desk)
+        for name in self.LIVE:
+            page = self.pages[name]
+            for panel, fragment in self.panels[name].items():
+                self.assertIn(f'<div data-panel="{panel}">{fragment}</div>', page, panel)
+            self.assertIn('<meta http-equiv="refresh" content="300">', page, name)
+            self.assertIn('<body data-built-at="2026-11-02T12:00:00Z">', page, name)
+        self.assertIn("<h2>On the floor</h2>", self.pages["crew.html"])
 
-    def test_state_carries_every_box_on_the_desk(self):
+    def test_the_masthead_keeps_its_page_name(self):
+        # Only the mark, build time and owner line redraw, so each page keeps its own name.
+        for name, title in (("crew.html", "Crew"), ("governance.html", "Governance")):
+            head = self.pages[name].split('<header class="mast">')[1].split("</header>")[0]
+            self.assertIn(f"AgentFleetOS · {title}</span>", head.split('data-panel="mast"')[0], name)
+        self.assertNotIn("AgentFleetOS", json.dumps(st.state(self.m)["desk"]["mast"]))
+
+    def test_state_carries_every_box_on_both_pages(self):
         s = st.state(self.m)
-        boxes = re.findall(r'data-panel="([^"]+)"', self.desk)
+        boxes = set()
+        for name in self.LIVE:
+            boxes |= set(re.findall(r'data-panel="([^"]+)"', self.pages[name]))
         self.assertEqual(sorted(s["desk"]), sorted(boxes))
         self.assertTrue(all(isinstance(t, list) for t in s["desk"].values()), s["desk"])
-        self.assertEqual(s["desk"]["floor"], live.tree(g.desk_panels(self.m)["floor"]))
+        self.assertEqual(s["desk"]["floor"], live.tree(g.crew_panels(self.m)["floor"]))
         self.assertEqual(json.loads(json.dumps(s)), s)
 
 

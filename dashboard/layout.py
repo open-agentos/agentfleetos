@@ -1,15 +1,15 @@
 """The dashboard's look and page shell (#401, part 2 of #397).
 
-Colours, fonts and the HTML around every page live here, so the desk, operations and
-decisions pages can't drift apart. Fonts are IBM Plex (SIL Open Font License, see
+Colours, fonts and the HTML around every page live here, so the Work map, Crew and
+Governance pages can't drift apart. Fonts are IBM Plex (SIL Open Font License, see
 static/fonts/LICENSE.txt), self-hosted: generate.py copies them beside the pages, so the
 public page loads nothing from a third party. Only the Latin-1 subset of the four faces the
 CSS uses is shipped; other characters (arrows, for one) fall back to the system font.
 
 Stdlib only. Every page carries a Content-Security-Policy. Two pages load a script, each a
 same-origin file in js/ beside the pages (#1106, option 3 of #1102) that the CSP allows by its
-hash and the <script> tag pins with the same hash as its integrity: the desk's live refresh
-(live.py, #411) and the Work map's treemap (workmap.js, #1082).
+hash and the <script> tag pins with the same hash as its integrity: the live refresh on Crew
+and Governance (live.py, #411) and the Work map's treemap (workmap.js, #1082).
 
 Third-party libraries (#1107, GOV-0051) are vendored in static/vendor/, each pinned in
 static/vendor/manifest.json with its sha256. vendored() checks every file against its entry
@@ -37,7 +37,7 @@ VENDOR_MANIFEST = "manifest.json"
 VENDOR_FIELDS = ("file", "library", "version", "licence", "source", "sha256")
 EXACT_VERSION = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")   # 7.9.0, never ^7 or 7.x
 SHA256_HEX = re.compile(r"[0-9a-f]{64}")
-REFRESH_SECONDS = 300        # an open page reloads itself, script or not (#351); the desk also polls (#411)
+REFRESH_SECONDS = 300        # an open page reloads itself, script or not (#351); Crew and Governance also poll (#411)
 
 # (family, weight, file). Only the faces the CSS below uses.
 FONTS = (
@@ -52,10 +52,10 @@ LATIN1 = ("U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6
           "U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, "
           "U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02")
 
-# The pages, in footer order: (file, name).
-PAGES = (("workmap.html", "Work map"), ("commissions.html", "Commissions"), ("agents.html", "Agents"),
-         ("index.html", "Desk"), ("effort.html", "Effort"), ("operations.html", "Operations"),
-         ("decisions.html", "Decisions"), ("authority.html", "Authority"))
+# The three top-level pages, in nav order: (file, name). One nav on every page (#1113).
+PAGES = (("workmap.html", "Map"), ("crew.html", "Crew"), ("governance.html", "Governance"))
+# Every page the shell draws, by file: the three, and Effort's drill-down from Crew's Effort panel.
+NAMES = dict(PAGES) | {"effort.html": "Effort"}
 
 # #397's palette: paper, ink, agents blue, owner amber, and red for live marks and blocks only.
 PALETTE = {"paper": "#F4F3EE", "ink": "#1B1B18", "muted": "#66655E", "line": "#D8D6CC",
@@ -75,11 +75,12 @@ CSS = FONT_FACES + "\n:root { " + " ".join(f"--{k}:{v};" for k, v in PALETTE.ite
 html { background:var(--paper); }
 body { margin:0; padding:20px 16px 32px; background:var(--paper); color:var(--ink);
   font:15px/1.5 var(--sans); }
-main, header.mast, footer.foot { max-width:1100px; margin:0 auto; }
+main, header.mast { max-width:1100px; margin:0 auto; }
 main { overflow-wrap:anywhere; }
 header.mast { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 16px;
   border-bottom:2px solid var(--ink); padding-bottom:6px; margin-bottom:8px; }
-header.mast > span { min-width:0; overflow-wrap:anywhere; }
+header.mast > span, header.mast .bits > span { min-width:0; overflow-wrap:anywhere; }
+header.mast .bits { display:contents; }
 header.mast .name { font:600 13px/1 var(--cond); letter-spacing:.08em; text-transform:uppercase; }
 header.mast .live { background:var(--red); color:#fff; padding:0 8px; font:600 12px/1.6 var(--cond);
   letter-spacing:.1em; }
@@ -213,11 +214,11 @@ ol.asks li::marker { color:var(--owner); font-weight:600; }
 .w-agent { color:var(--agent); font-weight:600; } .w-owner { color:var(--owner); font-weight:600; }
 .w-other { color:var(--quiet); }
 table.authority td:first-child { min-width:200px; }
-footer.foot { margin-top:40px; padding-top:8px; border-top:2px solid var(--ink);
-  display:flex; flex-wrap:wrap; gap:4px 18px; font:600 13px/1.6 var(--cond);
-  text-transform:uppercase; letter-spacing:.06em; }
-footer.foot .here { text-decoration:none; color:var(--muted); }
-/* Shared by the Work map, Commissions and Agents, from the Bridge (#926, retired in #1114). */
+nav.top { max-width:1100px; margin:0 auto 4px; display:flex; flex-wrap:wrap; gap:4px 18px;
+  font:600 13px/1.6 var(--cond); text-transform:uppercase; letter-spacing:.06em; }
+nav.top .here { text-decoration:none; color:var(--muted); }
+.sec { scroll-margin-top:12px; }
+/* Shared by the Work map and Crew, from the Bridge (#926, retired in #1114). */
 .br-main { flex:999 1 520px; min-width:0; display:flex; flex-direction:column; gap:26px; }
 .br-titlebar { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 16px; }
 .br-titlebar h1 { font-size:30px; margin:12px 0 0; }
@@ -498,7 +499,7 @@ def esc(x) -> str:
 
 
 def nav(current: str) -> str:
-    """Links to every page; the current one is marked, not linked away from."""
+    """Map · Crew · Governance (#1113); the current one is marked, not linked away from."""
     links = []
     for file, name in PAGES:
         if file == current:
@@ -518,31 +519,39 @@ def built_mark(built: dt.datetime) -> str:
 
 
 
-def masthead(current: str, repo: str, built: dt.datetime, owner: str = "") -> str:
-    """What's inside the page's <header>: the page name, the repo, the LIVE mark and build time,
-    and `owner`, the owner's last act as HTML (#402). The desk's live refresh redraws it too
-    (#411)."""
-    return (f'<span class="name">AgentFleetOS · {esc(dict(PAGES)[current])}</span>'
-            f'<span class="muted">{esc(repo)}</span>{built_mark(built)}{owner}')
+def mast_live(built: dt.datetime, owner: str = "") -> str:
+    """The masthead's changing part: the LIVE mark and build time, and `owner`, the owner's last
+    act as HTML (#402). The live refresh redraws it (#411); the page name around it stays."""
+    return f"{built_mark(built)}{owner}"
+
+
+def masthead(current: str, repo: str, built: dt.datetime, owner: str = "", live_box: bool = False) -> str:
+    """What's inside the page's <header>: the page name, the repo, then mast_live(). With
+    `live_box`, that part is the `data-panel="mast"` box the live refresh redraws."""
+    bits = mast_live(built, owner)
+    if live_box:
+        bits = f'<span class="bits" data-panel="mast">{bits}</span>'
+    return (f'<span class="name">AgentFleetOS · {esc(NAMES[current])}</span>'
+            f'<span class="muted">{esc(repo)}</span>{bits}')
 
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
          live_refresh: bool = False, script: tuple[str, str] | None = None,
          libs: dict[str, bytes] | None = None) -> str:
     """One whole page in the shared shell: head (noindex, CSP, refresh, CSS), masthead (#402),
-    the body, and the footer linking every page. With `live_refresh`, the page also loads the
-    live refresh script, js/poll.js, which polls state.json (#411); only the desk does. `script`
+    the nav (Map · Crew · Governance, #1113), then the body. With `live_refresh`, the page also
+    loads the live refresh script, js/poll.js, which polls state.json and redraws the page's
+    `data-panel` boxes (#411); Crew and Governance do. `script`
     is another page's own script as (file name, text), e.g. the Work map's (#1082). The page
     loads it from js/ (write_scripts puts it there) and the CSP allows it by its hash. `libs` are
     vendored libraries the page loads before its own script, as layout.libs() returns them
     (#1107): each is served from js/ too and allowed by its hash."""
     built_at = built.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if live_refresh else None
-    name = dict(PAGES)[current]
+    name = NAMES[current]
     if built_at:
         script = (live.FILE, live.script())
     js = script[1] if script else None
     libs = libs or {}
-    box = ' data-panel="mast"' if built_at else ""
     return "\n".join(part for part in [
         '<!doctype html><html lang="en"><head><meta charset="utf-8">',
         f'<meta http-equiv="Content-Security-Policy" content="{live.csp(js, tuple(libs.values()))}">',
@@ -551,13 +560,23 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         f'<meta http-equiv="refresh" content="{REFRESH_SECONDS}">',
         f"<title>{esc(name)} · {esc(title)} · {esc(repo)}</title><style>{CSS}</style></head>"
         + (f'<body data-built-at="{esc(built_at)}">' if built_at else "<body>"),
-        f'<header class="mast"{box}>{masthead(current, repo, built, owner)}</header>',
+        f'<header class="mast">{masthead(current, repo, built, owner, live_box=bool(built_at))}</header>',
+        f'<nav class="top" aria-label="Pages">{nav(current)}</nav>',
         f"<main>{body}</main>",
-        f'<footer class="foot">{nav(current)}</footer>',
         *(script_tag(f, b) for f, b in libs.items()),
         script_tag(*script) if script else None,
         "</body></html>\n",
     ] if part is not None)
+
+
+def redirect(to: str, title: str, text: str) -> str:
+    """A retired page (#1113, as bridge.html for #1114): it only sends the browser to `to`, a
+    page beside it, with a link for a browser that doesn't follow the refresh."""
+    return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<meta name="robots" content="noindex, nofollow">'
+            f'<meta http-equiv="refresh" content="0; url={esc(to)}">'
+            f'<title>{esc(title)}</title></head><body>'
+            f'<p>{esc(text)} <a href="{esc(to)}">Go there</a>.</p></body></html>\n')
 
 
 def script_tag(file: str, js: str | bytes) -> str:

@@ -1,14 +1,14 @@
 """The dashboard's governance section (#355, part 3 of #348).
 
 Three parts, all from public repo data:
-  - decision records: the newest rows of governance/INDEX.md (on the decisions page,
-    all of them), read from the checkout, with records past their review-by date (not
+  - decision records: every row of governance/INDEX.md (Governance's #rulings, #1113),
+    read from the checkout, with records past their review-by date (not
     precedent, GOVERNANCE.md §6) and those due within REVIEW_SOON_DAYS marked;
   - open gov questions: domain, shape, blocking, age and time to live, from the
     Governance question template's body and the issue's labels;
   - lapsed questions (`gov:lapsed`), open, or closed within the page's window.
 
-generate.py fetches the data and calls build() and render(). Stdlib only, no JavaScript.
+generate.py fetches the data and calls build(), rulings() and questions(). Stdlib only, no JavaScript.
 """
 from __future__ import annotations
 
@@ -290,14 +290,15 @@ def lapsed_html(g: dict, days: int) -> str:
     return f'<ul>{"".join(items)}</ul>{note}'
 
 
-def render(g: dict, repo: str, now: dt.datetime, days: int, ago, stamp, full: bool = False) -> str:
-    """The section. With full, the records part is the whole decision log, not the newest
-    RECENT (the decisions page, #401)."""
-    records = (f"<h3>Decision log ({len(g['all_records'])})</h3>" if full
-               else "<h3>Recent decision records</h3>") + records_html(g, repo, full)
+def rulings(g: dict, repo: str) -> str:
+    """Governance's #rulings (#1113): the whole decision log from INDEX.md (#401)."""
+    return f"<h2>Rulings</h2><h3>Decision log ({len(g['all_records'])})</h3>" + records_html(g, repo, full=True)
+
+
+def questions(g: dict, now: dt.datetime, days: int, ago, stamp) -> str:
+    """Governance's #questions (#1113): open gov questions, then lapsed ones."""
     return "\n".join([
-        "<h2>Governance</h2>",
-        records,
+        "<h2>Questions</h2>",
         f"<h3>Open gov questions ({len(g['questions'])})</h3>{questions_html(g, now, ago, stamp)}",
         f"<h3>Lapsed questions</h3>{lapsed_html(g, days)}",
     ])

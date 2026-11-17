@@ -214,16 +214,16 @@ class PageTest(unittest.TestCase):
 
     def test_desk_shows_three_sentences_with_sparklines(self):
         pages = g.render(self.model())
-        desk = pages["index.html"]
+        desk = pages["governance.html"]
         self.assertIn("<h2>What the numbers say</h2>", desk)
         self.assertEqual(desk.count('<svg class="spark"'), 3)
         self.assertIn("0.3 questions per merged PR this week", desk)
-        self.assertNotIn("What the numbers say", pages["operations.html"])
+        self.assertNotIn("What the numbers say", pages["crew.html"])
 
     def test_no_panel_without_history(self):
         m = self.model()
         m["trends"] = None
-        self.assertNotIn("What the numbers say", g.render(m)["index.html"])
+        self.assertNotIn("What the numbers say", g.render(m)["governance.html"])
 
     def test_state_json_has_series_and_sentences(self):
         s = json.loads(json.dumps(state.state(self.model())))["trends"]

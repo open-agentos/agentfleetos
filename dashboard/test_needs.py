@@ -2,15 +2,15 @@
 
 Run: python3 -m unittest discover -s dashboard
 """
-import html
-import re
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import generate as g  # noqa: E402
+import workmap  # noqa: E402
 from test_generate import NOW, ev, tracking, issue, comment, build, ts  # noqa: E402
 
 GOV_BODY = "### Domain\n\narchitecture\n\n### Time to live\n\n2026-11-09\n\n### Suggested shape\n\nadvice\n"
@@ -87,7 +87,6 @@ class NeedsYouTest(unittest.TestCase):
         self.assertEqual(sum(s["status"] == "idle" for s in m["sessions"]), 19)
         self.assertEqual([q["number"] for q in m["gov"]], [396])
         self.assertEqual(g.needs_you(m), [])
-        self.assertIn(g.NEEDS_EMPTY, g.render(m)["operations.html"])
 
     def test_never_acted_sessions_are_left_out(self):
         # #454: the same 19, with no events at all and tracking issues older than the
@@ -109,7 +108,6 @@ class NeedsYouTest(unittest.TestCase):
     def test_empty(self):
         m = build([tracking(54, "active")], {54: [comment([ev("active", "working_on", 1, issue=4)])]})
         self.assertEqual(g.needs_you(m), [])
-        self.assertIn(g.NEEDS_EMPTY, g.render(m)["operations.html"])
 
     def test_time_to_live(self):
         self.assertEqual(g.time_to_live(GOV_BODY), "2026-11-09")
@@ -279,7 +277,7 @@ class PastTimeToLiveTest(unittest.TestCase):
         item = next(i for i in g.needs_you(m) if i["ref"] == "#62")
         line = g.needs_line(item, NOW)
         self.assertTrue(line.startswith("[gov question] #62 GOV-Q: past recently · past time to live (2026-11-01)"))
-        self.assertIn(html.escape(line), g.render(m)["operations.html"])
+        self.assertIn(62, workmap.needs_issues(m))   # the Work map's Needs you list (#1113)
 
     def test_ttl_date(self):
         self.assertEqual(g.ttl_date("2026-11-30"), g.dt.date(2026, 11, 30))
@@ -289,15 +287,19 @@ class PastTimeToLiveTest(unittest.TestCase):
 
 
 class PageTest(unittest.TestCase):
-    def test_first_section_matches_the_list(self):
+    def test_the_work_maps_needs_you_is_the_same_list(self):
+        # #1113: the needs-you list left the pages for the Work map's Needs you list, which
+        # takes its issues from needs_you(), as swarm inbox does.
         m = model()
-        page = g.render(m)["operations.html"]
-        self.assertLess(page.index("<h2>Needs you (5)</h2>"), page.index("<h2>Sessions</h2>"))
-        section = page[page.index('<ol class="inbox">'):page.index("</ol>")]
-        shown = [html.unescape(re.sub(r"<[^>]+>", "", li)).split(" · session")[0]
-                 for li in re.findall(r"<li[^>]*>(.*?)</li>", section)]
-        self.assertEqual(shown, [g.needs_line(i, m["now"]) for i in g.needs_you(m)])
-        self.assertIn('<a href="https://github.com/open-agentos/agentfleetos/issues/50">session</a>', section)
+        items = g.needs_you(m)
+        self.assertTrue(items)
+        refs = {int(i["ref"].lstrip("#")) for i in items if i["kind"] in ("blocked", "question")}
+        self.assertLessEqual(refs, workmap.needs_issues(m))
+        with mock.patch.object(g, "needs_you", return_value=[]):
+            self.assertEqual(workmap.needs_issues(m),
+                             {s["issue"] for s in m["sessions"] if s["status"] == "blocked" and s.get("issue")})
+        for name, page in g.render(m).items():
+            self.assertNotIn('<ol class="inbox">', page, name)
 
 
 if __name__ == "__main__":

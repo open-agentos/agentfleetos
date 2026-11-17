@@ -246,7 +246,7 @@ class CallCountTest(unittest.TestCase):
                 for k in ("GITHUB_EVENT_NAME", "GITHUB_TRIGGERING_ACTOR", "GITHUB_ACTOR"):
                     os.environ.pop(k, None)
                 rc = g.main(["--repo", REPO, "--out", str(tmp / "index.html")])
-                page = (tmp / "index.html").read_text() if (tmp / "index.html").exists() else ""
+                page = (tmp / "crew.html").read_text() if (tmp / "crew.html").exists() else ""   # #1113
             calls = [json.loads(ln) for ln in (tmp / "log").read_text().splitlines()]
         self.assertEqual(pub.call_count, 1)   # the Pages copy, not an API call
         return rc, page, calls
@@ -297,8 +297,9 @@ class CallCountTest(unittest.TestCase):
         # The whole rebuild: 50 calls (30 before #406 added 4, #408 added 2, #402 added 1,
         # #712 added 2, #713 added 1, #903's trouble panel 9: three `pr list`s, open issues,
         # recent comments, the report issue's comments and one scope query per 25 issues, and
-        # #1081's Work map 1). On main before #392 the same data took 100.
-        self.assertLessEqual(len(calls), 50, "\n".join(map(str, calls)))
+        # #1081's Work map 1), and 48 since #1113 retired v3 progress and its 2 reads. On main
+        # before #392 the same data took 100.
+        self.assertLessEqual(len(calls), 48, "\n".join(map(str, calls)))
         self.assertLess(len(rest), g.PAGE_NEEDS["core"])
         self.assertLess(len(graphql), g.PAGE_NEEDS["graphql"])
 
@@ -347,18 +348,6 @@ class BatchedTest(unittest.TestCase):
         self.assertEqual(ghql.login({"login": "mattmcalister", "__typename": "User"}), "mattmcalister")
         self.assertEqual(ghql.login(None), "ghost")
 
-
-class RedReviewsTest(unittest.TestCase):
-    def test_rest_shape_and_over_100_left_for_rest(self):
-        import progress
-        node = {"author": {"login": "productswarm-reviewer", "__typename": "Bot"},
-                "submittedAt": ts(5), "state": "CHANGES_REQUESTED", "body": "block 2"}
-        with mock.patch.object(ghql, "batched", return_value={
-                7: {"reviews": {"totalCount": 1, "nodes": [node]}},
-                8: {"reviews": {"totalCount": 101, "nodes": [node] * 100}}, 9: None}):
-            got = progress.red_reviews(REPO, [7, 8, 9])
-        self.assertEqual(got, {7: [{"user": {"login": "productswarm-reviewer[bot]"}, "submitted_at": ts(5),
-                                    "state": "CHANGES_REQUESTED", "body": "block 2"}]})
 
 if __name__ == "__main__":
     unittest.main()

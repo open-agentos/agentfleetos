@@ -1,34 +1,48 @@
 # Swarm dashboard
 
-Read-only pages showing what every agent session is doing and how the swarm is governed. Built by `generate.py`: Python stdlib only, static HTML files. The desk loads one small script that [refreshes it](#live-refresh) from `state.json` (option 2 of gov question #396, which reversed #26's "no JavaScript"), and the [Work map](#the-work-map) one that draws its treemap; the other pages load none. Each script is a same-origin file in `js/` beside the pages, allowed by its hash (#1106, option 3 of #1102). Every page but the Work map's treemap is complete with JavaScript off.
+Read-only pages showing what every agent session is doing and how the swarm is governed: three of them, the [Work map](#the-work-map), [Crew](#crew) and [Governance](#governance-page), joined by one nav (#1113). Built by `generate.py`: Python stdlib only, static HTML files. Crew and Governance load one small script that [refreshes their panels](#live-refresh) from `state.json` (option 2 of gov question #396, which reversed #26's "no JavaScript"), and the Work map one that draws its treemap; Effort's drill-down loads none. Each script is a same-origin file in `js/` beside the pages, allowed by its hash (#1106, option 3 of #1102). Every page but the Work map's treemap is complete with JavaScript off.
 
 ## Generate it
 
 ```bash
 python3 dashboard/generate.py            # writes dashboard/out/ (git-ignored)
-open dashboard/out/index.html
+open dashboard/out/workmap.html
 ```
 
-Options: `--repo owner/name` (default: this checkout's `origin`), `--out PATH` (the desk page; the other pages, `fonts/` and `js/` are written beside it), `--days N` (include sessions that stopped in the last N days, default 14), `--idle-minutes N` (default 15).
+Options: `--repo owner/name` (default: this checkout's `origin`), `--out PATH` (`index.html`, which sends the browser to the Work map; the pages, `fonts/` and `js/` are written beside it), `--days N` (include sessions that stopped in the last N days, default 14), `--idle-minutes N` (default 15).
 
 It reads GitHub through `gh api`, so inside a swarm session it acts as the role's App.
 
 ## Pages
 
-One build writes eight pages, and the fonts, into the `--out` page's directory (#401, part of #397):
+One build writes three pages, and the fonts, into the `--out` page's directory, joined by one nav on every page, **Map · Crew · Governance** (#1113, which merged seven pages from two generations):
 
 | Page | What it shows |
 |---|---|
-| `workmap.html`, the **Work map** | The owner's home, served at `/` on the live Desk (#1082): a treemap of what each issue cost and what it returned ([the Work map](#the-work-map)), with the [counts strip](#the-strip-and-the-tape) above it and the lead's daily briefing, six lists and the [tape](#the-strip-and-the-tape) under it |
-| `commissions.html` | Each open Goal and Area, grouped by what it needs from the owner, with a focus drawer ([Commissions](#commissions), #931) |
-| `agents.html` | One row per role, working or idle, with a focus drawer ([Agents](#agents), #932) |
-| `index.html`, the **desk** | Today's report and the plan (#712), the trouble panel per Goal and Area (#903: `swarm trouble`'s report, built by `generate.py` without the owner-acts sync, so M4's acts criterion reads unmeasured here; no spend), [On the floor](#on-the-floor), [the wire](#the-wire), the [committee desk](#committee-desk) while a committee is open, [What the numbers say](#what-the-numbers-say), [How the questions went](#how-the-questions-went), [precedent in use](#precedent-in-use), a card per [past committee](#past-committees), and a one-line pointer to the other pages. #397's later issues add the desk's other panels here. |
-| `effort.html` | The PRs behind each segment of the desk's [Effort](#effort) bars, per open Goal, window and label (#1013) |
-| `operations.html` | The [needs-you](#needs-you) list and its tiles, sessions, open PRs, the [Actions reviewer](#actions-reviewer) section, [v3 progress](#v3-progress) and [spend per day](#spend) |
-| `decisions.html` | The [governance](#governance) section with the **full** decision log from `governance/INDEX.md`, open and lapsed gov questions, the [Committees](#committees) section with each open committee's round grid, and ended committees as "Past committees" with their round grids |
-| `authority.html` | The [authority map](#authority-map): who may decide what, one row per domain in `governance/jurisdictions.yml` |
+| `workmap.html`, the **Work map** | The owner's home, served at `/` on the live Desk (#1082): a treemap of what each issue cost and what it returned ([the Work map](#the-work-map)), with the [counts strip](#the-strip-and-the-tape) above it and the lead's daily briefing, six lists (Needs you first) and the [tape](#the-strip-and-the-tape) under it. Selecting a Goal, Area or role shows its view in the Selected panel |
+| `crew.html`, **Crew** | One row per role plus the merger App, working or idle, each opening its role view on the Work map; then `#floor` ([On the floor](#on-the-floor)), `#sessions` (the sessions table), `#reviewer` (the [Actions reviewer](#actions-reviewer)), `#grants` ([grants in use](#grants-in-use)) and `#effort` ([Effort](#effort)). See [Crew](#crew) |
+| `governance.html`, **Governance** | `#rulings` (the full [decision log](#governance)), `#questions` (open and lapsed gov questions), `#committees` (the [committee desk](#committee-desk) and each open committee's [round grid](#committees), then [past committees](#past-committees)' cards and their grids), `#authority` (the [authority map](#authority-map)), `#precedent` ([precedent in use](#precedent-in-use)) and `#trends` ([What the numbers say](#what-the-numbers-say) and [How the questions went](#how-the-questions-went)). See [Governance](#governance-page) |
 
-Every page opens with the [header](#header) and carries `noindex` and a [Content-Security-Policy](#live-refresh), reloads itself every 300 seconds, fits a phone's width (only `.scroll` boxes scroll sideways), and ends with a footer linking the eight pages. `generate.render(model)` returns the pages by file name. The build also writes `bridge.html`, which only sends the browser to `/`: the Work map retired the Bridge (#1114).
+Every page opens with the [header](#header) and the nav, carries `noindex` and a [Content-Security-Policy](#live-refresh), reloads itself every 300 seconds, and fits a phone's width (only `.scroll` boxes scroll sideways). `generate.render(model)` returns the pages by file name. The build also writes `effort.html`, the PRs behind each segment of Crew's [Effort](#effort) bars (#1013), linked from those bars rather than the nav.
+
+**Retired pages** (#1113). Each old address is a page that only sends the browser to its new home (`generate.REDIRECTS`), with a link for a browser that doesn't follow it:
+
+| Old page | Goes to |
+|---|---|
+| `index.html`, the old desk | `workmap.html` |
+| `commissions.html` | `workmap.html?group=goal` |
+| `agents.html`, `operations.html` | `crew.html` |
+| `decisions.html` | `governance.html` |
+| `authority.html` | `governance.html#authority` |
+| `bridge.html` (#1114) | `/` |
+
+They go to `workmap.html` rather than `/` because Pages serves `index.html` at `/`: a redirect to `/` from `index.html` would loop, and a query on `/` would be lost on the way through `index.html`. `index.html` is still the `--out` page, so `dashboard.yml` and `swarm desk` need no change.
+
+**Where each old panel went.** `test_pages.py` lists every panel the old pages drew and checks each lands in its home's section and on no other page:
+
+- Today's report: the Work map's Briefing and tape (`LATE`), and its asks in Needs you (#1114). The plan and the trouble panel: each Goal's view on the Work map (#1115) and the strip's flagged count. The wire: the tape. Commissions: the Work map grouped by Goal, its drawer the Goal's view. The Agents drawer: the role view.
+- The needs-you list: the Work map's Needs you list, from the same `needs_you()` as `swarm inbox`. Its tiles: the strip's counts. Open pull requests: each role's view, and Needs you for those waiting on the owner.
+- **Removed:** v3 progress, since that phase is over, and spend per day and "spent today", since they're totals (GOV-0033). Each session's own estimate stays in Crew's sessions table, and `spend.py`'s pricing stays for the Work map (`swarm map`).
 
 ### Look
 
@@ -38,7 +52,7 @@ The fonts are **self-hosted**, so the public page loads nothing from a third par
 
 ## The Work map
 
-`workmap.html` (`workmap_page.py` and `workmap.js`, #1082, FEAT-9 under M9 #1080) draws the [Work map data](#work-map-data) as a squarified treemap: one box per issue, inside one box per group. The live Desk serves it at `/` (`launcher/desk.py`; without it, the desk). It adds no API calls: the build passes it the same data it writes to `map.json`. Top to bottom:
+`workmap.html` (`workmap_page.py` and `workmap.js`, #1082, FEAT-9 under M9 #1080) draws the [Work map data](#work-map-data) as a squarified treemap: one box per issue, inside one box per group. The live Desk serves it at `/` (`launcher/desk.py`). It adds no API calls: the build passes it the same data it writes to `map.json`. Top to bottom:
 
 - **Title**, then the [counts strip](#the-strip-and-the-tape), then the **key**: one line saying what size, shade and the markers mean.
 - **Controls**, segmented buttons, the current one filled ink: Group by (Effort, Goal, Role, Stage; default Effort), Size (Cost, Tokens, Lines changed; default Cost, per GOV-0049), Colour (Yield, Velocity, Change; default Yield) and Window (Hour, Day, Week, Month; default Day). The viewer's choices are kept in this browser's `localStorage` (`agentfleetos.workmap`), wrapped in `try`; without it the defaults stand. The URL wins over it (see [Links](#links)).
@@ -122,31 +136,34 @@ Picking "flagged" or "decisions waiting" sets Group by to Goal and outlines the 
 
 Each item has a time, a role or "owner", and a link to GitHub. Its text is a template filled from fields, never a summary of anyone's text. An item about an issue on the map is a button that selects it in the [Selected panel](#the-selected-panel). On a phone, each item's text goes under its time, role and kind.
 
-## Commissions
+## Crew
 
-`commissions.html` (`commissions.py`, #931, under M3) is the Commissions page from the same mock-up, read-only and with no API calls of its own. Each open Goal and Area the owner opened goes in the first group that fits: **needs a look** (flagged, as in the [strip](#the-strip-and-the-tape)), **waits on you**, **running** (Goals) or **keep it so** (Areas). After those, **delivered this week** lists the owner's Goals and Areas closed in the last 7 days. Each row shows its type, its open and done sub-issues from the plan, a bar of criteria met of total from `swarm trouble`, and a status word.
+`crew.html` (#1113) is who's doing what. It opens with one row per role (planner, builder, reviewer, analyst, designer, docs) plus the merger App, grouped as **working** (a live session that's active or blocked; for the merger, a call in the last 24 hours) and **idle** (`agents.py`, from the Agents page, #932). Each row shows what the role does, what it's on now or the last PR it merged, and its merged-PR count over the build's window, and links to the role's view on the Work map (`workmap.html?group=role#role-<name>`, #1115): its record, current work, recent merges, the authority it used and how to ask it something. Then, each in a section the brief's links land on:
 
-Picking a row opens its **focus drawer** without a script: the row links to `#c-<number>`, and CSS `:target` shows that drawer. The drawer has the done test (an unmeasured criterion reads "unmeasured: not known to be on track"), what's stuck and why nothing will start it, what waits on the owner, what was done on the owner's authority, the open sub-issues with their go status and PRs, and a link to it on GitHub. If the trouble report wasn't read, the page lists the plan alone. There's no cost, no shape filter and no pause, steer or halt buttons yet (GOV-0033, #760).
+- `#floor`: [On the floor](#on-the-floor), what each live session is doing, and [the watcher](#the-watcher);
+- `#sessions`: every live session (status, role, model, issue, PR, last activity and its own spend estimate), with stopped ones collapsed, and the [spend method](#spend);
+- `#reviewer`: the [Actions reviewer](#actions-reviewer)'s sweeps, success rate and commit-to-review time;
+- `#grants`: [grants in use](#grants-in-use);
+- `#effort`: [Effort](#effort), linking to `effort.html`.
 
-## Agents
+There's no spend total, cap or cost per result (GOV-0033), and no reassign or one-on-one buttons (#760).
 
-`agents.html` (`agents.py`, #932, under M3) is the Agents page from the same mock-up, read-only and with no API calls of its own. It has one row per role (planner, builder, reviewer, analyst, designer, docs) plus the merger App, grouped as **working** (a live session that's active or blocked; for the merger, a call in the last 24 hours) and **idle**. Each row shows what the role does, what it's on now or the last PR it merged, and its merged-PR count over the build's window.
+## Governance page
 
-Its **focus drawer** opens through CSS `:target`, as on Commissions. It shows:
+`governance.html` (#1113) is how the swarm is governed, in six sections:
 
-- the window's record: PRs merged by its App, its open PRs, open PRs where the reviewer's latest review at head requested changes, and sessions run;
-- what it's working on;
-- its recently merged PRs;
-- the merger's calls on its PRs in the last 24 hours, as the authority it used;
-- how to ask it something: an `Ask: <role>: …` comment on the report issue (GOV-0029).
-
-There's no spend, cap or cost per result (GOV-0033), no first-pass review rate or reverts (the build doesn't read merged PRs' reviews), and no reassign or one-on-one buttons (#760).
+- `#rulings`: the full [decision log](#governance);
+- `#questions`: open gov questions and lapsed ones;
+- `#committees`: the [committee desk](#committee-desk) while one is open, then each open committee's [round grid](#committees) ("No open committees." when none is), then [past committees](#past-committees)' cards and, collapsed under them, their round grids;
+- `#authority`: the [authority map](#authority-map);
+- `#precedent`: [precedent in use](#precedent-in-use);
+- `#trends`: [What the numbers say](#what-the-numbers-say) and [How the questions went](#how-the-questions-went).
 
 ## Effort
 
 `effort.py` (#1013, FEAT-4 under M7 #987) shows what kind of work the swarm ships. It reads only `classify/cache/effort.json`, which `swarm classify run effort` writes (#1012): no model call, no credential and no API call. `main()` reads it from the checkout.
 
-- **The desk's Effort panel:** a stacked bar per open Goal for the last 7 days and the 7 before, one segment per label (capability blue, governance amber, knowledge ink, upkeep grey: layout.py's colours), with the share that fixes recent work hatched. Each segment links to its PRs on `effort.html`. Below, the capability share of all merged PRs in the cache by week (from Monday, UTC, the last 8 weeks) as a line and a sentence. With no cache it says so; an unreadable cache says why.
+- **Crew's Effort panel** (on the desk until #1113): a stacked bar per open Goal for the last 7 days and the 7 before, one segment per label (capability blue, governance amber, knowledge ink, upkeep grey: layout.py's colours), with the share that fixes recent work hatched. Each segment links to its PRs on `effort.html`. Below, the capability share of all merged PRs in the cache by week (from Monday, UTC, the last 8 weeks) as a line and a sentence. With no cache it says so; an unreadable cache says why.
 - **`swarm daily`:** an "Effort risks" section for the report's Risks and mitigations: a line for each Goal where upkeep is more than half of its PRs merged in the last 7 days.
 
 The cache, schema 1 (#1012 writes it; this is what the desk reads):
@@ -225,7 +242,7 @@ Each build also writes `state.json` beside `index.html` (so `_site/state.json` o
 | `prs` | open PRs: `number`, `title`, `url`, `author`, `draft`, `review`, `created_ts`, `closes`, `needs_owner` |
 | `gov_questions` | open `gov:question`s with their fields, time to live and the `session_id`s waiting on them |
 | `governance` | recent and flagged records, counts by shape and domain, lapsed questions |
-| `committees`, `progress`, `reviewer_runs` | those sections' data; `reviewer_runs.unreviewed` is PR numbers |
+| `committees`, `reviewer_runs` | those sections' data; `reviewer_runs.unreviewed` is PR numbers |
 | `committee_desk` | each open committee as the desk shows it: `discussion`, `url`, `question`, `question_title`, `question_url`, `round`, `max_rounds`, `waiting_on`, `seats` (each `seat`, `role`, `model`, `recommendation`, `swing` (`moved`, `held` or null), `moved_from`, `summary`, `round`, `posted`, `url`) and `consensus` (`agree`, `seats`, `converging`, `consensus`, `text`); `[]` when none is open |
 | `trends` | [What the numbers say](#what-the-numbers-say): `days`, `first_day`, `min_count`, and each trend's `name`, `sentence`, `too_few` and `series` (one `{date, value}` per day; `value` is `null` on a day with no data) |
 | `questions_went` | [How the questions went](#how-the-questions-went): `days`, `first_day`, `total`, the counts `asked_by` (`agents`, `owner`, `other`), `decided_by` (`owner`, `committee`, `lapsed`, `open`) and `became` (`record`, `direction`, `nothing`), and `questions`, each question's `number` and its three categories |
@@ -234,20 +251,20 @@ Each build also writes `state.json` beside `index.html` (so `_site/state.json` o
 | `past_committees` | each ended committee's card: `discussion`, `url`, `question`, `question_title`, `question_url`, `record` (`id`, `url`, or null), `summary` (the INDEX.md ruling, or null), `consensus` (`text`, `consensus`, `dissent`), `rounds_used`, `max_rounds`, `stopped_early`, `models`, `diversity_met`, `minutes`, `swing` and `seats`; `[]` when none has ended |
 | `grants` | [grants in use](#grants-in-use) (#713): `mode` (`off`, `shadow`, `live`, or null if `swarm.toml` couldn't be read), `read` (whether the merger's comments could be read) and `calls`, newest first, one per PR: `number`, `title` (null if it couldn't be read), `group` (`merged`, `enqueued`, `would` or `left`), `queued` (true when the merger enqueued it, so a `merged` call merged through the queue), `reason` (the merger's words), `time` and `link` (the comment) |
 | `effort` | [Effort](#effort) (#1013): `status` (`ok`, `missing` or `error`); when `ok`, `classifier`, `goals` (each `ref` with `this` and `last`: `total`, `fixes`, `by` and `fix_by` label) and `trend` (`week`, `capability`, `total`) |
-| `desk` | what the [live refresh](#live-refresh) draws: the desk's `mast` (masthead) and each panel (`floor`, `committee_desk`, `trends`, `precedent`, `past_committees`) as a node tree, or `null` for a panel that can't be one |
+| `desk` | what the [live refresh](#live-refresh) draws on Crew and Governance: `mast` (the masthead's LIVE mark, build time and owner line) and each panel (`floor`, `grants`, `effort`, `committee_desk`, `past_committees`, `precedent`, `trends`, `questions_went`) as a node tree, or `null` for a panel that can't be one |
 
 It carries **no cost**: no session cost, daily spend, cap, over-cap flag or spend totals (GOV-0014; #397). It's public like the page (#33), and sessions and PRs keep only the fields the page shows. Later panels add their slice to `state.py`. Cost per issue is in [`map.json`](#work-map-data), a separate file, never here (GOV-0049).
 
 ## Live refresh
 
-With JavaScript on, an open desk redraws itself from `state.json` every 15 seconds, without a reload (`live.py` and `poll.js`, #411, option 2 of #396). It's how the desk feels live between the 300-second reloads.
+With JavaScript on, an open Crew or Governance page redraws its panels from `state.json` every 15 seconds, without a reload (`live.py` and `poll.js`, #411, option 2 of #396; the desk did until #1113). It's how they feel live between the 300-second reloads.
 
 - **One renderer.** The panels are still drawn in Python. Each build turns each desk panel's HTML into a node tree in `state.json["desk"]`: a node is a string (text) or `[tag, {attr: value}, child, …]`. The script turns the tree back into DOM nodes with `createElement`, `setAttribute` and text nodes. It never uses `innerHTML` or `eval`, and never parses HTML, so text from the repo stays text.
 - **Allow lists.** Only the tags and attributes in `live.py` may appear, and links only to `https://` URLs, a page beside the desk or a fragment. The build checks them, and the script checks them again. A panel with anything else is `null` in `state.json`, so the desk keeps it as drawn until its next reload; the build doesn't fail. A test draws every panel fixture the panels' own tests use, so new markup that isn't allowed shows up as a failing test, not as a panel that quietly stops refreshing.
-- **Boxes.** The desk draws each panel inside `<div data-panel="NAME">` (an empty panel still gets its box), and the masthead is `data-panel="mast"`. The script redraws each box whose name `state.json` carries. A new panel joins by adding itself to `generate.desk_panels()`.
+- **Boxes.** Crew and Governance draw each live panel inside `<div data-panel="NAME">` (an empty panel still gets its box), and the masthead's LIVE mark, build time and owner line are `data-panel="mast"` (the page name around them stays). `state.json` carries both pages' boxes, and the script redraws each box on the page whose name it carries. A new panel joins by adding itself to `generate.crew_panels()` or `generate.governance_panels()`. Crew's role rows and sessions table, and Governance's decision log, questions, round grids and authority map, aren't boxes: they change with the 300-second reload.
 - **Only forward.** The script fetches `state.json?t=…` with `cache: "no-store"`, same origin, every 15 seconds while the tab is visible, and applies it only if its `built_at` is newer than the data on screen (the `data-built-at` on `<body>`), since Pages' cache can serve an older copy than the page.
 - **Stale mark.** When the data on screen is more than 15 minutes old, the script adds `stale` to the masthead's LIVE mark (#402), which greys it out. Builds often run further apart than that (see [How often it rebuilds](#how-often-it-rebuilds)), so a grey mark is common and honest.
-- **CSP.** Every page carries a `<meta http-equiv="Content-Security-Policy">`: `default-src 'none'`, `script-src 'self'` plus the live script's `sha256` hash on the desk, `'self'` plus `workmap.js`'s on the Work map (#1082) and `'none'` elsewhere, `style-src 'unsafe-inline'` (the page's `<style>` and the precedent table's cell shading), `font-src`, `connect-src 'self'`, `base-uri 'none'` and `form-action 'none'`. `live.script()` fills `poll.js`'s settings and allow lists in at build time, and the hash is of that exact text.
+- **CSP.** Every page carries a `<meta http-equiv="Content-Security-Policy">`: `default-src 'none'`, `script-src 'self'` plus the live script's `sha256` hash on Crew and Governance, `'self'` plus `workmap.js`'s on the Work map (#1082) and `'none'` elsewhere, `style-src 'unsafe-inline'` (the page's `<style>` and the precedent table's cell shading), `font-src`, `connect-src 'self'`, `base-uri 'none'` and `form-action 'none'`. `live.script()` fills `poll.js`'s settings and allow lists in at build time, and the hash is of that exact text.
 - **Scripts as files** (#1106, option 3 of #1102). No page carries an inline script. `generate.py` writes each script a page loads into `js/` beside the pages (`js/poll.js`, `js/workmap.js`) before it writes any page, and the page loads it with `<script src="js/<file>" integrity="sha256-…">`, the same hash its CSP names, so the browser runs only the bytes the page was built with. A test fails the build if any Desk script contains `eval(`, `new Function` or `innerHTML` (#396's rule, carried over by #1102). The live Desk serves `js/` too (`launcher/desk.py`).
 - **Vendored libraries** (#1107, GOV-0051). A third-party front-end library is pinned to one exact version and vendored into `static/vendor/`; the site loads nothing from a CDN or any other third party. `static/vendor/manifest.json` lists each file under `"files"` with its `file`, `library`, `version` (exact, e.g. `7.9.0`, never `^7` or `7.x`), `licence`, `source` (the `https://` URL it was taken from) and `sha256` (hex, of the file's bytes). Before it fetches anything or writes any page, `generate.py` checks every file against the manifest (`layout.vendored()`) and fails the build, naming every problem, if a file differs from its hash, a file has no entry, an entry has no file, or an entry is incomplete. File names follow the Desk's own scripts (`[a-z][a-z0-9_-]*.js`, so `d3.min.js` comes in as `d3.js`), which is what the live Desk serves, and can't reuse one of their names. The checked files are copied into `js/` beside the Desk's own scripts. A page loads one with `layout.page(..., libs=layout.libs("d3.js"))`: it gets a `<script src="js/d3.js" integrity="sha256-…">` before the page's own script, and its hash joins the page's CSP. The manifest starts empty.
 
@@ -258,7 +275,7 @@ It adds **no API calls** per build: browser fetches hit Pages, not the API, and 
 
 ## Plan, report and grants: layout
 
-This is the spec for the desk's three M3 panels (#711, under #685). #712 built the report and plan panels (`report.py`, `plan.py`); #713 builds the grants panel.
+This is the spec for the desk's three M3 panels (#711, under #685). Since #1113 the report and plan panels are retired (the Work map's Briefing, tape and Goal view show what they did, and the data below still feeds them) and grants in use is on Crew. #712 built the report and plan panels (`report.py`, `plan.py`); #713 builds the grants panel.
 
 Two notes on #712's build. "Today" is the build machine's local time, as for `[daily]`, so a desk built in Actions needs `TZ` set to the owner's timezone. The plan panel's go is GOV-0031's scope and the owner's `ready`; it doesn't read GOV-0026's `**Milestone:**` lines, which stop counting on 2026-11-16.
 
@@ -271,7 +288,7 @@ The owner opens the desk to answer three questions without opening Claude Code: 
 | 3 | `floor` | On the floor | Who is on what (#403, unchanged). |
 | 4 | `grants` | Grants in use | What the merger did or would do without the owner's click. |
 
-The wire, the committee desk and the rest follow as today. Each new panel joins `generate.desk_panels()` in that order, so it gets its `data-panel` box and [live refresh](#live-refresh), and its markup stays inside `live.py`'s allow lists. Each fits a phone's width with no sideways scroll, and owner amber marks only what waits on the owner (the asks, and "Left for you").
+The wire, the committee desk and the rest follow as today. Each new panel joined the desk's panel list in that order (now `generate.crew_panels()` and `generate.governance_panels()`), so it gets its `data-panel` box and [live refresh](#live-refresh), and its markup stays inside `live.py`'s allow lists. Each fits a phone's width with no sideways scroll, and owner amber marks only what waits on the owner (the asks, and "Left for you").
 
 ### Today's report
 
@@ -362,7 +379,7 @@ The three panels add about 3 REST calls (plus one per merged or closed PR in the
 
 ## On the floor
 
-The desk opens with a card for each active or blocked session (`floor.py`, #403, part 4 of #397). It's built from the heartbeat events `generate.py` already reads, so it adds **no API calls** per build.
+Crew's `#floor` shows a card for each active or blocked session (`floor.py`, #403, part 4 of #397; on the desk until #1113). It's built from the heartbeat events `generate.py` already reads, so it adds **no API calls** per build.
 
 A card shows the role (in agents blue; a blocked card has a red edge), the model, how long the session has run (its first event to now), what it's doing in plain words, and an activity line: events per 5-minute slot over the last 30 minutes, as inline SVG. Under the line it says in how many of those six slots the session was editing, reading or running commands. Idle sessions share one quiet line, e.g. "idle: docs 40 min, reviewer 2 h". Stopped sessions aren't on the floor. Nothing on the floor shows tokens or cost.
 
@@ -397,7 +414,7 @@ Under the cards, the floor shows what `swarm watch` is doing (`floor.watcher()`,
 
 ## Needs you
 
-The operations page opens with one ordered list of everything waiting on the owner (L5). `launcher/swarm inbox` prints the same list. Both come from `needs_you()` in `generate.py`, so the page and the command always show the same items in the same order.
+One ordered list of everything waiting on the owner (L5). `launcher/swarm inbox` prints it, and the Work map's Needs you list shows its issues (#1084; it was the operations page's first section until #1113). Both come from `needs_you()` in `generate.py`, so they always agree.
 
 | Order | What | Within the kind |
 |---|---|---|
@@ -443,7 +460,7 @@ The digest issue isn't a `[heartbeat]` tracking issue or a `gov:question`, so it
 
 ## The wire
 
-Today's governance events, UTC, newest first, under the floor on the desk (`wire.py`, #405, part 6 of #397), e.g. "09:14 Owner ruled on #396", each linked. With none it says "Quiet so far today." Every item is a template filled from fields (a time, a number, a record ID), never a summary of anyone's text. An item shows once per kind and number, at its earliest time today.
+Today's governance events, UTC, newest first (`wire.py`, #405, part 6 of #397). They're on the Work map's [tape](#the-strip-and-the-tape) (#1114); the desk's wire panel retired (#1113). Each reads like "09:14 Owner ruled on #396" and is linked. Every item is a template filled from fields (a time, a number, a record ID), never a summary of anyone's text. An item shows once per kind and number, at its earliest time today.
 
 | Item | Text | Events (`activity.py`) | Fallback, already read |
 |---|---|---|---|
@@ -462,7 +479,7 @@ A record's merge is read from its question closing (the record PR's `Closes #N`)
 
 ## What the numbers say
 
-The desk's trends (#406): each one is a sentence and a sparkline, never a bare count. `questions.py` gathers the `gov:question` history once per build ([How the questions went](#how-the-questions-went) reuses it); `trends.py` turns it into sentences and inline SVG.
+Governance's `#trends` (#406): each one is a sentence and a sparkline, never a bare count. `questions.py` gathers the `gov:question` history once per build ([How the questions went](#how-the-questions-went) reuses it); `trends.py` turns it into sentences and inline SVG.
 
 | Trend | Sentence | Sparkline, one point per UTC day |
 |---|---|---|
@@ -480,7 +497,7 @@ The desk's trends (#406): each one is a sentence and a sparkline, never a bare c
 
 ## How the questions went
 
-The desk's three breakdowns of the questions created in the window (#407), each a templated sentence and a stacked bar of counts, e.g. "Decided by: the owner 9, a committee 1, lapsed 2, still open 3." `questions.went()` reads the same history as [What the numbers say](#what-the-numbers-say), plus the decision records in the checkout (`committees.records()`) and which questions a committee Discussion serves.
+Governance's three breakdowns of the questions created in the window (#407), under the trends, each a templated sentence and a stacked bar of counts, e.g. "Decided by: the owner 9, a committee 1, lapsed 2, still open 3." `questions.went()` reads the same history as [What the numbers say](#what-the-numbers-say), plus the decision records in the checkout (`committees.records()`) and which questions a committee Discussion serves.
 
 - **Asked by:** **the owner** if the owner opened it, or the first word of its `### Raised by` is "owner" or the owner's login (so #396, opened by a bot with "owner (drafted by the coordinator)", is the owner's); otherwise **agents** for a `productswarm-*[bot]` author, else **someone else** (shown only when there is one).
 - **Decided by**, the first that fits: **a committee** if a committee Discussion serves it or its record's `shape:` is `committee`; **the owner** if the owner added `gov:ruled` or `ready` or it has a record; **lapsed** if it carries `gov:lapsed`; **the owner** if it was closed; otherwise **still open**.
@@ -497,7 +514,6 @@ A label only counts if the owner added it, as for the trends. The bar repeats th
 - **`gov:question` issues**: the open ones, with the sessions blocked on each, and `gov:lapsed` ones closed within `--days`.
 - **The `gov:question` history** for [What the numbers say](#what-the-numbers-say): every question created in the window, its label and close events, PRs merged in the window, and each record's front-matter `date:` from the checkout.
 - **`governance/INDEX.md`** and **`governance/jurisdictions.yml`**, from the checkout the page is built in (`dashboard.yml` checks out `main`).
-- **v3 progress:** see [v3 progress](#v3-progress).
 - **The repo's public events**, 1 to 3 pages, for the [header](#header)'s owner line.
 - **Reviewer workflow runs and jobs** from the Actions API, and the reviews and commits of the PRs they reviewed (see [Actions reviewer](#actions-reviewer)). Never job logs.
 - **Committee Discussions** (`committees.py`, #353): every Discussion in the "Committees" category, through `gh api graphql`, plus the `gov:question` each one serves (from a `<!-- productswarm-committee question=N -->` marker, else the `Committee for #N:` title) and that question's record in `governance/decisions/` (front matter `question: "#N"`). Members come from the `## Members` or `### Members` table, the post order from rule 1 under `Rules`, and round posts are top-level comments headed `Round N: <seat>` by that seat's App. From each post it keeps only the round, seat, author, time, link, signature model, the first bold phrase of its Recommendation and the first sentence of its Position (#404). From the owner's comments on the question it keeps only whether the convening, summary and ruling comments exist, when, and their links, so no cost line or other text reaches the page. It derives status (convened, round N, summary, ratified, record), §7.2 diversity, the next seat, rounds used of 3 and posts per member per UTC day against §8's 6. A Discussion that doesn't match #314's layout shows as "unparsed". A token that can't read Discussions gives a note and the rest of the page still builds. Only the page reads these (`fetch(..., with_committees=True)` in `main()`); `swarm inbox`, `swarm watch` and the digest skip the GraphQL calls. The page shows them in the Committees section below.
@@ -506,7 +522,7 @@ A label only counts if the owner added it, as for the trends. The bar repeats th
 
 `governance.py` builds this section (#355). It replaced the page's old "Open gov questions" table and still shows everything that table did.
 
-- **Decision log:** on the decisions page, every row of `governance/INDEX.md`, newest first (#401). (`governance.render(..., full=False)` gives the old 8 newest, with one line for older flagged records.) Each row shows the ID (linked to its file), the one-line ruling, domain, shape, status and review-by date. A record whose review-by date has passed is marked "review date passed", because it is not precedent until someone re-affirms it (GOVERNANCE.md §6). One due within 30 days is marked "review due soon". The index itself is a link.
+- **Decision log:** Governance's `#rulings`, every row of `governance/INDEX.md`, newest first (#401; `governance.rulings()`). Each row shows the ID (linked to its file), the one-line ruling, domain, shape, status and review-by date. A record whose review-by date has passed is marked "review date passed", because it is not precedent until someone re-affirms it (GOVERNANCE.md §6). One due within 30 days is marked "review due soon". The index itself is a link.
 - **Open gov questions:** a line of counts by shape and by domain, then one row per question. Each row shows its labels, its domain (`### Domain` in the template body), and its shape: an owner's `gov:shape/*` label if there is one, otherwise the body's `### Suggested shape`, marked "suggested". It also shows whether the question is blocking (the `gov:blocking` label or a "yes" under `### Blocking?`), its age, its time to live with days left or "past TTL", and the sessions waiting on it.
 - **Lapsed questions:** questions labelled `gov:lapsed`, open, or closed within `--days`, each with its time to live. A muted line notes that a lapsed default is not precedent (GOVERNANCE.md §8).
 
@@ -514,7 +530,7 @@ The needs-you list and its past-TTL flag don't change. This section is for readi
 
 ## Precedent in use
 
-On the desk, `precedent.py` (#408, part 9 of #397) counts how often each GOV record is cited, as a grid of records (newest first) by UTC day over the page's window (from the first record's date, if that's later), then each record's total, by agents, by the owner and **by reviewer**. The grid scrolls in its own box at phone width.
+On Governance's `#precedent`, `precedent.py` (#408, part 9 of #397) counts how often each GOV record is cited, as a grid of records (newest first) by UTC day over the page's window (from the first record's date, if that's later), then each record's total, by agents, by the owner and **by reviewer**. The grid scrolls in its own box at phone width.
 
 - **A citation** is a `GOV-NNNN` mention in an issue or PR body, an issue or PR comment, a PR review, or a PR review comment, created in the window. A text cites a record once, however often it names it. It counts only on or after the record's front-matter `date:`, and only for a record in `governance/decisions/`; the cell for a day before the record was made is blank.
 - **Left out:** signature lines (`-- builder (claude-opus-5-5)`), tracking issues, the pinned digest issue, and review comments on files under `governance/`.
@@ -525,7 +541,7 @@ On the desk, `precedent.py` (#408, part 9 of #397) counts how often each GOV rec
 
 ## Committees
 
-`committees.render()` draws the committees `committees.py` reads (#354). Open committees, with the unparsed and read-problem lines, are on the decisions page (`part="open"`); the desk shows them as the [committee desk](#committee-desk) instead. Committees that ended (record merged, or the question closed) are on the decisions page under "Past committees", in a collapsed "N ended" `<details>` (`part="ended"`). With no committees there's no section; with none ended, no "Past committees".
+`committees.render()` draws the committees `committees.py` reads (#354). On Governance's `#committees` (#1113), open committees, with the unparsed and read-problem lines (`part="open"`), follow the [committee desk](#committee-desk). Committees that ended (record merged, or the question closed) follow the [past committees](#past-committees)' cards, in a collapsed "Round grids of the N ended committees" `<details>` (`part="ended"`). With no committees the section says "No open committees."; with none ended, there's no "Past committees".
 
 For each committee:
 
@@ -540,7 +556,7 @@ Discussions that don't match #314's layout are listed as muted "Unparsed" links.
 
 ## Committee desk
 
-`committees.desk()` draws each open committee at the top of the desk (#404), styled like an election-night desk. With no open committee the desk shows none of it. It reads only what `committees.build()` derives, so it adds no API calls.
+`committees.desk()` draws each open committee at the top of Governance's `#committees` (#404), styled like an election-night desk. With no open committee there's none of it. It reads only what `committees.build()` derives, so it adds no API calls.
 
 - **Band** (dark): a red "LIVE" mark, "Committee", the question (linked, with its title), "Round N of 3" (the round the next post belongs to), "waiting on <seat>" (or "rounds over" once no seat is due) and the Discussion's link.
 - **A card per seat:** seat, role and model; the seat's latest recommendation, large (the Recommendation section's first bold phrase, from `phrase()`; "no recommendation yet" without one); its swing from its previous post, "moved from <phrase>" or "held" (nothing on its first post); the first sentence of its **Position** section in quotes, as written (only emphasis and code marks dropped), cut at a word break to about 140 characters ("no Position section" without one); and a link to the post with its round and time. The seat that's up next has a blue top edge.
@@ -550,7 +566,7 @@ Red is used only for the LIVE mark. The same data is `committee_desk` in `state.
 
 ## Past committees
 
-`committees.past()` puts a card per ended committee (record merged, or its question closed) on the desk under "Past committees", newest Discussion first (#409). With none ended there's no heading. The full round grids stay on the decisions page. It reads only what `committees.build()` derives and the INDEX.md rows the governance section already parses, so it adds no API calls.
+`committees.past()` puts a card per ended committee (record merged, or its question closed) on Governance under "Past committees", newest Discussion first (#409). With none ended there's no heading. The full round grids follow the cards, collapsed. It reads only what `committees.build()` derives and the INDEX.md rows the governance section already parses, so it adds no API calls.
 
 - **Record:** its ID, linked to the file, or "no record yet".
 - **Summary:** the record's one-line ruling from `governance/INDEX.md`, quoted as it stands there. Nothing is written for the card. Without a record it says "no ruling recorded"; with a record that has no INDEX row yet, "not in governance/INDEX.md yet".
@@ -561,31 +577,17 @@ So #314's card reads GOV-0021, "dissent: proposer", 2 of 3 rounds, two models (�
 
 ## Authority map
 
-`authority.py` draws `authority.html` from `governance/jurisdictions.yml` in the checkout (#410). It's a reference page, not live data, so it isn't in `state.json` and adds no API calls.
+`authority.py` draws Governance's `#authority` from `governance/jurisdictions.yml` in the checkout (#410; `authority.html` until #1113). It's reference, not live data, so it isn't in `state.json` and adds no API calls.
 
 - **One row per domain**, in file order: its name, description and note (and "always one-way" where the file says so), who decides (agents in blue, the owner in amber, "nobody: ask" when `decide` is empty), the owner, who ratifies, who is vote-eligible and the default shape. An identity reference the file's `identities` doesn't list shows as written, in grey.
-- **Records:** the domain's in-force rows of `governance/INDEX.md` (the same rows the governance section parses), counted and linked to `decisions.html`, with those past their review-by date named.
+- **Records:** the domain's in-force rows of `governance/INDEX.md` (the same rows the governance section parses), counted and linked to the decision log (`#rulings`), with those past their review-by date named.
 - Above the table, the file's `quorum` and `consent_window`; below it, any domain an in-force record names that the file doesn't list.
 
-The page is stdlib only, so `authority.read()` understands just this file's shape: nested `key: value` mappings, `[a, b]` lists, quoted strings and comments. Anything else (block lists, block scalars, odd indents, duplicate keys) or a domain without `owner` or `default_shape` makes the page say "can't read governance/jurisdictions.yml" and draw no table, rather than guess. `test_authority.py` fails if any domain in the real file is missing from the page.
-
-## v3 progress
-
-A section from `progress.py` (#357) shows where v3 stands. Only the page shows it: `digest.py` and `swarm inbox` don't read it.
-
-| Line | Where it comes from |
-|---|---|
-| One row per GOV-0015 stage (B, F, C stage 1) | the `### Stage …` tables in `docs/history.md`'s v3 section in the checkout: "N of M issues closed" over the `#N`s in each table's `Issue` column, with the open ones linked. A heading's own "(done)" shows as done. Rows with no issue number are skipped. |
-| C stage 2 | "not planned (GOV-0015)" while `docs/history.md`'s v3 section says so |
-| Eval bar | the `**Result: …**` line under "Against the bar" in `evals/results.md`, linked; "unknown" if there's no such line |
-| Planted-defect gate | #331's state: "not run" while it's open, "done, see #331" once it's closed. The result comment has no fixed wording, so it isn't parsed. |
-| Red check | `evals/red_check.py`'s own `fetch()`, `count()` and `summary()`: reds counted of the first 5, how many reached the 2-round bound, and whether to revisit (more than 2) once all 5 are settled. Before #329's PR merges it says so. No cost is shown (`evals/README.md`). |
-
-The stage issues' states, and #331's, come from one GraphQL query, since closed issues may be older than `--days`. `red_check.py` imports `generate` at load, so `progress.py` imports it inside a function, not at load. Everything is read with the workflow's existing `issues: read` and `pull-requests: read`. If a read fails, that line says "couldn't read" and the rest of the page still publishes.
+It's stdlib only, so `authority.read()` understands just this file's shape: nested `key: value` mappings, `[a, b]` lists, quoted strings and comments. Anything else (block lists, block scalars, odd indents, duplicate keys) or a domain without `owner` or `default_shape` makes the page say "can't read governance/jurisdictions.yml" and draw no table, rather than guess. `test_authority.py` fails if any domain in the real file is missing from the page.
 
 ## Actions reviewer
 
-`reviewer_runs.py` builds this section (#356). It covers the last 7 days:
+`reviewer_runs.py` builds Crew's `#reviewer` (#356). It covers the last 7 days:
 
 - **Sweeps:** runs of `reviewer.yml` (the newest 15 at most, #392), each with when and how it started (`schedule`, `nudge` for a `workflow_dispatch` by `github-actions[bot]` from `reviewer-nudge.yml`, or `manual (<login>)` for a person's dispatch), its conclusion, and the `review #N <sha>` jobs it ran (`REVIEW_JOB` in `launcher/actions_review.py`). A successful sweep with no review jobs says "nothing to review".
 - **Success rate:** "N of M review jobs succeeded", counting finished review jobs, not sweeps, and listing the ones that didn't succeed.
@@ -609,9 +611,11 @@ A session's current issue is the most recent `issue` any of its events carried.
 
 ## Spend
 
-Each session's spend, today's total and the last 7 UTC days are an **API list-price equivalent**, per the method in gov question #28. The owner asked for tokens to be split by payment plan if a session can tell. It can't without a new heartbeat field (#31), so every session is priced at list price whatever its plan. `spend.py` multiplies each session's latest cumulative `token_counts` by the model's list price. Cache writes are priced at the 1-hour rate. A non-null `cost_usd` on an event wins over the estimate. Per day is each session's increase in cost within that UTC day. This isn't what was billed: sessions on a subscription aren't charged per token.
+Each session's spend in Crew's sessions table is an **API list-price equivalent**, per the method in gov question #28. The owner asked for tokens to be split by payment plan if a session can tell. It can't without a new heartbeat field (#31), so every session is priced at list price whatever its plan. `spend.py` multiplies each session's latest cumulative `token_counts` by the model's list price. Cache writes are priced at the 1-hour rate. A non-null `cost_usd` on an event wins over the estimate. This isn't what was billed: sessions on a subscription aren't charged per token.
 
-Prices are in `spend.PRICES`, copied from the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing) on the date in `PRICES_AS_OF`, which the page shows. When prices change, update both. Sessions with no token counts, or on a model missing from the table, show "—", are left out of totals, and are listed under the method note.
+There's no spend per day, "spent today" or other total (GOV-0033; removed in #1113). The same prices give the Work map its costs (`swarm map`).
+
+Prices are in `spend.PRICES`, copied from the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing) on the date in `PRICES_AS_OF`, which Crew shows. When prices change, update both. Sessions with no token counts, or on a model missing from the table, show "—".
 
 ## Tests
 

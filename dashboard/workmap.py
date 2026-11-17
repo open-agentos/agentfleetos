@@ -10,7 +10,7 @@ SCHEMA.md), so the tokens between two consecutive events of a session are what i
 between. They are charged to the issue of the session's latest `working_on` event before the
 later of the two, so a `working_on` splits a session's tokens at the switch: tokens up to it go
 to the issue it left. Tokens before any `working_on` go to one `unattributed` row, never dropped.
-A count that falls (a restart) charges nothing for that kind, as spend.daily() does.
+A count that falls (a restart) charges nothing for that kind.
 
 **Cost.** Each delta is priced with spend.py's PRICES for the event's model: the API list-price
 equivalent, not what was billed (spend.METHOD). An unknown model gives tokens and no cost; the

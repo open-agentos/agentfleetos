@@ -210,13 +210,14 @@ class FetchTest(unittest.TestCase):
         self.assertIn(grants.mode(), grants.MODES)
 
 
-class DeskTest(unittest.TestCase):
-    def test_on_the_desk_after_the_floor_and_in_state(self):
+class CrewTest(unittest.TestCase):
+    def test_on_crew_after_the_floor_and_in_state(self):
         m = {"repo": REPO, "grants": built([comment(701, would(), 60)])}
         m.update({k: None for k in ("floor", "watcher", "wire", "trends", "questions_went",
                                     "precedent")})
         m["committees"] = None
-        names = list(g.desk_panels(m))
+        m["effort"] = None
+        names = list(g.crew_panels(m))   # #1113
         self.assertEqual(names.index("grants"), names.index("floor") + 1)
         s = state.plain({"grants": grants.state(m["grants"])})
         self.assertEqual(json.loads(json.dumps(s)), s)

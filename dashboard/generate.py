@@ -9,40 +9,35 @@ Reads, through `gh api` (in a swarm session that's ops/shims/gh acting as the ro
     PR (GOV-0011's round count and Authority line);
   - open `gov:question` issues, `gov:lapsed` ones closed in the window, and
     governance/INDEX.md from the checkout (the governance section, #355).
-  - for the desk's trends (#406) and how the questions went (#407), questions.py:
+  - for Governance's trends (#406) and how the questions went (#407), questions.py:
     `gov:question`s created in the window with their label and close events, PRs merged in
     the window, and record dates from the checkout.
   - for every page's header (#402, activity.py): the repo's public events, 1 to 3 pages, to
     say when the owner last acted.
 
-Builds eight pages in one look (layout.py), each headed by a red LIVE mark, the build time
-and the owner's last act (#402), and copies the self-hosted fonts and the pages' scripts
-(js/, #1106) beside them:
+Builds three pages in one look (layout.py), joined by one nav, Map · Crew · Governance
+(#1113), each headed by a red LIVE mark, the build time and the owner's last act (#402), and
+copies the self-hosted fonts and the pages' scripts (js/, #1106) beside them:
   - workmap.html, the Work map (workmap_page.py, #1082): a treemap of what each issue cost
     and what it returned, from map.json's data, with the counts strip above it and the lead's
-    Briefing, the lists and the tape under it; the live Desk's home. It retired the Bridge
-    (#1114): bridge.html only redirects to /;
-  - commissions.html (commissions.py, #931): each open Goal and Area, grouped by what it needs
-    from the owner, with a focus drawer for the one picked;
-  - agents.html (agents.py, #932): one row per role, working or idle, with a focus drawer;
-  - index.html, the desk: today's report and the plan (report.py, plan.py, #712), the trouble
-    panel per Goal and Area (`swarm trouble`'s report without the acts sync, #903), on the floor (floor.py), grants in use (grants.py, #713), the wire (wire.py, #405), the committee desk while one is open (#404),
-    what the numbers say (trends.py), how the questions went (questions.py), precedent in use (precedent.py), a card per past
-    committee (#409), effort per open Goal (effort.py, #1013), and a pointer to the other pages;
-  - effort.html (effort.py, #1013): the PRs behind each segment of the desk's Effort bars;
-  - operations.html: the needs-you list, sessions, open PRs, the Actions reviewer, v3
-    progress and spend;
-  - decisions.html: the governance section with the full decision log, open committees with
-    their round grids, and ended committees;
-  - authority.html: the authority map, who may decide what, from governance/jurisdictions.yml
-    in the checkout (authority.py, #410).
-Stdlib only. The desk loads one script, the live refresh (live.py, #411), and the Work map
-one, its treemap (workmap.js, #1082); the other pages load none. Each is a same-origin file in
+    Briefing, the lists and the tape under it; the live Desk's home;
+  - crew.html: one row per role (agents.py, #932), each opening its role view on the Work map
+    (#1115), then on the floor (floor.py), the sessions table, the Actions reviewer, grants in
+    use (grants.py, #713) and effort per open Goal (effort.py, #1013);
+  - governance.html: the full decision log, open and lapsed gov questions, the committees
+    (the committee desk and round grids, then past committees' cards and grids), the authority
+    map (authority.py, #410), precedent in use, what the numbers say and how the questions went.
+Plus effort.html, the PRs behind each segment of Crew's Effort bars (#1013), and a redirect for
+each retired page (REDIRECTS: index.html, the old desk, and the Bridge, Commissions, Agents,
+Operations, Decisions and Authority pages). index.html is the --out page, so a host that serves
+it at / (Pages) sends the browser on to the Work map.
+Stdlib only. Crew and Governance load one script, the live refresh (live.py, #411), and the Work
+map one, its treemap (workmap.js, #1082). Each is a same-origin file in
 js/, allowed by its hash in the page's CSP (option 3 of gov question #1102). Vendored libraries
 (static/vendor/, #1107) are checked against their pinned hashes before anything is fetched or
 written, and copied into js/ beside them; a mismatch fails the build.
 
-    python3 dashboard/generate.py                 # writes dashboard/out/{index,operations,decisions,authority}.html
+    python3 dashboard/generate.py                 # writes dashboard/out/: workmap.html, crew.html, governance.html, ...
     python3 dashboard/generate.py --out /tmp/x/index.html --days 7 --idle-minutes 15
 """
 from __future__ import annotations
@@ -60,7 +55,6 @@ from pathlib import Path
 import activity
 import agents
 import authority
-import commissions
 import committees
 import effort
 import floor
@@ -71,7 +65,6 @@ import layout
 import live
 import plan
 import precedent
-import progress
 import questions
 import report
 import reviewer_runs
@@ -82,7 +75,6 @@ import workmap_page
 
 HERE = Path(__file__).resolve().parent
 
-SPEND_DAYS = 7     # days shown in the spend-per-day table
 IDLE_MINUTES = 15  # heartbeat/SCHEMA.md leaves the idle threshold to #4
 DAYS = 14          # closed tracking issues older than this are skipped
 
@@ -148,13 +140,13 @@ def tracking_comments(repo: str, numbers: list[int]) -> dict[int, list[dict]]:
     return out
 
 
-def fetch(repo: str, now: dt.datetime, days: int, with_progress: bool = False,
+def fetch(repo: str, now: dt.datetime, days: int,
           with_actions: bool = False, with_committees: bool = False,
           with_questions: bool = False, with_precedent: bool = False,
           with_activity: bool = False, with_grants: bool = False,
           with_plan: bool = False, with_trouble: bool = False, prev: Path | None = None) -> dict:
-    """Everything the page needs, as plain API data. build() does the rest. `with_progress`
-    also reads the v3 progress section's data (progress.py), `with_actions` the Actions
+    """Everything the page needs, as plain API data. build() does the rest. `with_actions`
+    reads the Actions
     reviewer section's (reviewer_runs.py), `with_committees` the committee Discussions
     (committees.py, GraphQL), `with_questions` the gov:question history the desk's trends
     read (questions.py, REST, search and GraphQL), and `with_precedent` the GOV citations
@@ -162,7 +154,7 @@ def fetch(repo: str, now: dt.datetime, days: int, with_progress: bool = False,
     `with_plan` the desk's plan and today's report (plan.py, report.py, #712), and `with_grants`
     the merger's comments for grants in use (grants.py, #713), and `with_trouble` the trouble
     report (fetch_trouble, #903). Only the page shows them, so swarm's snapshot() and the
-    digest leave all nine off and make none of those calls; main() asks for them."""
+    digest leave all eight off and make none of those calls; main() asks for them."""
     since = (now - dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     issues: dict[int, dict] = {}
     items: dict[int, dict] = {}   # issues and PRs, for precedent.py's bodies
@@ -188,7 +180,6 @@ def fetch(repo: str, now: dt.datetime, days: int, with_progress: bool = False,
         jurisdictions = None   # the authority map says so (#410)
     return {"repo": repo, "issues": list(issues.values()), "comments": comments, "prs": prs or [],
             "reviews": reviews, "index": index, "jurisdictions": jurisdictions,
-            "progress": progress.fetch(repo, gh_json) if with_progress else None,
             "actions": reviewer_runs.fetch(repo, now, reviews) if with_actions else None,
             "committees": committees.fetch(repo, gh_items, gh_json) if with_committees else None,
             "questions": questions.fetch(repo, now, days, gh_items) if with_questions else None,
@@ -238,19 +229,6 @@ def fetch_trouble(repo: str, now: dt.datetime) -> dict:
         return trouble.report(d)
     except (RuntimeError, OSError, subprocess.SubprocessError, ValueError) as e:
         return {"error": str(e) or type(e).__name__}
-
-
-def trouble_panel(r: dict | None) -> str:
-    """The desk's trouble panel (#903): launcher/desk.py's trouble_panel (#889) on the report,
-    or why it wasn't read. Empty when the build didn't ask for it."""
-    if r is None:
-        return ""
-    if "error" in r:
-        return ('<section class="trouble"><h2>Trouble</h2>'
-                f'<p class="error">not read: {esc(r["error"])}</p></section>')
-    sys.path.insert(0, str(HERE.parent / "launcher"))
-    import desk
-    return desk.trouble_panel(r)
 
 
 def fetch_precedent(repo: str, now: dt.datetime, days: int, items: list[dict],
@@ -438,7 +416,7 @@ def derive(session: dict, events: list[dict], open_issues: set[int], now: dt.dat
         "gov_question": gov, "model": last["model"] if last else None,
         "last_event": last["event"] if last else None, "last_ts": last_ts,
         "started_ts": parse_ts(events[0]["ts"]) if events else None,
-        "cost": spend.session_cost(events), "daily": spend.daily(events, parse_ts),
+        "cost": spend.session_cost(events),
         "never_acted": never_acted,
     }
 
@@ -522,10 +500,6 @@ def build(data: dict, now: dt.datetime, idle_after: dt.timedelta,
     history = (questions.build(data["questions"], now, window, owner)
                if data.get("questions") is not None else None)
 
-    today = now.date()
-    days = [today - dt.timedelta(days=i) for i in range(SPEND_DAYS)]
-    per_day = {d: sum(s["daily"].get(d, 0.0) for s in sessions) for d in days}
-
     m = {"repo": repo, "now": now, "idle_minutes": int(idle_after.total_seconds() // 60),
          "issue_titles": {n: i["title"] for n, i in issues.items()},
          "sessions": sessions, "prs": prs,
@@ -534,7 +508,6 @@ def build(data: dict, now: dt.datetime, idle_after: dt.timedelta,
          "governance": governance.build(data.get("index"), gov, data["issues"], now,
                                         now - dt.timedelta(days=window), parse_ts,
                                         time_to_live, ttl_date),
-         "progress": progress.build(data["progress"]) if data.get("progress") else None,
          "reviewer_runs": reviewer_runs.build(
              data.get("actions"), [p for p in prs if not p["draft"] and unreviewed(p)], now),
          "committees": comms,
@@ -554,16 +527,14 @@ def build(data: dict, now: dt.datetime, idle_after: dt.timedelta,
                                 data["report"]["daily_at"]) if data.get("report") else None,
          # with_plan reads both; the plan's own None means its read failed, which the panel says
          "plan": plan.build(data.get("plan"), owner, repo) if data.get("report") else None,
-         "trouble": data.get("trouble"),
+         "trouble": data.get("trouble"),   # #903: trouble.report()'s dict, or {"error": why}
          "merged": data.get("merged") or [],   # #1114: the Work map tape's merged PRs
          # #931: the owner's Goals and Areas closed in the window, for Commissions' "delivered"
          "closed_scopes": [{"number": i["number"], "title": i.get("title"), "url": i.get("html_url"),
                             "type": (i.get("type") or {}).get("name"), "closed_at": i.get("closed_at")}
                            for i in data["issues"]
                            if i.get("state") == "closed" and (i.get("type") or {}).get("name") in ("Goal", "Area")
-                           and (i.get("user") or {}).get("login") == owner],   # #903: trouble.report()'s dict, or {"error": why}
-         "spend": {"per_day": per_day, "today": per_day[today],
-                   "unpriced": [s for s in sessions if s["cost"] is None]}}
+                           and (i.get("user") or {}).get("login") == owner]}
     m["authority"] = authority.build(data.get("jurisdictions"), m["governance"]["all_records"])
     # #1013: effort per open Goal, from classify/cache/effort.json alone (main() reads it)
     m["effort"] = effort.build(data.get("effort"), repo, now, effort.goals_of(m))
@@ -741,19 +712,6 @@ def session_rows(m: dict, sessions: list[dict]) -> str:
     return f'<div class="scroll"><table>{head}{"".join(rows)}</table></div>'
 
 
-def needs_section(m: dict) -> str:
-    items = needs_you(m)
-    if not items:
-        return f'<h2>Needs you</h2><p class="muted">{esc(NEEDS_EMPTY)}</p>'
-    lis = []
-    for i in items:
-        line = esc(needs_line(i, m["now"]))
-        session = (f' · <a href="{esc(i["session_url"])}">session</a>'
-                   if i.get("session_url") and i["session_url"] != i["url"] else "")
-        lis.append(f'<li class="k-{i["kind"]}"><a href="{esc(i["url"])}">{line}</a>{session}</li>')
-    return f'<h2>Needs you ({len(items)})</h2><ol class="inbox">{"".join(lis)}</ol>'
-
-
 TITLE = "Swarm dashboard"
 
 
@@ -771,114 +729,86 @@ def rfc3339(t: dt.datetime) -> str:
     return t.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def desk_panels(m: dict) -> dict[str, str]:
-    """The desk's panels by name, in page order: today's report and the plan (#712), the
-    trouble panel per Goal and Area (#903), on the floor (#403) and grants in use (#713), as #711 lays them out, then the wire (#405), the
-    committee desk while a committee is open (#404), what the numbers say (#406), how the
-    questions went (#407), precedent in use (#408) and a card per past committee (#409). Each is drawn into a
-    `data-panel` box that the live refresh redraws from state.json (#411), so an empty one
-    still gets its box. #397's later panels join here."""
+def crew_panels(m: dict) -> dict[str, str]:
+    """Crew's live panels by name (#1113): on the floor (#403), grants in use (#713) and Effort
+    (#1013). Each is drawn into a `data-panel` box that the live refresh redraws from
+    state.json (#411), so an empty one still gets its box."""
+    return {"floor": floor.render(m.get("floor"), m["repo"], m.get("watcher")),
+            "grants": grants.render(m.get("grants"), m["repo"]),
+            "effort": effort.render(m.get("effort"))}
+
+
+def governance_panels(m: dict) -> dict[str, str]:
+    """Governance's live panels by name (#1113): the committee desk while a committee is open
+    (#404), each past committee's card (#409), precedent in use (#408), what the numbers say
+    (#406) and how the questions went (#407)."""
     repo = m["repo"]
-    return {"report": report.render(m.get("report"), repo),
-            "plan": plan.render(m.get("plan")),
-            "trouble": trouble_panel(m.get("trouble")),
-            "floor": floor.render(m.get("floor"), repo, m.get("watcher")),
-            "grants": grants.render(m.get("grants"), repo),
-            "wire": wire.render(m.get("wire")),
-            "committee_desk": committees.desk(m.get("committees"), repo),
-            "effort": effort.render(m.get("effort")),   # #1013
-            "trends": trends.render(m.get("trends")),
-            "questions_went": questions.render_went(m.get("questions_went")),
+    return {"committee_desk": committees.desk(m.get("committees"), repo),
+            "past_committees": committees.past(m.get("committees"), rulings(m), repo),
             "precedent": precedent.render(m.get("precedent"), repo),
-            "past_committees": committees.past(m.get("committees"), rulings(m), repo)}
+            "trends": trends.render(m.get("trends")),
+            "questions_went": questions.render_went(m.get("questions_went"))}
 
 
-def render_desk(m: dict) -> str:
-    """The desk (index.html): its panels (desk_panels), then a pointer to the other pages.
-    It carries the live refresh script (#411)."""
-    repo = m["repo"]
-    out = ["<h1>The desk</h1>",
-           *(f'<div data-panel="{n}">{h}</div>' for n, h in desk_panels(m).items()),
-           '<p class="pointer">The needs-you list, sessions, open PRs, reviewer sweeps, v3 '
-           'progress and spend are on <a href="operations.html">Operations</a>; the full '
-           'decision log, open and lapsed gov questions, and every committee\'s round grid are on '
-           '<a href="decisions.html">Decisions</a>.</p>']
-    return layout.page("index.html", TITLE, repo, m["now"], "\n".join(out), owner_line(m),
-                       live_refresh=True)
+def live_panels(m: dict) -> dict[str, str]:
+    """Every panel the live refresh redraws, by name: state.json's `desk` carries them all, and
+    each page redraws the boxes it has (#411)."""
+    return crew_panels(m) | governance_panels(m)
 
 
-def render_operations(m: dict) -> str:
-    """operations.html: what needs the owner, and the swarm's day-to-day running."""
-    repo, now, titles = m["repo"], m["now"], m["issue_titles"]
+def box(name: str, html: str) -> str:
+    return f'<div data-panel="{name}">{html}</div>'
+
+
+def section(anchor: str, *parts: str) -> str:
+    """One of a page's sections, at `#anchor` (#1113): the brief's links land on it."""
+    return f'<section class="sec" id="{anchor}">' + "\n".join(p for p in parts if p) + "</section>"
+
+
+def render_crew(m: dict) -> str:
+    """crew.html (#1113): one row per role (agents.py), then what each live session is doing,
+    the sessions table, the Actions reviewer's sweeps, grants in use and Effort. The page's live
+    panels refresh in place (#411)."""
+    repo, now = m["repo"], m["now"]
     live = [s for s in m["sessions"] if s["status"] != "stopped"]
     stopped = [s for s in m["sessions"] if s["status"] == "stopped"]
-    blocked = sum(s["status"] == "blocked" for s in live)
-    ready = [p for p in m["prs"] if not p["draft"]]
-
-    def tile(n: int, label: str, hot: bool = False) -> str:
-        return f'<div class="{"hot" if hot and n else ""}"><b>{n}</b>{esc(label)}</div>'
-
-    out = [
-        f'<h1>Operations</h1><div class="muted">idle after {m["idle_minutes"]} min without an event</div>',
-        needs_section(m),
-        '<div class="needs">',
-        tile(blocked, "blocked sessions", hot=True),
-        tile(len(m["gov"]), "open gov questions", hot=True),
-        tile(len(ready), "PRs to review", hot=True),
-        tile(sum(s["status"] == "active" for s in live), "active"),
-        tile(sum(s["status"] == "idle" for s in live), "idle"),
-        f'<div><b>{esc(spend.usd(m["spend"]["today"]))}</b>spent today (est.)</div>',
-        "</div>",
-        "<h2>Sessions</h2>",
-        session_rows(m, live) if live else '<p class="muted">No live sessions.</p>',
-    ]
+    panels = crew_panels(m)
+    sessions = ["<h2>Sessions</h2>",
+                f'<p class="muted">idle after {m["idle_minutes"]} min without an event</p>',
+                session_rows(m, live) if live else '<p class="muted">No live sessions.</p>']
     if stopped:
-        out += [f"<details><summary>{len(stopped)} stopped</summary>", session_rows(m, stopped),
-                "</details>"]
-
-    out.append("<h2>Open pull requests</h2>")
-    if m["prs"]:
-        rows = []
-        for p in m["prs"]:
-            closes = ", ".join(issue_link(repo, c["number"], titles) for c in p["closes"])
-            state = "draft" if p["draft"] else (p["review"].replace("_", " ").lower() or "awaiting review")
-            rows.append(f"<tr><td><a href=\"{esc(p['url'])}\">#{p['number']}</a> {esc(p['title'])}</td>"
-                        f"<td>{closes or NONE}</td>"
-                        f"<td>{esc(p['author'])}</td><td>{esc(state)}</td>"
-                        f"<td title=\"{esc(stamp(p['created_ts']))}\">{esc(ago(p['created_ts'], now))}</td></tr>")
-        out.append('<div class="scroll"><table><tr><th>PR</th><th>Closes</th><th>Author</th>'
-                   f'<th>State</th><th>Opened</th></tr>{"".join(rows)}</table></div>')
-    else:
-        out.append('<p class="muted">None.</p>')
-
-    out.append(reviewer_runs.render(m["reviewer_runs"], repo, now, ago, stamp))
-    if m.get("progress"):
-        out.append(progress.render(m["progress"], repo))
-
-    sp = m["spend"]
-    out.append("<h2>Spend per day (est.)</h2>")
-    rows = "".join(f"<tr><td>{d.isoformat()}</td><td class=\"num\">{esc(spend.usd(v))}</td></tr>"
-                   for d, v in sp["per_day"].items())
-    out.append('<div class="scroll"><table class="narrow"><tr><th>Day (UTC)</th>'
-               f'<th class="num">Spend</th></tr>{rows}</table></div>')
-    note = spend.METHOD + " Per day is each session's increase within that UTC day."
-    if sp["unpriced"]:
-        ids = ", ".join(f"{s['role']} {s['session_id'][:8]}" for s in sp["unpriced"])
-        note += (f" Left out of totals, with no tokens or an unpriced model: "
-                 f"{len(sp['unpriced'])} session(s) ({ids}).")
-    out.append(f'<p class="muted method">Method: {esc(note)}</p>')
-    return layout.page("operations.html", TITLE, repo, now, "\n".join(out), owner_line(m))
+        sessions += [f"<details><summary>{len(stopped)} stopped</summary>", session_rows(m, stopped),
+                     "</details>"]
+    sessions.append(f'<p class="muted method">Spend (est.) is each session\'s own: {esc(spend.METHOD)}</p>')
+    out = [section("roles", agents.render(agents.build(m))),
+           section("floor", box("floor", panels["floor"])),
+           section("sessions", *sessions),
+           section("reviewer", reviewer_runs.render(m["reviewer_runs"], repo, now, ago, stamp)),
+           section("grants", box("grants", panels["grants"])),
+           section("effort", box("effort", panels["effort"]))]
+    return layout.page(CREW_FILE, TITLE, repo, now, "\n".join(out), owner_line(m), live_refresh=True)
 
 
-def render_decisions(m: dict) -> str:
-    """decisions.html: the governance section with the full decision log, open committees
-    with their round grids (#404), and ended committees."""
+def render_governance(m: dict) -> str:
+    """governance.html (#1113): the full decision log, open and lapsed gov questions, the
+    committees (open, then past), the authority map, precedent in use, and the trends. The page's
+    live panels refresh in place (#411)."""
     repo, now = m["repo"], m["now"]
-    out = ["<h1>Decisions</h1>",
-           governance.render(m["governance"], repo, now, m["days"], ago, stamp, full=True),
-           committees.render(m.get("committees"), repo, part="open"),
-           committees.render(m.get("committees"), repo, part="ended")]
-    return layout.page("decisions.html", TITLE, repo, now, "\n".join(o for o in out if o), owner_line(m))
+    g, panels = m["governance"], governance_panels(m)
+    comms = m.get("committees")
+    a = m.get("authority") or authority.build(None, [])
+    out = ["<h1>Governance</h1>",
+           section("rulings", governance.rulings(g, repo)),
+           section("questions", governance.questions(g, now, m["days"], ago, stamp)),
+           section("committees", "<h2>Committees</h2>", box("committee_desk", panels["committee_desk"]),
+                   committees.render(comms, repo, part="open", heading=False)
+                   or '<p class="muted">No open committees.</p>',
+                   box("past_committees", panels["past_committees"]),
+                   committees.render(comms, repo, part="ended", heading=False)),
+           section("authority", authority.render(a, repo)),
+           section("precedent", box("precedent", panels["precedent"])),
+           section("trends", box("trends", panels["trends"]), box("questions_went", panels["questions_went"]))]
+    return layout.page(GOVERNANCE_FILE, TITLE, repo, now, "\n".join(out), owner_line(m), live_refresh=True)
 
 
 def render_workmap(m: dict) -> str:
@@ -886,44 +816,42 @@ def render_workmap(m: dict) -> str:
     return workmap_page.page(m, TITLE, owner_line(m), committees.owner_login())
 
 
-# The Bridge was retired into the Work map (#1114): bridge.html only sends old links to /.
-BRIDGE_FILE = "bridge.html"
-BRIDGE_REDIRECT = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
-                   '<meta name="robots" content="noindex, nofollow">'
-                   '<meta http-equiv="refresh" content="0; url=./">'
-                   '<title>The Bridge moved</title></head><body>'
-                   '<p>The Bridge is now the <a href="./">Work map</a>.</p></body></html>\n')
-
-
-def render_commissions(m: dict) -> str:
-    """commissions.html: the owner's Goals and Areas, each with a focus drawer (#931)."""
-    return commissions.page(m, TITLE, owner_line(m))
-
-
-def render_agents(m: dict) -> str:
-    """agents.html: one row per role, each with a focus drawer (#932)."""
-    return agents.page(m, TITLE, owner_line(m))
-
-
 def render_effort(m: dict) -> str:
-    """effort.html (#1013): the PRs behind each of the desk's Effort bar segments."""
+    """effort.html (#1013): the PRs behind each of Crew's Effort bar segments."""
     return layout.page(effort.FILE, TITLE, m["repo"], m["now"], effort.page_body(m.get("effort"), m["repo"]),
                        owner_line(m))
 
 
-def render_authority(m: dict) -> str:
-    """authority.html: who may decide what, from governance/jurisdictions.yml (#410)."""
-    a = m.get("authority") or authority.build(None, [])
-    return layout.page("authority.html", TITLE, m["repo"], m["now"],
-                       authority.render(a, m["repo"]), owner_line(m))
+CREW_FILE = "crew.html"
+GOVERNANCE_FILE = "governance.html"
+
+# Retired pages (#1113, and the Bridge #1114): each only sends the browser to its new home.
+# The Work map is linked as workmap.html, not /: on Pages, / is index.html, so a redirect to /
+# from index.html would loop, and a query on / would be lost in index.html's redirect.
+REDIRECTS = {
+    "index.html": ("workmap.html", "The desk moved", "The desk is now the Work map."),
+    "commissions.html": ("workmap.html?group=goal", "Commissions moved",
+                         "Goals and Areas are on the Work map: group by Goal and select one."),
+    "agents.html": (CREW_FILE, "Agents moved", "The agents are on Crew."),
+    "operations.html": (CREW_FILE, "Operations moved",
+                        "Sessions and the Actions reviewer are on Crew; what needs you is on the Work map."),
+    "decisions.html": (GOVERNANCE_FILE, "Decisions moved", "The decision log and committees are on Governance."),
+    "authority.html": (GOVERNANCE_FILE + "#authority", "The authority map moved",
+                       "The authority map is on Governance."),
+    "bridge.html": ("./", "The Bridge moved", "The Bridge is now the Work map."),
+}
+
+
+def redirects() -> dict[str, str]:
+    """Each retired page, by file name: a page that sends the browser to its new home."""
+    return {f: layout.redirect(to, title, text) for f, (to, title, text) in REDIRECTS.items()}
 
 
 def render(m: dict) -> dict[str, str]:
-    """Every page, by file name, in layout.PAGES order."""
-    pages = {"workmap.html": render_workmap, "commissions.html": render_commissions,
-             "agents.html": render_agents, "index.html": render_desk, "effort.html": render_effort, "operations.html": render_operations,
-             "decisions.html": render_decisions, "authority.html": render_authority}
-    return {f: pages[f](m) for f, _ in layout.PAGES}
+    """The three top-level pages, in nav order (layout.PAGES), then Effort's drill-down."""
+    pages = {"workmap.html": render_workmap, CREW_FILE: render_crew, GOVERNANCE_FILE: render_governance,
+             effort.FILE: render_effort}
+    return {f: pages[f](m) for f in [*(f for f, _ in layout.PAGES), effort.FILE]}
 
 
 # ---------------------------------------------------------------- CLI
@@ -1079,7 +1007,7 @@ def main(argv: list[str]) -> int:
         print(f"generate.py: skipped, not published: {skip}")
         return 0
     try:
-        data = fetch(repo, now, args.days, with_progress=True, with_actions=True,
+        data = fetch(repo, now, args.days, with_actions=True,
                      with_committees=True, with_questions=True, with_precedent=True,
                      with_activity=True, with_grants=True, with_plan=True, with_trouble=True,
                      prev=Path(args.prev) if args.prev else None)
@@ -1095,7 +1023,7 @@ def main(argv: list[str]) -> int:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     model["workmap"] = map_data(data, model, now, args.days)   # the Work map page carries it (#1082)
-    pages = {**render(model), BRIDGE_FILE: BRIDGE_REDIRECT}   # old links to the Bridge go to / (#1114)
+    pages = {**render(model), **redirects()}   # retired pages send old links on (#1113, #1114)
     layout.copy_fonts(out.parent)   # before the pages, so a published page never lacks them
     # likewise the scripts the pages load (#1106) and the vendored libraries, checked above (#1107)
     layout.write_scripts(out.parent, scripts() | vendor)

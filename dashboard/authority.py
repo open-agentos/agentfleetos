@@ -1,10 +1,10 @@
 """The authority map: who may decide what, from governance/jurisdictions.yml (#410, part 11
 of #397).
 
-A reference page (authority.html), not live data, so it isn't in state.json. One row per
+Governance's #authority section (#1113; authority.html until then), not live data, so it isn't in state.json. One row per
 domain: who decides (agents blue, owner amber), owner, ratify, vote-eligible and default
 shape, with the domain's in-force records from governance/INDEX.md (the rows the governance
-section already parses), counted and linked to decisions.html.
+section already parses), counted and linked to the decision log (#rulings) on the same page.
 
 Stdlib only, so there is no YAML library: read() understands only the shape this one file
 has (nested mappings of scalars and `[a, b]` lists, comments, quoted strings). Anything else
@@ -181,7 +181,7 @@ def records_cell(d: dict) -> str:
     if not d["records"]:
         return '<span class="muted">none</span>'
     n = len(d["records"])
-    out = f'<a href="decisions.html">{n} in force</a><br><span class="muted">{esc(", ".join(d["records"]))}</span>'
+    out = f'<a href="#rulings">{n} in force</a><br><span class="muted">{esc(", ".join(d["records"]))}</span>'
     if d["passed"]:
         out += (f'<br><span class="muted">review date passed: {esc(", ".join(d["passed"]))}'
                 "</span>")
@@ -191,7 +191,7 @@ def records_cell(d: dict) -> str:
 def render(a: dict, repo: str) -> str:
     """The page body."""
     src = f'<a href="https://github.com/{esc(repo)}/blob/main/{JURISDICTIONS_PATH}">{JURISDICTIONS_PATH}</a>'
-    out = ["<h1>Authority map</h1>"]
+    out = ["<h2>Authority map</h2>"]
     if a.get("error"):
         out.append(f'<p class="muted">{esc(a["error"])}</p>')
         return "\n".join(out)
@@ -218,6 +218,6 @@ def render(a: dict, repo: str) -> str:
         out.append(f'<p class="muted">In-force records in domains the file doesn\'t list: '
                    f'{esc(", ".join(a["elsewhere"]))}.</p>')
     out.append('<p class="muted">Records count as precedent only while in force and before '
-               'their review-by date (GOVERNANCE.md §6). The full log is on '
-               '<a href="decisions.html">Decisions</a>.</p>')
+               'their review-by date (GOVERNANCE.md §6). The full log is under '
+               '<a href="#rulings">Rulings</a>.</p>')
     return "\n".join(out)

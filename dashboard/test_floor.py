@@ -151,15 +151,15 @@ class IdleLineTest(unittest.TestCase):
     def test_on_the_desk(self):
         m = model({"a": [ev("a", "working_on", 40, issue=1)],
                    "b": [ev("b", "heartbeat", 2, issue=392, tools=["Edit"])]})
-        desk = g.render(m)["index.html"]
+        desk = g.render(m)["crew.html"]
         self.assertIn("<h2>On the floor</h2>", desk)
         self.assertIn("idle: builder 40 min", desk)
         self.assertIn(f'Editing files on <a href="https://github.com/{REPO}/issues/392">#392</a>', desk)
         self.assertIn("<svg", desk)
-        self.assertNotIn("On the floor", g.render(m)["operations.html"])
+        self.assertNotIn("On the floor", g.render(m)["governance.html"])
 
     def test_nobody_working(self):
-        desk = g.render(model({}))["index.html"]
+        desk = g.render(model({}))["crew.html"]
         self.assertIn("No session is working.", desk)
         self.assertNotIn("idle:", desk)
 
@@ -225,7 +225,7 @@ class WatcherTest(unittest.TestCase):
             "failed: #51 build, at its cap, 10:02"])
 
     def test_on_the_desk(self):
-        desk = g.render(watched(watch_issue(FULL)))["index.html"]
+        desk = g.render(watched(watch_issue(FULL)))["crew.html"]
         self.assertIn("<h3>The watcher</h3>", desk)
         self.assertIn(f'builder on <a href="https://github.com/{REPO}/issues/405">#405</a> since 11:09', desk)
         self.assertIn("as of 1 min ago, at 11:59 UTC", desk)
@@ -234,14 +234,14 @@ class WatcherTest(unittest.TestCase):
     def test_pr_ref_links_to_the_pr(self):
         s = pub(held=[{"ref": "PR #30", "kind": "review", "code": "live",
                        "reason": "held: a session is live on it", "since": "2026-11-02T11:00:00+00:00"}])
-        desk = g.render(watched(watch_issue(s)))["index.html"]
+        desk = g.render(watched(watch_issue(s)))["crew.html"]
         self.assertIn(f'held: PR <a href="https://github.com/{REPO}/pull/30">#30</a>, a session is live on it', desk)
 
     def test_stale(self):
         w = watched(watch_issue(pub(checked_ago=40, **{k: FULL[k] for k in floor.LISTS})))["watcher"]
         self.assertTrue(w["stale"])
         self.assertEqual(w["age_minutes"], 40)
-        desk = g.render(watched(watch_issue(pub(checked_ago=40))))["index.html"]
+        desk = g.render(watched(watch_issue(pub(checked_ago=40))))["crew.html"]
         self.assertIn('<p class="stale">watcher last published 40 min ago, at 11:20 UTC', desk)
 
     def test_ten_minutes_is_not_stale_but_eleven_is(self):
@@ -252,13 +252,13 @@ class WatcherTest(unittest.TestCase):
         self.assertFalse(watched(watch_issue(pub(checked_ago=900)), interval=None)["watcher"]["stale"])
 
     def test_empty_lists(self):
-        desk = g.render(watched(watch_issue(pub())))["index.html"]
+        desk = g.render(watched(watch_issue(pub())))["crew.html"]
         self.assertIn("Nothing running, held, skipped or failed.", desk)
 
     def test_missing(self):
         m = watched(issue(4, "Dashboard"))
         self.assertEqual(m["watcher"], {"status": "missing"})
-        self.assertIn("No [watch] issue", g.render(m)["index.html"])
+        self.assertIn("No [watch] issue", g.render(m)["crew.html"])
 
     def test_closed_issue_is_missing(self):
         self.assertEqual(watched(watch_issue(FULL) | {"state": "closed"})["watcher"]["status"], "missing")
@@ -266,7 +266,7 @@ class WatcherTest(unittest.TestCase):
     def test_wrong_author(self):
         m = watched(watch_issue(FULL, login="someone-else"))
         self.assertEqual(m["watcher"], {"status": "not_owner"})
-        desk = g.render(m)["index.html"]
+        desk = g.render(m)["crew.html"]
         self.assertIn("opened by the owner, so the floor", desk)
         self.assertNotIn("#405", desk)
 
