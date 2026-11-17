@@ -72,7 +72,11 @@ class PageTest(unittest.TestCase):
         page = wp.page(model(), "t", "")
         self.assertNotRegex(wp.render(model()).lower(), r"\btotal")
         d = json_block(page)
-        self.assertEqual(set(d), {"built_at", "method", "windows", "days", "lists", "repo", "scopes", "roles"})
+        self.assertEqual(set(d), {"built_at", "method", "windows", "days", "lists", "repo", "scopes", "roles",
+                                  "strip", "needs_extra"})
+        self.assertEqual(set(d["strip"]), {"flagged", "decisions"})   # numbers and refs, no amount
+        for x in d["needs_extra"]:
+            self.assertFalse({"cost", "tokens", "total"} & set(x))
         for sc in d["scopes"].values():   # a Goal's view: no amount of its own, only its issues' rows
             self.assertFalse({"cost", "tokens", "total"} & set(sc))
         self.assertEqual(set(d["days"]), {"dates", "of"})   # per issue, keyed by ref
@@ -103,13 +107,10 @@ class PageTest(unittest.TestCase):
         self.assertEqual(order, sorted(order))
         self.assertIn("with JavaScript off", html)
 
-    def test_links_to_the_bridge_in_the_left_column_and_footer(self):
+    def test_no_left_column(self):
+        """#1114: the Bridge's shared left column went with it."""
         page = wp.page(model(), "t", "")
-        nav = re.search(r'<nav class="br-nav".*?</nav>', page, re.S).group(0)
-        self.assertIn('href="bridge.html"', nav)
-        self.assertIn('aria-current="page">Work map', nav)
-        foot = re.search(r'<footer class="foot">.*?</footer>', page, re.S).group(0)
-        self.assertIn('href="bridge.html"', foot)
+        self.assertNotIn("<nav class=\"br-nav\"", page)
         self.assertEqual(layout.PAGES[0], ("workmap.html", "Work map"))
         for href in re.findall(r'href="([^"]+)"', page):
             self.assertRegex(href, r"^(https://github\.com/|[a-z]+\.html)")

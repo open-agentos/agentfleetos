@@ -2,9 +2,12 @@
 
 `workmap.html` is a squarified treemap of the Work map's data (workmap.py, #1081): one box per
 issue, inside one box per group. Since #1082 it is the live Desk's home at `/` (launcher/desk.py);
-the Bridge stays at bridge.html. Top to bottom, beside the shared left column (bridge.nav_html):
+it retired the Bridge (#1114). Top to bottom:
 
   - the title and one line saying what size, shade and the markers mean;
+  - the counts strip (strip.py, #1114): Goals and Areas flagged, decisions waiting, agents
+    working and authority used. Picking flagged or decisions waiting sets Group by to Goal and
+    outlines the matching boxes;
   - four controls, segmented buttons: Group by (Effort, Goal, Role, Stage), Size (Cost, Tokens,
     Lines changed), Colour (Yield, Velocity, Change) and Window (Hour, Day, Week, Month). The
     viewer's choices are kept in this browser's localStorage, if it has one;
@@ -17,6 +20,10 @@ the Bridge stays at bridge.html. Top to bottom, beside the shared left column (b
   - six lists (#1084), two rows of three: Needs you, Blocked, Spend no outcome, Running hot,
     Gone quiet and Best yield. workmap.py's lists() picks and orders each window's matches for
     each size; workmap.js keeps those in the zoomed group, shows five and counts them all.
+    Needs you also lists the decisions waiting its rows don't show (strip.needs_extra, #1114),
+    after them, and scrolls inside its five rows' height;
+  - the tape (strip.py, #1114): the Bridge's reports and Orders received, and the wire, newest
+    first, in a fixed-height box that scrolls inside itself.
 
 Per issue only: a box shows its own figures, and a group header its share of what's shown as a
 percentage, never an amount. Nothing on the page sums an amount across issues (GOV-0033). Cost
@@ -41,9 +48,9 @@ import re
 from pathlib import Path
 
 import agents
-import bridge
 import commissions
 import layout
+import strip
 from layout import esc
 from report import inline
 
@@ -60,7 +67,7 @@ EMPTY = "Click a box, or an item in a list below, to see it here."
 NUMBERS = (("cost", "Cost"), ("tokens", "Tokens"), ("lines", "Lines"), ("outcomes", "Outcomes"),
            ("yield", "Yield"), ("change", "Change against usual"))
 LISTS = (   # (key, heading, one-line description, empty sentence), in reading order (#1084)
-    ("needs", "Needs you", "Issues in the needs-you list, largest first.", "Nothing here needs you."),
+    ("needs", "Needs you", "Issues in the needs-you list, largest first, then other decisions waiting.", "Nothing here needs you."),
     ("blocked", "Blocked", "Blocked issues, largest first, with the stage each stopped in.", "Nothing here is blocked."),
     ("spend", "Spend, no outcome", "Size above zero in this window and no outcome, largest first.",
      "Everything here that used something has an outcome."),
@@ -245,15 +252,21 @@ def briefing_html(briefing: dict | None, now) -> str:
     body = "".join(f"<p>{inline(p)}</p>" for p in br.get("paras") or [])
     return ('<section class="br-brief wm-brief" aria-label="Briefing"><div class="br-colh">'
             '<h2 class="br-h">Briefing</h2>'
-            f'<span class="muted">from the lead · {bridge._a(br.get("url"), esc(stamp))}</span></div>'
+            f'<span class="muted">from the lead · {strip.a(br.get("url"), esc(stamp))}</span></div>'
             f'{old}<div class="br-briefbody">{body}</div></section>')
 
 
-def render(m: dict) -> str:
+def render(m: dict, owner: str | None = None) -> str:
     """The Work map's <main> content."""
-    d = {**page_data(m.get("workmap")), "repo": m["repo"], "scopes": scope_data(m), "roles": role_data(m)}
+    pd = page_data(m.get("workmap"))
+    on_map = {r.get("ref") for rows in (pd.get("windows") or {}).values() for r in rows if r.get("issue") is not None}
+    sp = strip.strip(m)
+    d = {**pd, "repo": m["repo"], "scopes": scope_data(m), "roles": role_data(m),
+         "strip": {"flagged": sp["flagged"], "decisions": sp["decision_refs"]},
+         "needs_extra": strip.needs_extra(m)}
     method = (f'<p class="muted method">Cost: {esc(d["method"])}</p>' if d.get("method") else "")
-    main = (f'<div class="br-main wm-main"><div class="br-titlebar"><h1>Work map</h1></div>'
+    return (f'<div class="br-main wm-main"><div class="br-titlebar"><h1>Work map</h1></div>'
+            f'{strip.strip_html(sp)}'
             f'<p class="wm-keyline">{esc(KEY_LINE)}</p>'
             f'{controls_html()}'
             '<div class="wm-top"><section class="wm-mapcol" aria-label="Work map">'
@@ -265,10 +278,10 @@ def render(m: dict) -> str:
             f'{selected_html()}</div>'
             f'{briefing_html((m.get("report") or {}).get("briefing"), m["now"])}'
             f'{lists_html()}'
+            f'{strip.tape_html(strip.tape(m, owner), m["now"], on_map)}'
             f'{method}{data_block(d)}</div>')
-    return f'<div class="bridge">{bridge.nav_html(FILE, bridge.nav_counts(m))}{main}</div>'
 
 
-def page(m: dict, title: str, owner_line: str) -> str:
+def page(m: dict, title: str, owner_line: str, owner: str | None = None) -> str:
     """workmap.html, in the shared page shell, with workmap.js as its one script."""
-    return layout.page(FILE, title, m["repo"], m["now"], render(m), owner_line, script=(JS.name, script()))
+    return layout.page(FILE, title, m["repo"], m["now"], render(m, owner), owner_line, script=(JS.name, script()))

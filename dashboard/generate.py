@@ -883,7 +883,7 @@ def render_decisions(m: dict) -> str:
 
 def render_workmap(m: dict) -> str:
     """workmap.html: the Work map, the live Desk's home (#1082)."""
-    return workmap_page.page(m, TITLE, owner_line(m))
+    return workmap_page.page(m, TITLE, owner_line(m), committees.owner_login())
 
 
 def render_bridge(m: dict) -> str:

@@ -476,6 +476,37 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-dep::before { content:""; position:absolute; inset:1px; border:1px dashed var(--ink); pointer-events:none; }
 .wm-dark.wm-dep::before { border-color:var(--paper); }
 .wm-key .wm-k-dep { outline:1px dashed var(--ink); outline-offset:-2px; }
+/* #1114: the counts strip (one line, wrapping on a phone) and the tape (a fixed-height box that
+   scrolls inside itself), which retired the Bridge. The strip's pick outlines boxes on the map. */
+.sp { display:flex; flex-wrap:wrap; gap:4px 18px; align-items:baseline; font-size:14px; line-height:28px; }
+.sp-i { white-space:nowrap; }
+.sp-pick { font:inherit; line-height:26px; padding:0 8px; border:1px solid var(--line); background:var(--card);
+  color:var(--ink); cursor:pointer; }
+.sp-pick:disabled { cursor:default; }
+.sp-pick[aria-pressed="true"] { border-color:var(--ink); background:var(--ink); color:var(--paper); }
+.sp-pick:focus-visible { outline:3px solid var(--agent); outline-offset:1px; }
+.sp-red { color:var(--red); } .sp-owner { color:var(--owner); }
+.sp-pick[aria-pressed="true"].sp-red, .sp-pick[aria-pressed="true"].sp-owner { color:var(--paper); }
+.wm-box.wm-mark { outline:2px solid var(--ink); outline-offset:-6px; }
+.wm-dark.wm-mark { outline-color:var(--paper); }
+.wm-markg { position:absolute; box-sizing:border-box; border:3px solid var(--red); pointer-events:none; z-index:1; }
+.wm-list[data-list="needs"] .wm-lol { overflow-y:auto; }
+a.wm-li { text-decoration:none; }
+.tp { width:100%; margin-top:20px; }
+.tp-box { height:360px; overflow-y:auto; border-bottom:1px solid var(--line); }
+.tp-ol { list-style:none; margin:0; padding:0; }
+.tp-i { display:flex; flex-wrap:wrap; gap:2px 12px; align-items:baseline; padding:7px 0;
+  border-bottom:1px solid #E4E2D9; font-size:14px; }
+.tp-m { flex:none; display:flex; gap:10px; align-items:baseline; width:260px; }
+.tp-m time, .tp-m > .mono { width:70px; flex:none; }
+.tp-w { width:70px; flex:none; font-size:13px; }
+.tp-k { font:11px/1.4 var(--mono); letter-spacing:.06em; color:var(--muted); }
+.tp-k.sp-red { color:var(--red); }
+.tp-t { flex:1 1 240px; min-width:0; overflow-wrap:anywhere; }
+button.tp-t { font:inherit; text-align:left; font-size:14px; }
+.tp-l { flex:none; font-size:13px; }
+.tp-none { padding:10px 0; margin:0; }
+@media (max-width:600px) { .tp-m { width:auto; } .tp-t { flex-basis:100%; } }
 """
 
 
