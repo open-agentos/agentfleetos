@@ -39,7 +39,9 @@ and the owner's last act (#402), and copies the self-hosted fonts and the pages'
     in the checkout (authority.py, #410).
 Stdlib only. The desk loads one script, the live refresh (live.py, #411), and the Work map
 one, its treemap (workmap.js, #1082); the other pages load none. Each is a same-origin file in
-js/, allowed by its hash in the page's CSP (option 3 of gov question #1102).
+js/, allowed by its hash in the page's CSP (option 3 of gov question #1102). Third-party
+libraries are vendored in static/vendor/ and pinned by hash in its manifest.json (#1107): the
+build fails, writing no page, if any file there doesn't match it, and copies them into js/.
 
     python3 dashboard/generate.py                 # writes dashboard/out/{index,operations,decisions,authority}.html
     python3 dashboard/generate.py --out /tmp/x/index.html --days 7 --idle-minutes 15
@@ -1086,6 +1088,11 @@ def main(argv: list[str]) -> int:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     model["workmap"] = map_data(data, model, now, args.days)   # the Work map page carries it (#1082)
+    try:   # #1107: a vendored library that doesn't match its manifest hash fails the build
+        layout.write_vendor(out.parent, scripts())
+    except ValueError as e:
+        print(f"generate.py: {e}", file=sys.stderr)
+        return 1
     pages = render(model)
     layout.copy_fonts(out.parent)   # before the pages, so a published page never lacks them
     layout.write_scripts(out.parent, scripts())   # likewise the scripts the pages load (#1106)

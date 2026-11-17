@@ -145,11 +145,13 @@ def script_hash(js: str) -> str:
     return "'sha256-" + base64.b64encode(hashlib.sha256(js.encode("utf-8")).digest()).decode() + "'"
 
 
-def csp(js: str | None) -> str:
+def csp(js: str | None, libs: tuple[str, ...] = ()) -> str:
     """The page's Content-Security-Policy: same-origin fonts and fetches, inline styles
     (the page's <style> and the precedent table's cell shading), and no script but the
-    same-origin one whose hash is given (#1106)."""
-    scripts = f"'self' {script_hash(js)}" if js else "'none'"
+    same-origin ones whose hashes are given: the page's own (#1106) and `libs`, the CSP
+    sources of the vendored libraries it loads (#1107)."""
+    hashes = ([script_hash(js)] if js else []) + list(libs)
+    scripts = "'self' " + " ".join(hashes) if hashes else "'none'"
     return ("default-src 'none'; "
             f"script-src {scripts}; "
             "style-src 'unsafe-inline'; "

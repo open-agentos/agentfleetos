@@ -267,33 +267,7 @@ class EndToEndTest(unittest.TestCase):
     def test_main_writes_page(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
-            fake = d / "gh"
-            fake.write_text(FAKE_GH)
-            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
-            now = dt.datetime.now(dt.timezone.utc)
-            recent = (now - dt.timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            e = {**ev("s1", "working_on", 0, issue=4), "ts": recent}
-            (d / "data.json").write_text(json.dumps({
-                "open": [tracking(50, "s1"), issue(4, "Dashboard generator"),
-                         {"number": 30, "pull_request": {}, "title": "a PR"}],
-                "closed": [],
-                f"repos/{REPO}/issues/50/comments": [comment([e])],
-                "prs": [],
-                "graphql": {"data": {"repository": {"i331": {"state": "OPEN"}}}},
-                "issue_view": {"closedByPullRequestsReferences": []},
-            }))
-            env = {"PATH": f"{d}{os.pathsep}{os.environ['PATH']}", "FAKE_GH_DATA": str(d / "data.json")}
-            old = {k: os.environ.get(k) for k in env}
-            os.environ.update(env)
-            try:
-                with mock.patch.object(g.precedent, "published", return_value=None):   # no Pages fetch in tests
-                    rc = g.main(["--repo", REPO, "--out", str(d / "out" / "index.html")])
-            finally:
-                for k, v in old.items():
-                    if v is None:
-                        os.environ.pop(k, None)
-                    else:
-                        os.environ[k] = v
+            rc = self.run_main(d)
             self.assertEqual(rc, 0)
             out = d / "out"
             self.assertIn("<h1>The desk</h1>", (out / "index.html").read_text())
@@ -323,6 +297,48 @@ class EndToEndTest(unittest.TestCase):
             self.assertEqual([s["issue"] for s in st["sessions"]], [4])
 
 
+    def run_main(self, d: Path) -> int:
+        """main() against FAKE_GH in d, writing d/out; returns its exit code."""
+        fake = d / "gh"
+        fake.write_text(FAKE_GH)
+        fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+        now = dt.datetime.now(dt.timezone.utc)
+        recent = (now - dt.timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        e = {**ev("s1", "working_on", 0, issue=4), "ts": recent}
+        (d / "data.json").write_text(json.dumps({
+            "open": [tracking(50, "s1"), issue(4, "Dashboard generator"),
+                     {"number": 30, "pull_request": {}, "title": "a PR"}],
+            "closed": [],
+            f"repos/{REPO}/issues/50/comments": [comment([e])],
+            "prs": [],
+            "graphql": {"data": {"repository": {"i331": {"state": "OPEN"}}}},
+            "issue_view": {"closedByPullRequestsReferences": []},
+        }))
+        env = {"PATH": f"{d}{os.pathsep}{os.environ['PATH']}", "FAKE_GH_DATA": str(d / "data.json")}
+        old = {k: os.environ.get(k) for k in env}
+        os.environ.update(env)
+        try:
+            with mock.patch.object(g.precedent, "published", return_value=None):   # no Pages fetch in tests
+                rc = g.main(["--repo", REPO, "--out", str(d / "out" / "index.html")])
+        finally:
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        return rc
+
+    def test_main_fails_on_a_vendored_mismatch_and_writes_no_page(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as v:
+            d, v = Path(d), Path(v)
+            (v / "manifest.json").write_text("[]\n")
+            (v / "lib.js").write_text("x();")   # no entry
+            with mock.patch.object(g.layout, "VENDOR_SRC", v):
+                rc = self.run_main(d)
+            self.assertEqual(rc, 1)
+            self.assertFalse(list((d / "out").glob("*.html")))
+
+
 class ScriptRulesTest(unittest.TestCase):
     """#1102 carries #396's rule over: no Desk script turns strings into code or markup."""
 
@@ -341,6 +357,93 @@ class ScriptRulesTest(unittest.TestCase):
             self.assertEqual((Path(d) / "js" / "a.js").read_text(), "x();")
             with self.assertRaises(ValueError):
                 g.layout.write_scripts(Path(d), {"../a.js": "x();"})
+
+
+def vendor(d: Path, files: dict[str, bytes], entries: list[dict] | None = None) -> Path:
+    """A vendor directory in d: the files, and a manifest listing each with its real sha256
+    unless `entries` is given."""
+    for name, data in files.items():
+        (d / name).write_bytes(data)
+    if entries is None:
+        entries = [entry(name, data) for name, data in files.items()]
+    (d / "manifest.json").write_text(json.dumps(entries))
+    return d
+
+
+def entry(name: str, data: bytes) -> dict:
+    return {"file": name, "library": "lib", "version": "1.2.3", "licence": "ISC",
+            "source": f"https://example.org/{name}", "sha256": hashlib.sha256(data).hexdigest()}
+
+
+class VendorTest(unittest.TestCase):
+    """#1107: vendored libraries are pinned by hash in static/vendor/manifest.json."""
+
+    def test_the_repos_manifest_is_empty_and_passes(self):
+        self.assertEqual(json.loads((g.layout.VENDOR_SRC / "manifest.json").read_text()), [])
+        self.assertEqual(g.layout.vendored(), {})
+
+    def test_a_match_passes_and_is_copied_into_js(self):
+        with tempfile.TemporaryDirectory() as v, tempfile.TemporaryDirectory() as out:
+            src = vendor(Path(v), {"lib-min.js": b"lib();", "other.js": b"o"})
+            self.assertEqual(g.layout.vendored(src), {"lib-min.js": b"lib();", "other.js": b"o"})
+            self.assertEqual(g.layout.write_vendor(Path(out), g.scripts(), src), 7)
+            self.assertEqual((Path(out) / "js" / "lib-min.js").read_bytes(), b"lib();")
+
+    def test_a_changed_byte_fails(self):
+        with tempfile.TemporaryDirectory() as v:
+            src = vendor(Path(v), {"lib.js": b"lib();"}, [entry("lib.js", b"lib();")])
+            (src / "lib.js").write_bytes(b"lib():")
+            with self.assertRaisesRegex(ValueError, r"lib\.js: sha256 [0-9a-f]{64}, manifest says"):
+                g.layout.vendored(src)
+
+    def test_a_file_with_no_entry_fails(self):
+        with tempfile.TemporaryDirectory() as v:
+            src = vendor(Path(v), {"lib.js": b"lib();"}, [])
+            with self.assertRaisesRegex(ValueError, r"lib\.js: no manifest entry"):
+                g.layout.vendored(src)
+
+    def test_an_entry_with_no_file_fails(self):
+        with tempfile.TemporaryDirectory() as v:
+            src = vendor(Path(v), {}, [entry("lib.js", b"lib();")])
+            with self.assertRaisesRegex(ValueError, r"lib\.js: in the manifest but no file"):
+                g.layout.vendored(src)
+
+    def test_a_malformed_entry_fails(self):
+        with tempfile.TemporaryDirectory() as v:
+            for bad in ([{"file": "lib.js"}], [{**entry("../lib.js", b"")}], [entry("LICENSE.txt", b"")], {"not": "a list"},
+                        [{**entry("lib.js", b""), "sha256": "ABC"}]):
+                vendor(Path(v), {}, bad)
+                with self.assertRaises(ValueError, msg=bad):
+                    g.layout.vendored(Path(v))
+
+    def test_a_failed_check_copies_nothing(self):
+        with tempfile.TemporaryDirectory() as v, tempfile.TemporaryDirectory() as out:
+            src = vendor(Path(v), {"a.js": b"a", "b.js": b"b"}, [entry("a.js", b"a"), entry("b.js", b"x")])
+            with self.assertRaises(ValueError):
+                g.layout.write_vendor(Path(out), {}, src)
+            self.assertFalse((Path(out) / "js" / "a.js").exists())
+
+    def test_a_library_may_not_share_a_desk_scripts_name(self):
+        with tempfile.TemporaryDirectory() as v, tempfile.TemporaryDirectory() as out:
+            src = vendor(Path(v), {"poll.js": b"p"})
+            with self.assertRaisesRegex(ValueError, "poll.js"):
+                g.layout.write_vendor(Path(out), g.scripts(), src)
+
+    def test_a_page_that_loads_a_library_allows_and_pins_its_hash(self):
+        with tempfile.TemporaryDirectory() as v:
+            src = vendor(Path(v), {"lib-min.js": b"lib();"})
+            digest = base64.b64encode(hashlib.sha256(b"lib();").digest()).decode()
+            built = dt.datetime(2026, 11, 17, tzinfo=dt.timezone.utc)
+            with mock.patch.object(g.layout, "VENDOR_SRC", src):
+                page = g.layout.page("workmap.html", "t", REPO, built, "", script=("w.js", "w();"),
+                                     libs=("lib-min.js",))
+                with self.assertRaises(ValueError):
+                    g.layout.page("workmap.html", "t", REPO, built, "", libs=("nope.js",))
+            self.assertIn(f"'sha256-{digest}'", re.search(r"script-src [^;]*;", page).group(0))
+            self.assertIn(live.script_hash("w();"), re.search(r"script-src [^;]*;", page).group(0))
+            lib = page.index(f'<script src="js/lib-min.js" integrity="sha256-{digest}"></script>')
+            self.assertLess(lib, page.index('<script src="js/w.js"'))   # the library loads first
+            self.assertNotIn("sha256-", g.layout.page("workmap.html", "t", REPO, built, ""))
 
 
 if __name__ == "__main__":

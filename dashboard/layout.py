@@ -10,11 +10,20 @@ Stdlib only. Every page carries a Content-Security-Policy. Two pages load a scri
 same-origin file in js/ beside the pages (#1106, option 3 of #1102) that the CSP allows by its
 hash and the <script> tag pins with the same hash as its integrity: the desk's live refresh
 (live.py, #411) and the Work map's treemap (workmap.js, #1082).
+
+Third-party front-end libraries (#1102, #1107) are vendored in static/vendor/, each pinned in
+static/vendor/manifest.json to an exact version and a sha256. vendored() refuses the build
+if any file differs from its hash, has no entry, or is listed but missing; write_vendor()
+then copies them into js/ beside the pages, and a page that loads one (page()'s `libs`)
+allows it by its hash in the CSP and pins it with the same hash as its integrity.
 """
 from __future__ import annotations
 
+import base64
 import datetime as dt
+import hashlib
 import html
+import json
 import re
 import shutil
 from pathlib import Path
@@ -25,6 +34,9 @@ FONTS_SRC = Path(__file__).resolve().parent / "static" / "fonts"
 FONTS_DIR = "fonts"          # beside the pages, so the pages link fonts/<file>
 JS_DIR = "js"                # beside the pages, so the pages load js/<file> (#1106)
 SCRIPT_NAME = re.compile(r"[a-z][a-z0-9_-]*\.js")
+VENDOR_SRC = Path(__file__).resolve().parent / "static" / "vendor"   # #1107
+VENDOR_MANIFEST = "manifest.json"
+VENDOR_FIELDS = ("file", "library", "version", "licence", "source", "sha256")
 REFRESH_SECONDS = 300        # an open page reloads itself, script or not (#351); the desk also polls (#411)
 
 # (family, weight, file). Only the faces the CSS below uses.
@@ -513,21 +525,29 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "") -> st
 
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
-         live_refresh: bool = False, script: tuple[str, str] | None = None) -> str:
+         live_refresh: bool = False, script: tuple[str, str] | None = None,
+         libs: tuple[str, ...] = ()) -> str:
     """One whole page in the shared shell: head (noindex, CSP, refresh, CSS), masthead (#402),
     the body, and the footer linking every page. With `live_refresh`, the page also loads the
     live refresh script, js/poll.js, which polls state.json (#411); only the desk does. `script`
     is another page's own script as (file name, text), e.g. the Work map's (#1082). The page
-    loads it from js/ (write_scripts puts it there) and the CSP allows it by its hash."""
+    loads it from js/ (write_scripts puts it there) and the CSP allows it by its hash. `libs`
+    names vendored libraries (#1107) the page loads before its own script, each from js/
+    (write_vendor puts them there) and allowed and pinned by its manifest-checked hash."""
     built_at = built.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if live_refresh else None
     name = dict(PAGES)[current]
     if built_at:
         script = (live.FILE, live.script())
     js = script[1] if script else None
+    lib_files = vendored() if libs else {}
+    for f in libs:
+        if f not in lib_files:
+            raise ValueError(f"not a vendored script: {f!r}")
+    lib_srcs = tuple(sri(lib_files[f]) for f in libs)
     box = ' data-panel="mast"' if built_at else ""
     return "\n".join(part for part in [
         '<!doctype html><html lang="en"><head><meta charset="utf-8">',
-        f'<meta http-equiv="Content-Security-Policy" content="{live.csp(js)}">',
+        f'<meta http-equiv="Content-Security-Policy" content="{live.csp(js, tuple(f"'{h}'" for h in lib_srcs))}">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         '<meta name="robots" content="noindex, nofollow">',  # published publicly; see #33
         f'<meta http-equiv="refresh" content="{REFRESH_SECONDS}">',
@@ -536,6 +556,7 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         f'<header class="mast"{box}>{masthead(current, repo, built, owner)}</header>',
         f"<main>{body}</main>",
         f'<footer class="foot">{nav(current)}</footer>',
+        *(f'<script src="{JS_DIR}/{esc(f)}" integrity="{h}"></script>' for f, h in zip(libs, lib_srcs)),
         script_tag(*script) if script else None,
         "</body></html>\n",
     ] if part is not None)
@@ -562,6 +583,73 @@ def write_scripts(out_dir: Path, scripts: dict[str, str]) -> int:
         (dest / file).write_bytes(data)
         size += len(data)
     return size
+
+
+def sri(data: bytes) -> str:
+    """The integrity value for these bytes, 'sha256-<base64 digest>'; quoted, it's the CSP source."""
+    return "sha256-" + base64.b64encode(hashlib.sha256(data).digest()).decode()
+
+
+def vendored(src: Path | None = None) -> dict[str, bytes]:
+    """Every vendored library file (name -> bytes), checked against src/manifest.json (#1107).
+    Raises ValueError, naming each problem, if the manifest is malformed, a file differs from
+    its entry's sha256, a file has no entry, or an entry has no file."""
+    src = Path(src or VENDOR_SRC)
+    try:
+        entries = json.loads((src / VENDOR_MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ValueError(f"vendor manifest {src / VENDOR_MANIFEST}: {e}") from None
+    if not isinstance(entries, list):
+        raise ValueError(f"vendor manifest {src / VENDOR_MANIFEST}: not a list of entries")
+    problems, listed = [], {}
+    for i, e in enumerate(entries):
+        if not isinstance(e, dict) or set(e) != set(VENDOR_FIELDS) or not all(
+                isinstance(e[k], str) and e[k] for k in VENDOR_FIELDS):
+            problems.append(f"entry {i}: needs exactly {', '.join(VENDOR_FIELDS)}, each a non-empty string")
+        elif not SCRIPT_NAME.fullmatch(e["file"]):   # what the live Desk serves from js/
+            problems.append(f"entry {i}: not a script file name like lib.js: {e['file']!r}")
+        elif not re.fullmatch(r"[0-9a-f]{64}", e["sha256"]):
+            problems.append(f"{e['file']}: sha256 is not 64 lowercase hex digits")
+        elif e["file"] in listed:
+            problems.append(f"{e['file']}: listed twice")
+        else:
+            listed[e["file"]] = e["sha256"]
+    present = {p.name for p in src.iterdir() if p.name != VENDOR_MANIFEST}
+    files = {}
+    for name in sorted(present - set(listed)):
+        problems.append(f"{name}: no manifest entry")
+    for name in sorted(set(listed) - present):
+        problems.append(f"{name}: in the manifest but no file")
+    for name in sorted(set(listed) & present):
+        path = src / name
+        if not path.is_file() or path.is_symlink():
+            problems.append(f"{name}: not a regular file")
+            continue
+        data = path.read_bytes()
+        got = hashlib.sha256(data).hexdigest()
+        if got != listed[name]:
+            problems.append(f"{name}: sha256 {got}, manifest says {listed[name]}")
+        else:
+            files[name] = data
+    if problems:
+        raise ValueError("vendored libraries don't match static/vendor/manifest.json:\n  "
+                         + "\n  ".join(problems))
+    return files
+
+
+def write_vendor(out_dir: Path, scripts: dict[str, str], src: Path | None = None) -> int:
+    """Check the vendored libraries (vendored()) and copy them into out_dir/js beside the
+    Desk's own scripts. A library may not share a name with one of `scripts`. Raises
+    ValueError, copying nothing, if a check fails. Returns the bytes copied."""
+    files = vendored(src)
+    clash = sorted(set(files) & set(scripts))
+    if clash:
+        raise ValueError(f"vendored libraries share a name with a Desk script: {', '.join(clash)}")
+    dest = Path(out_dir) / JS_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    for name, data in files.items():
+        (dest / name).write_bytes(data)
+    return sum(map(len, files.values()))
 
 
 def copy_fonts(out_dir: Path) -> int:
