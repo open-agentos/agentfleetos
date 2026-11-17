@@ -144,6 +144,44 @@ class StatesTest(unittest.TestCase):
         self.assertEqual(s["state"], "posted")
 
 
+BRIEFING = """**Briefing, Mon 2026-11-09**
+
+**Effort mix (M7).** This moved the most.
+The baseline waits for review.
+
+**The Desk (M3).** The Bridge is the front page.
+
+13 decisions wait on the Bridge.
+
+-- planner (claude-opus-5-5)
+"""
+
+
+class BriefingTest(unittest.TestCase):
+    def test_newest_briefing_whole_without_heading_or_signature(self):
+        older = BRIEFING.replace("Mon 2026-11-09", "Fri 2026-11-06")
+        r = build([comment(older, dt.datetime(2026, 11, 6, 21, 50), cid=1),
+                   comment(REPORT, dt.datetime(2026, 11, 9, 8, 34), cid=2),
+                   comment(BRIEFING, dt.datetime(2026, 11, 9, 8, 35), cid=3)])
+        b = r["briefing"]
+        self.assertEqual(b["day"], dt.date(2026, 11, 9))
+        self.assertTrue(b["url"].endswith("-3"))
+        self.assertEqual(b["paras"], ["**Effort mix (M7).** This moved the most. The baseline waits for review.",
+                                      "**The Desk (M3).** The Bridge is the front page.",
+                                      "13 decisions wait on the Bridge."])
+        self.assertEqual(r["report"]["line"][:12], "Daily report")   # the briefing isn't the report
+
+    def test_owner_marks_and_other_authors_dont_count(self):
+        r = build([comment("Briefing 2026-11-09: pass", dt.datetime(2026, 11, 9, 9, 0), login="mattmcalister"),
+                   comment(BRIEFING, dt.datetime(2026, 11, 9, 9, 1), login="someone")])
+        self.assertIsNone(r["briefing"])
+
+    def test_keeps_an_older_briefing_when_none_today(self):
+        older = BRIEFING.replace("Mon 2026-11-09", "Fri 2026-11-06")
+        r = build([comment(older, dt.datetime(2026, 11, 6, 21, 50))])
+        self.assertEqual(r["briefing"]["day"], dt.date(2026, 11, 6))
+
+
 class FetchTest(unittest.TestCase):
     def test_reads_four_days_of_comments(self):
         paths = []

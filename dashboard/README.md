@@ -19,7 +19,7 @@ One build writes eight pages, and the fonts, into the `--out` page's directory (
 
 | Page | What it shows |
 |---|---|
-| `bridge.html`, the **Bridge** | The owner's home, served at `/` on the live Desk (#1035), read-only, after the owner's "v5 · the bridge" mock-up ([the Bridge](#the-bridge), #926): status, decisions waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub. |
+| `bridge.html`, the **Bridge** | The owner's home, served at `/` on the live Desk (#1035), read-only, after the owner's "v5 · the bridge" mock-up ([the Bridge](#the-bridge), #926): the lead's daily briefing, status, decisions waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub. |
 | `commissions.html` | Each open Goal and Area, grouped by what it needs from the owner, with a focus drawer ([Commissions](#commissions), #931) |
 | `agents.html` | One row per role, working or idle, with a focus drawer ([Agents](#agents), #932) |
 | `index.html`, the **desk** | Today's report and the plan (#712), the trouble panel per Goal and Area (#903: `swarm trouble`'s report, built by `generate.py` without the owner-acts sync, so M4's acts criterion reads unmeasured here; no spend), [On the floor](#on-the-floor), [the wire](#the-wire), the [committee desk](#committee-desk) while a committee is open, [What the numbers say](#what-the-numbers-say), [How the questions went](#how-the-questions-went), [precedent in use](#precedent-in-use), a card per [past committee](#past-committees), and a one-line pointer to the other pages. #397's later issues add the desk's other panels here. |
@@ -40,6 +40,7 @@ The fonts are **self-hosted**, so the public page loads nothing from a third par
 
 `bridge.html` (`bridge.py`, #926, under M3 #685) is the Bridge from the owner's "v5 · the bridge" mock-up, built read-only from data the build already reads, so it adds no API calls. Top to bottom:
 
+- **Briefing**, first (M8, #1029): the lead's newest daily briefing, whole, one paragraph per chapter, from the report issue's comments the desk already reads (`report.py` takes the newest planner comment starting `**Briefing`, without its first line or signature). It links to the comment, and says so when it's from before today.
 - **Status:** open Goals and Areas and how many are flagged; agents working (the floor's cards) of the live sessions; decisions waiting, with the oldest one's age; and authority used in `swarm trouble`'s window. A Goal or Area is **flagged** when something under it is stuck, one of its criteria is failing, or its date is missed.
 - **Decisions waiting**, in owner amber: what `swarm trouble` says waits on the owner, then open gov questions it doesn't already list (not ruled, no session blocked on them), oldest first, at most 12. Each links to where it's answered on GitHub; there are no buttons until the desk can write (#752).
 - **Reports**, newest first, at most 12, each with its role: today's daily report (a red flag when it's late), each item `swarm trouble` says is stuck (a flag), and the PRs a role's App had merged in the last 7 days (`SHIPPED`, or `DELIVERED` for a PR whose title starts "Brief").
