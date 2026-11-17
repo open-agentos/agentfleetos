@@ -11,6 +11,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import crewdraw  # noqa: E402
 import generate as g  # noqa: E402
+import state as st  # noqa: E402
 from test_generate import NOW, IDLE, REPO, ev, tracking, comment  # noqa: E402
 
 M = 1_000_000
@@ -75,7 +76,8 @@ class OverCapTest(unittest.TestCase):
 
     def test_page_marks_over_cap(self):
         m, _ = self.sessions({"builder": 15, "reviewer": 5})
-        self.assertIn('"over_cap":"$15.00"', g.render(m)["crew.html"])   # in the page's own block (#1139)
+        b = next(s for s in st.state(m)["sessions"] if s["session_id"] == "b-over")
+        self.assertEqual((b["cost"], b["cap"], b["over_cap"]), (20.0, 15, True))   # in state.json (GOV-0055)
         if crewdraw.NODE:   # the sessions table moved to Crew (#1113), drawn by crew.js (#1139)
             self.assertIn('<span class="pill s-blocked">over cap $15.00</span>', crewdraw.page(m))
 

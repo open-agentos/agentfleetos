@@ -144,13 +144,13 @@ class CrewPageTest(unittest.TestCase):
         block = re.search(r'<script type="application/json" id="crew-data">(.*?)</script>', self.page, re.S)[1]
         self.assertNotIn("<", block)   # escaped: no title can close the block
         data = json.loads(block)
-        self.assertEqual(data, json.loads(json.dumps(crewpage.data(st.state(self.m), self.m["sessions"]))))
+        self.assertEqual(data, json.loads(json.dumps(crewpage.data(st.state(self.m)))))
         self.assertNotIn("desk", data)
         for key in crewpage.KEYS:
             self.assertIn(key, data)
-        # Each session's spend is the page's alone; state.json stays cost-free (#1153).
-        self.assertEqual(sorted(data["spend"]), sorted(s["session_id"] for s in self.m["sessions"]))
-        self.assertNotIn("spend", st.state(self.m))
+        # Each session's spend comes from state.json's sessions (#1153); the page adds only the method.
+        self.assertNotIn("spend", data)
+        self.assertEqual(set(data) - set(crewpage.KEYS), {"spend_method"})
 
     def test_script_reads_plain_fields_never_markup_or_code(self):
         js = crewpage.script()
@@ -179,15 +179,15 @@ class CrewScriptTest(unittest.TestCase):
                "started_ts": "2026-11-05T09:00:00Z", "tracking_issue": 50, "issue_title": "<b>not markup</b>"}
 
     def test_draws_at_load_then_only_newer_data(self):
-        page = crewdraw.base(built_at=self.BASE, spend={"abcdef0123": {"usd": "$1.20", "over_cap": None}})
-        newer = crewdraw.base(built_at="2026-11-05T10:01:00Z", sessions=[self.SESSION])
-        del newer["spend"], newer["spend_method"]   # state.json carries neither
+        page = crewdraw.base(built_at=self.BASE)
+        newer = crewdraw.base(built_at="2026-11-05T10:01:00Z", sessions=[self.SESSION | {"cost": 1.2}])
+        del newer["spend_method"]   # state.json doesn't carry it
         got = crewdraw.run(page, served=newer, clock="2026-11-05T10:01:00Z")
         self.assertIn("No live sessions.", got["first"]["sessions"])          # drawn from the page's block
         self.assertEqual(got["fetched"], [["state.json", "no-store"]])
         s = got["after"]["sessions"]
         self.assertIn("&lt;b&gt;not markup&lt;/b&gt;", s)                     # redrawn in place; text stays text
-        self.assertIn('<td class="num">$1.20</td>', s)                        # spend from the page's block
+        self.assertIn('<td class="num">$1.20</td>', s)                        # spend redrawn in place (#1153)
         self.assertIn("2m ago", s)
         self.assertIn('datetime="2026-11-05T10:01:00Z"', got["after"]["mast"])
         older = crewdraw.run(page, served={**newer, "built_at": "2026-11-05T09:00:00Z"}, clock="2026-11-05T10:01:00Z")
@@ -207,6 +207,16 @@ class CrewScriptTest(unittest.TestCase):
         got = crewdraw.draw(crewdraw.base(floor={"cards": None, "idle": []}))
         self.assertEqual(got["floor"], "static")   # the rest still draw
         self.assertIn("<h2>Sessions</h2>", got["sessions"])
+
+    def test_spend_reads_as_spend_usd_writes_it(self):
+        import spend
+        costs = [None, 0, 0.004, 0.005, 0.01, 0.125, 0.375, 0.625, 2.875, 0.994, 0.995, 1.2, 15, 1234.5, 1234567.891]
+        rows = [self.SESSION | {"session_id": f"s{i:09d}", "cost": c, "cap": 15.0, "over_cap": i == 11}
+                for i, c in enumerate(costs)]
+        html = crewdraw.draw(crewdraw.base(sessions=rows))["sessions"]
+        got = re.findall(r'<td class="num">([^<]*)', html)
+        self.assertEqual(got, [spend.usd(c).replace("<", "&lt;") for c in costs])
+        self.assertEqual(html.count("over cap $15.00"), 1)
 
     def test_greys_the_live_mark_when_stale(self):
         page = crewdraw.base(built_at=self.BASE)

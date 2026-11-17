@@ -1,7 +1,7 @@
 """Test helper (#1139): run crew.js in node against govdraw's fake DOM and read back what it drew.
 
 Crew's panels are drawn client-side, so their tests give the script the data the page carries
-(crewpage.data(): the slice of state.json, plus each session's spend) and check the markup it
+(crewpage.data(): the slice of state.json, plus the Spend column's method sentence) and check the markup it
 builds, serialised with text and attribute values escaped as html.escape() does.
 
 `draw(data)` returns {section: html} for the six sections, plus "mast". `page(m)` draws a
@@ -33,7 +33,7 @@ def draw(data: dict) -> dict:
 def page_data(m: dict) -> dict:
     """The data a model's Crew page carries, as JSON would hand it to the script."""
     import state
-    return json.loads(json.dumps(crewpage.data(state.state(m), m["sessions"])))
+    return json.loads(json.dumps(crewpage.data(state.state(m))))
 
 
 def page(m: dict) -> str:
@@ -47,6 +47,6 @@ def base(**over) -> dict:
     d = {"schema": 1, "built_at": "2026-11-05T10:00:00Z", "repo": "o/r",
          "owner_last_acted": {"status": "unknown"}, "idle_minutes": 15, "sessions": [], "crew_roles": [],
          "floor": None, "watcher": None, "reviewer_runs": {"window_days": 7, "unreviewed": [], "error": "x"},
-         "grants": None, "effort": None, "spend": {}, "spend_method": "M."}
+         "grants": None, "effort": None, "spend_method": "M."}
     d.update(over)
     return json.loads(json.dumps(d, default=str))

@@ -64,12 +64,19 @@ class StateTest(unittest.TestCase):
     def test_is_json(self):
         self.assertEqual(json.loads(json.dumps(self.s)), self.s)
 
-    def test_model_has_cost_but_state_has_none(self):
+    def test_cost_only_per_session_never_summed(self):
+        # Each session's own estimate, cap and over-cap flag, for Crew's Spend column (per
+        # #1153's answer, GOV-0055); nothing else, and no total (GOV-0033).
         self.assertTrue(any(s["over_cap"] for s in self.m["sessions"]))   # the fixture is priced
-        bad = [p for p, k in keys(self.s) if any(w in k.lower() for w in COST_WORDS)]
-        self.assertEqual(bad, [])
+        for mine, theirs in zip(self.s["sessions"], self.m["sessions"]):
+            self.assertEqual([mine[k] for k in ("cost", "cap", "over_cap")],
+                             [theirs[k] for k in ("cost", "cap", "over_cap")])
+        costly = [p for p, k in keys(self.s) if any(w in k.lower() for w in COST_WORDS) or k in ("cap", "over_cap")]
+        self.assertTrue(costly)
+        self.assertEqual([p for p in costly if not re.fullmatch(r"\.sessions\[\d+\]\.(cost|cap|over_cap)", p)], [])
+        self.assertFalse([p for p, k in keys(self.s) if "total" in k.lower() or "sum" in k.lower()])
         self.assertNotIn("over_cap", [i["kind"] for i in self.s["needs_you"]])
-        self.assertNotIn("$", json.dumps(self.s))
+        self.assertNotIn("$", json.dumps(self.s))   # figures, never Crew's text
 
     def test_session_fields_are_ones_the_page_renders(self):
         # crew.js draws Crew's sessions table from these (#1139): it reads every one.

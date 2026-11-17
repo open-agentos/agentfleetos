@@ -244,12 +244,21 @@
     return link("#" + n + (title ? " " + title : ""), gh(repo, "issues", n), {title: title || ""});
   }
 
+  // spend.usd's text for a session's own estimate: "—" unpriced, "<$0.01" below a cent.
+  function usd(x) {
+    if (typeof x !== "number") { return "—"; }
+    if (x !== 0 && !(x >= 0.01)) { return "<$0.01"; }
+    // toFixed rounds an exact half cent up, Python's format to even (0.125 is "$0.12").
+    var c = x * 8 % 2 === 1 ? Math.round(x * 100) : null;
+    var p = (c !== null && c % 2 ? (c - 1) / 100 : x).toFixed(2).split(".");
+    return "$" + p[0].replace(/\B(?=(\d{3})+$)/g, ",") + "." + p[1];
+  }
+
   function sessionRows(d, list) {
-    var repo = d.repo, now = d.built_at, spend = page.spend || {};
+    var repo = d.repo, now = d.built_at;
     var head = h("tr", null, h("th", null, "Status"), h("th", null, "Role"), h("th", null, "Current issue"),
       h("th", null, "Last activity"), h("th", null, "Session"), h("th", {"class": "num"}, "Spend (est.)"));
     return h("div", {"class": "scroll"}, h("table", null, head, list.map(function (x) {
-      var sp = spend[x.session_id] || {usd: "—"};
       return h("tr", null,
         h("td", null, h("span", {"class": "pill s-" + x.status}, x.status),
           x.gov_question ? [" on ", issueLink(repo, x.gov_question, null)] : null),
@@ -259,7 +268,7 @@
         h("td", {title: stamp(x.last_ts)}, ago(x.last_ts, now), h("br"), muted(x.last_event || "")),
         h("td", null, link(h("code", null, x.session_id.slice(0, 8)), gh(repo, "issues", x.tracking_issue)),
           h("br"), muted("started " + ago(x.started_ts, now))),
-        h("td", {"class": "num"}, sp.usd, sp.over_cap ? [h("br"), h("span", {"class": "pill s-blocked"}, "over cap " + sp.over_cap)] : null));
+        h("td", {"class": "num"}, usd(x.cost), x.over_cap ? [h("br"), h("span", {"class": "pill s-blocked"}, "over cap " + usd(x.cap))] : null));
     })));
   }
 
@@ -485,7 +494,6 @@
   }
 
   var block = document.getElementById("crew-data");
-  // The page's block also carries what state.json doesn't: each session's spend (#1153).
   try { page = JSON.parse(block.textContent); draw(page); } catch (e) { /* the noscript note's words stand */ }
   fresh();
   setInterval(poll, EVERY);

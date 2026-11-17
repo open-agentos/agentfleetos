@@ -1,9 +1,10 @@
 """The data the dashboard page shows, as JSON: `state.json`, written beside `index.html` (#400).
 
 `state(model)` takes what `generate.build()` returns and keeps only what the page renders,
-with no HTML. It carries no cost: no session cost, daily spend, cap or over-cap flag, and no
-spend block (GOV-0014; #397). It's public like the page (#33), so sessions and PRs keep only
-the fields the page shows, by name.
+with no HTML. Its only cost is each session's own: its list-price estimate (`cost`), its role's
+cap (`cap`) and an over-cap flag (`over_cap`), for Crew's Spend column (per #1153's answer,
+GOV-0055). It never sums them: no daily spend, total or spend block (GOV-0033, GOV-0014). It's
+public like the page (#33), so sessions and PRs keep only the fields the page shows, by name.
 
 Timestamps are RFC 3339 strings in UTC (`2026-11-05T07:20:08Z`); dates are `YYYY-MM-DD`.
 Each later #397 panel adds its slice here.
@@ -29,9 +30,9 @@ import wire
 
 SCHEMA = 1
 
-# What Crew's sessions table shows for a session (crew.js, #1139), minus its spend column.
+# What Crew's sessions table shows for a session (crew.js, #1139), its spend included (#1153).
 SESSION_FIELDS = ("session_id", "role", "model", "status", "issue", "pr", "gov_question",
-                  "last_event", "last_ts", "started_ts", "tracking_issue")
+                  "last_event", "last_ts", "started_ts", "tracking_issue", "cost", "cap", "over_cap")
 # What the page shows for a PR (render's "Open pull requests" and the needs-you list).
 PR_FIELDS = ("number", "title", "url", "author", "draft", "review", "created_ts", "closes",
              "needs_owner")

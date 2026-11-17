@@ -8,9 +8,9 @@ fetches same-origin `state.json` every 15 seconds while the tab is visible and r
 place when its `built_at` is newer. It doesn't read `state.json["desk"]` or load `poll.js`.
 With JavaScript off the page shows a notice and a GitHub link (per GOV-0051).
 
-The block also carries each session's spend estimate, which state.json doesn't (#397's rule;
-gov question #1153): the sessions table's Spend column comes from the page, so it changes
-with the page's reload, and a session the page doesn't know shows a dash.
+Each session's spend estimate, cap and over-cap flag come from state.json too (per #1153's
+answer, GOV-0055), so the Spend column redraws in place with the rest. The block adds only the
+method sentence under the table.
 """
 from __future__ import annotations
 
@@ -35,16 +35,9 @@ KEYS = ("schema", "built_at", "repo", "owner_last_acted", "idle_minutes", "sessi
         "floor", "watcher", "reviewer_runs", "grants", "effort")
 
 
-def spend_of(sessions: list[dict]) -> dict:
-    """Each session's Spend (est.) text, by session id, and the cap it went over, if it did."""
-    return {s["session_id"]: {"usd": spend.usd(s.get("cost")),
-                              "over_cap": spend.usd(s.get("cap")) if s.get("over_cap") else None}
-            for s in sessions}
-
-
-def data(state: dict, sessions: list[dict]) -> dict:
-    """The page's slice of state.json, plus the spend only the page carries."""
-    return {**{k: state.get(k) for k in KEYS}, "spend": spend_of(sessions), "spend_method": spend.METHOD}
+def data(state: dict) -> dict:
+    """The page's slice of state.json, plus the Spend column's method sentence."""
+    return {**{k: state.get(k) for k in KEYS}, "spend_method": spend.METHOD}
 
 
 def script() -> str:
@@ -66,5 +59,5 @@ def body(d: dict) -> str:
 
 def page(m: dict, title: str, owner_line: str, state: dict) -> str:
     """The whole page. `state` is state.state(m), what the build writes to state.json."""
-    return layout.page(FILE, title, m["repo"], m["now"], body(data(state, m["sessions"])), owner_line,
+    return layout.page(FILE, title, m["repo"], m["now"], body(data(state)), owner_line,
                        script=(JS.name, script()), live_mast=True)
