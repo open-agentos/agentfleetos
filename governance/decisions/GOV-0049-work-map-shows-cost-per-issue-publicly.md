@@ -32,7 +32,7 @@ The Work map may show cost per issue, priced with `dashboard/spend.py`, on both 
 ## Applies when / does not apply when
 
 - Applies when: building or changing the Work map's per-issue cost, its size options, or the public data that feeds them.
-- Does not apply when: showing session cost, daily spend, a cap, an over-cap flag or any spend total, or putting cost on another Desk page, which is a new `security` question.
+- Does not apply when: showing session cost, daily spend, a cap, an over-cap flag or any spend total, or putting cost on another Desk page. Each is a new `security` question.
 
 ## Context
 
