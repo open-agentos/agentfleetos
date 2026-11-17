@@ -22,10 +22,11 @@ hours. A window of length L ends with the current hour and covers the L hours be
 if the heartbeat data read doesn't reach back that far. `days` is 14 (date, cost, outcomes)
 triples, one per UTC day, ending today.
 
-**Outcomes**, each counted once, in the hour it happened, for every issue a PR closes:
+**Outcomes**, each counted once, in the hour it happened:
   merged    a PR that closes the issue merged;
   approved  the reviewer App's first approval at the head of such a PR (the head it has now);
-  closed    the issue closed.
+  closed    the issue closed (any issue but a session's tracking issue, Goals and
+            gov:questions included, as the spec's "every issue closed in the window").
 They count equally in v1 (the owner's choice, 2026-11-17).
 
 **Per issue:** `goal` (the owner's open Goal or Area above it, from the plan), `effort` (the
@@ -33,8 +34,8 @@ classify/cache/effort.json label of its most recently merged PR, else of its mos
 classified PR, else `unclassified`), `role` (the role with the most cost on it in the window,
 then the most tokens), `stage`, `needs_you`, and `lines` (additions plus deletions of its PRs'
 commits committed in the window). `stage`, first that holds:
-  blocked   an open blocked-by (the plan's "waiting on"), or a session on it is blocked on a
-            gov question;
+  blocked   an open blocked-by (read from the plan's go data, whatever its go kind), or a
+            session on it is blocked on a gov question;
   merging   an open PR that closes it has the reviewer App's approval at head;
   review    an open PR that closes it is ready for review;
   building  a draft PR closes it, or a live session is on it;
@@ -207,12 +208,16 @@ def outcomes(prs: list[dict], issues: list[dict], repo: str) -> list[dict]:
 
 # ---------------------------------------------------------------- per issue
 
-def plan_index(plan_data: dict | None, plan_model: dict | None, repo: str) -> tuple[dict, dict, set]:
+def plan_index(plan_data: dict | None, plan_model: dict | None,
+               repo: str) -> tuple[dict, dict, set, set]:
     """From the plan: each issue's Goal or Area {number, lead, title, kind} (open or closed
-    sub-issues, two levels), each open sub-issue's go kind, and the open sub-issues."""
-    goal_of, go, open_subs = {}, {}, set()
+    sub-issues, two levels), each open sub-issue's go kind, the open sub-issues, and those of
+    them with an open blocked-by. The last comes from the plan's go read (plan.GO_FIELD), not
+    the go kind: plan.status() says `go` for an owner-`ready` issue before it looks at its
+    blockers, and `waiting` only when blockers are its only reason."""
+    goal_of, go, open_subs, blocked = {}, {}, set(), set()
     if not plan_model or not plan_model.get("read"):
-        return goal_of, go, open_subs
+        return goal_of, go, open_subs, blocked
     trees = (plan_data or {}).get("trees") or {}
     for s in plan_model["scopes"]:
         g = {"number": s["number"], "lead": s["lead"], "title": s["title"], "kind": s["kind"]}
@@ -226,12 +231,18 @@ def plan_index(plan_data: dict | None, plan_model: dict | None, repo: str) -> tu
         for row in s["subs"]:
             for r in [row, *row.get("children", [])]:
                 go[r["number"]] = r["status"]["kind"]
-    return goal_of, go, open_subs
+    for n, node in ((plan_data or {}).get("go") or {}).items():
+        nodes = ((node or {}).get("blockedBy") or {}).get("nodes") or []
+        if n in open_subs and any(b and (b.get("state") or "").upper() != "CLOSED" for b in nodes):
+            blocked.add(n)
+    return goal_of, go, open_subs, blocked
 
 
-def stage(go_kind: str | None, open_prs: list[dict], session_on: bool, session_blocked: bool) -> str | None:
-    """One open issue's stage (see the module doc). `open_prs` are generate.build()'s PRs."""
-    if go_kind == "waiting" or session_blocked:
+def stage(go_kind: str | None, open_prs: list[dict], session_on: bool, session_blocked: bool,
+          open_blocker: bool = False) -> str | None:
+    """One open issue's stage (see the module doc). `open_prs` are generate.build()'s PRs;
+    `open_blocker` is whether it has an open blocked-by, whatever its go kind."""
+    if open_blocker or go_kind == "waiting" or session_blocked:
         return "blocked"
     ready = [p for p in open_prs if not p.get("draft")]
     if any((p.get("reviewer") or {}).get("at_head") == "APPROVED" for p in ready):
@@ -314,7 +325,7 @@ def build(g: dict, now: dt.datetime, window: str = DEFAULT_WINDOW) -> dict:
         import committees
         import plan
         plan_model = plan.build(data["plan"], committees.owner_login(), repo)
-    goal_of, go, open_subs = plan_index(data.get("plan"), plan_model, repo)
+    goal_of, go, open_subs, blocked = plan_index(data.get("plan"), plan_model, repo)
 
     spent = all_charges(data)
     happened = outcomes(g.get("prs") or [], data["issues"], repo)
@@ -389,7 +400,7 @@ def build(g: dict, now: dt.datetime, window: str = DEFAULT_WINDOW) -> dict:
         if state == "open":
             on = [s for s in live if s.get("issue") == n]
             st = stage(go.get(n), open_prs_of.get(n, []), bool(on),
-                       any(s["status"] == "blocked" for s in on))
+                       any(s["status"] == "blocked" for s in on), n in blocked)
         return {**base, "ref": f"#{n}", "title": it.get("title") or "",
                 "url": it.get("html_url") or f"https://github.com/{repo}/issues/{n}",
                 "state": state, "lines": lines_of.get(n, 0), "goal": goal_of.get(n),

@@ -1060,7 +1060,7 @@ def main(argv: list[str]) -> int:
         (out if name == "index.html" else out.parent / name).write_text(page, encoding="utf-8")
     (out.parent / STATE_FILE).write_text(data_json, encoding="utf-8")   # #400
     print(write_map(data, model, now, out.parent, args.days))
-    live =sum(s["status"] != "stopped" for s in model["sessions"])
+    live = sum(s["status"] != "stopped" for s in model["sessions"])
     others = ", ".join(n for n in pages if n != "index.html")
     print(f"wrote {out}, {others}, {STATE_FILE} and {layout.FONTS_DIR}/ beside it: "
           f"{live} live / {len(model['sessions'])} sessions, "

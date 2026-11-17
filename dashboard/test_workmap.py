@@ -34,18 +34,22 @@ def iso(minutes_ago):
     return (NOW - dt.timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def plan(subs):
-    """plan.fetch()'s trees and plan.build()'s model for one Goal, #1080, over `subs`
-    ({number: go kind})."""
+def plan(subs, blockers=None):
+    """plan.fetch()'s trees and go, and plan.build()'s model, for one Goal, #1080, over `subs`
+    ({number: go kind}). `blockers` is {number: [blocked-by state, ...]}."""
     data = {"trees": {1080: {"subIssues": {"nodes": [
-        {"number": n, "state": "OPEN", "repository": {"nameWithOwner": REPO}} for n in subs]}}}}
+        {"number": n, "state": "OPEN", "repository": {"nameWithOwner": REPO}} for n in subs]}}},
+            "go": {n: {"blockedBy": {"totalCount": len(st), "nodes": [
+                {"number": 900 + i, "state": x, "repository": {"nameWithOwner": REPO}}
+                for i, x in enumerate(st)]}} for n, st in (blockers or {}).items()}}
     model = {"read": True, "scopes": [{"number": 1080, "kind": "Goal", "lead": "M9", "title": "money",
                                         "subs": [{"number": n, "status": {"kind": k}, "children": []}
                                                  for n, k in subs.items()]}]}
     return data, model
 
 
-def gathered(sessions=(), issues=(), prs=(), open_prs=(), subs=None, effort=None, since=None):
+def gathered(sessions=(), issues=(), prs=(), open_prs=(), subs=None, effort=None, since=None,
+             blockers=None):
     """gather()'s dict from fixtures. `sessions` is [(sid, events, state)]."""
     tracked = [tracking(900 + i, sid, state=st) for i, (sid, _, st) in enumerate(sessions)]
     data = {"repo": REPO, "issues": [*tracked, *issues],
@@ -53,7 +57,7 @@ def gathered(sessions=(), issues=(), prs=(), open_prs=(), subs=None, effort=None
             "prs": list(open_prs)}
     model = g.build(data, NOW, IDLE)
     if subs is not None:
-        data["plan"], model["plan"] = plan(subs)
+        data["plan"], model["plan"] = plan(subs, blockers)
     return {"data": data, "model": model, "prs": list(prs), "effort": effort, "since": since}
 
 
@@ -169,6 +173,19 @@ class StageTest(unittest.TestCase):
         self.assertEqual((r[10]["stage"], r[11]["stage"], r[12]["stage"]), ("queued", "building", "blocked"))
         self.assertEqual(r[10]["goal"]["number"], 1080)
         self.assertEqual(r[10]["goal"]["lead"], "M9")
+
+    def test_open_blocker_is_blocked_whatever_the_go_kind(self):
+        # plan.status() says `go` for an owner-`ready` issue with an open blocker, and `not_go`
+        # for one with an open blocker and another reason (e.g. `hold`): both are blocked.
+        open_prs = [{"number": 60, "title": "x", "url": "u", "author": {"login": "app/productswarm-builder"},
+                     "isDraft": False, "createdAt": iso(10), "reviewDecision": "",
+                     "closingIssuesReferences": [{"number": 12}], "headRefOid": "h"}]
+        gd = gathered(issues=[issue(10), issue(11), issue(12), issue(13)], open_prs=open_prs,
+                      subs={10: "go", 11: "not_go", 12: "go", 13: "go"},
+                      blockers={10: ["OPEN"], 11: ["CLOSED", "OPEN"], 12: ["OPEN"], 13: ["CLOSED"]})
+        r = rows(wm.build(gd, NOW, "day"))
+        self.assertEqual([r[n]["stage"] for n in (10, 11, 12, 13)], ["blocked", "blocked", "blocked", "queued"])
+        self.assertEqual(wm.stage("go", [], False, False, True), "blocked")
 
 
 class EffortTest(unittest.TestCase):
