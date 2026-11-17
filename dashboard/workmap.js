@@ -970,9 +970,9 @@
 
   // Every LIVE.every ms while the tab is visible, fetch same-origin map.json (GOV-0051) and, when
   // it carries a newer build, redraw from it in place: the controls, zoom and selection stay, as
-  // do the page's Goals, roles and strip, which map.json doesn't carry. As poll.js does with
-  // state.json, it only moves forward, and the masthead's LIVE mark greys once the data shown is
-  // older than LIVE.stale. The page's 300-second meta refresh stays until #1135.
+  // do the page's Goals, roles and strip, which map.json doesn't carry. As Crew and Governance do
+  // with state.json, it only moves forward, and the masthead's LIVE mark greys once the data shown
+  // is older than LIVE.stale. The page's 300-second meta refresh picks up the parts map.json lacks.
   var LIVE = data && data.live;
   var stampEl = document.querySelector("header.mast time.stamp");
   var builtAt = (data && data.built_at) || (stampEl && stampEl.getAttribute("datetime")) || "";

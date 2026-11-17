@@ -319,7 +319,7 @@ class LiveSettingsTest(unittest.TestCase):
         d = json_block(wp.page(model(), "t", ""))
         self.assertEqual(d["live"], {"every": live.EVERY_SECONDS * 1000, "stale": live.STALE_MINUTES * 60 * 1000})
         page = wp.page(model(), "t", "")
-        self.assertIn(f'content="{layout.REFRESH_SECONDS}"', page)   # the meta refresh stays until #1135
+        self.assertIn(f'content="{layout.REFRESH_SECONDS}"', page)   # the strip, Briefing and tape still reload (#1135)
         self.assertIn("connect-src 'self'", page)
 
 

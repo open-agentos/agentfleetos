@@ -88,8 +88,8 @@ def script() -> str:
 
 
 def live_settings() -> dict:
-    """How often an open map fetches map.json and when its LIVE mark greys, in ms: poll.js's
-    (live.py), so every Desk page refreshes and goes stale alike (#1138)."""
+    """How often an open map fetches map.json and when its LIVE mark greys, in ms: live.py's,
+    so every Desk page refreshes and goes stale alike (#1138)."""
     return {"every": live.EVERY_SECONDS * 1000, "stale": live.STALE_MINUTES * 60 * 1000}
 
 
@@ -292,4 +292,5 @@ def render(m: dict, owner: str | None = None) -> str:
 
 def page(m: dict, title: str, owner_line: str, owner: str | None = None) -> str:
     """workmap.html, in the shared page shell, with workmap.js as its one script."""
-    return layout.page(FILE, title, m["repo"], m["now"], render(m, owner), owner_line, script=(JS.name, script()))
+    return layout.page(FILE, title, m["repo"], m["now"], render(m, owner), owner_line, script=(JS.name, script()),
+                       reload=True)   # the strip, Briefing and tape aren't in map.json

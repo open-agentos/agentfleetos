@@ -7,7 +7,6 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import live  # noqa: E402
 import plan  # noqa: E402
 
 REPO = "open-agentos/agentfleetos"
@@ -120,7 +119,6 @@ class BuildTest(unittest.TestCase):
         self.assertIn(">PR #730</a>", html)
         self.assertIn("Not plan: <a", html)
         self.assertIn("a Goal opened by productswarm-planner[bot] (GOV-0031).", html)
-        live.tree(html)   # the live refresh can draw it
 
     def test_empty_and_unread(self):
         self.assertIn("No plan: the owner has no open Goal or Area.",
