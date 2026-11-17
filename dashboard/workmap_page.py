@@ -19,8 +19,8 @@ percentage, never an amount. Nothing on the page sums an amount across issues (G
 per issue may be shown on both Desks (GOV-0049).
 
 The map's rows are in the page itself, in a JSON block, so the page draws on GitHub Pages and the
-live Desk alike without fetching. One inline script, `workmap.js`, draws it, allowed by its hash
-in the page's CSP. It builds nodes with createElement and text nodes, never innerHTML or eval.
+live Desk alike without fetching. One script, `workmap.js`, draws it: generate.py writes it to
+js/ beside the pages and the page's CSP allows it by its hash (#1106). It builds nodes with createElement and text nodes, never innerHTML or eval.
 With JavaScript off the page says the map needs it, and the Briefing still shows. Each row's
 14-day series is the same in every window, so the page carries it once per issue, under `days`:
 `dates` (the 14 UTC days, oldest first) and `of` (ref -> [[cost, outcomes], ...]). The Selected
@@ -56,11 +56,8 @@ KEY_LINE = ("Size is what each issue used in the window. Shade is the colour mea
 
 
 def script() -> str:
-    """workmap.js, exactly as it goes between <script> and </script>."""
-    js = JS.read_text(encoding="utf-8")
-    if "</" in js:
-        raise ValueError("workmap.js can't contain '</'")
-    return js
+    """workmap.js, exactly as generate.py writes it to js/workmap.js."""
+    return JS.read_text(encoding="utf-8")
 
 
 def page_data(wm: dict | None) -> dict:
@@ -169,4 +166,4 @@ def render(m: dict) -> str:
 
 def page(m: dict, title: str, owner_line: str) -> str:
     """workmap.html, in the shared page shell, with workmap.js as its one script."""
-    return layout.page(FILE, title, m["repo"], m["now"], render(m), owner_line, script=script())
+    return layout.page(FILE, title, m["repo"], m["now"], render(m), owner_line, script=(JS.name, script()))

@@ -3,7 +3,9 @@
 Uses canned API data and, for the end-to-end test, a fake `gh` on PATH, so nothing
 touches GitHub.
 """
+import base64
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -183,11 +185,13 @@ class PageTest(unittest.TestCase):
             self.assertIn('<meta name="robots" content="noindex, nofollow">', head, name)
             self.assertIn('<meta http-equiv="refresh" content="300">', head, name)
             self.assertIn('<meta name="viewport" content="width=device-width, initial-scale=1">', head, name)
-            # Only the desk and the Work map carry a script, each allowed by hash (#411, #1082).
-            rest = page.replace(f"<script>{live.script()}</script>", "") if name == "index.html" else page
+            # Only the desk and the Work map load a script, each from js/ and allowed by hash
+            # (#411, #1082, #1106); no page carries an inline one.
+            rest = page.replace(g.layout.script_tag("poll.js", live.script()), "") if name == "index.html" else page
             if name == "workmap.html":
                 rest = re.sub(r'<script type="application/json" id="wm-data">.*?</script>', "",
-                              rest.replace(f"<script>{workmap_page.script()}</script>", ""), flags=re.S)
+                              rest.replace(g.layout.script_tag("workmap.js", workmap_page.script()), ""),
+                              flags=re.S)
                 # Its buttons only change the view: type="button", outside any form.
                 self.assertEqual(rest.count("<button"), rest.count('<button type="button"'), name)
                 rest = rest.replace("<button", "")
@@ -298,6 +302,16 @@ class EndToEndTest(unittest.TestCase):
             for f in g.layout.FONT_FILES:   # self-hosted beside the pages
                 self.assertEqual((out / "fonts" / f).read_bytes(),
                                  (g.layout.FONTS_SRC / f).read_bytes())
+            # Each page's scripts are served from js/ beside it, the very bytes its CSP hashes (#1106).
+            self.assertEqual(sorted(p.name for p in (out / "js").iterdir()), ["poll.js", "workmap.js"])
+            for name in ("index.html", "workmap.html"):
+                page = (out / name).read_text()
+                srcs = re.findall(r'<script src="([^"]+)" integrity="sha256-([^"]+)">', page)
+                self.assertEqual(len(srcs), 1, name)
+                src, digest = srcs[0]
+                body = (out / src).read_bytes()
+                self.assertEqual(digest, base64.b64encode(hashlib.sha256(body).digest()).decode(), name)
+                self.assertIn(f"script-src 'self' 'sha256-{digest}';", page, name)
             page = (out / "operations.html").read_text()
             self.assertIn("#4 Dashboard generator", page)
             self.assertIn("s-active", page)
@@ -307,6 +321,26 @@ class EndToEndTest(unittest.TestCase):
             st = json.loads((d / "out" / "state.json").read_text())   # beside the page (#400)
             self.assertEqual((st["schema"], st["repo"]), (1, REPO))
             self.assertEqual([s["issue"] for s in st["sessions"]], [4])
+
+
+class ScriptRulesTest(unittest.TestCase):
+    """#1102 carries #396's rule over: no Desk script turns strings into code or markup."""
+
+    def test_no_desk_script_evals_or_parses_markup(self):
+        texts = dict(g.scripts())
+        texts |= {p.name + " (source)": p.read_text(encoding="utf-8") for p in Path(g.__file__).parent.glob("*.js")}
+        self.assertIn("poll.js", texts)
+        self.assertIn("workmap.js", texts)
+        for name, js in texts.items():
+            for bad in ("eval(", "new Function", "innerHTML"):
+                self.assertNotIn(bad, js, f"{name} contains {bad}")
+
+    def test_write_scripts_writes_exactly_what_the_pages_hash(self):
+        with tempfile.TemporaryDirectory() as d:
+            g.layout.write_scripts(Path(d), {"a.js": "x();"})
+            self.assertEqual((Path(d) / "js" / "a.js").read_text(), "x();")
+            with self.assertRaises(ValueError):
+                g.layout.write_scripts(Path(d), {"../a.js": "x();"})
 
 
 if __name__ == "__main__":

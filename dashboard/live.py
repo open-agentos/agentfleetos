@@ -2,8 +2,8 @@
 
 An open desk page fetches `state.json` every 15 seconds and redraws its panels without a
 reload. The panels are drawn once, in Python, as they always were: `tree()` turns each
-panel's HTML into a node tree for `state.json["desk"]`, and the inline script (`poll.js`)
-turns the tree back into DOM nodes with `createElement`, `setAttribute` and text nodes. So
+panel's HTML into a node tree for `state.json["desk"]`, and the script (`poll.js`, served as
+`js/poll.js` beside the pages, #1106) turns the tree back into DOM nodes with `createElement`, `setAttribute` and text nodes. So
 there's one renderer, and the browser never parses HTML, uses `innerHTML` or `eval`.
 
 A node is a string (text) or `[tag, {attr: value}, child, ...]`. Only the tags and
@@ -23,6 +23,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 POLL_JS = Path(__file__).resolve().parent / "poll.js"
+FILE = "poll.js"   # served as js/poll.js beside the pages (#1106)
 EVERY_SECONDS = 15        # how often an open desk fetches state.json
 STALE_MINUTES = 15        # older data greys the LIVE mark (#402)
 
@@ -127,8 +128,8 @@ def trees(panels: dict[str, str]) -> dict[str, list | None]:
 
 
 def script() -> str:
-    """poll.js with its settings and the allow lists filled in: exactly what goes between
-    <script> and </script>, so its hash is the one the page's CSP names."""
+    """poll.js with its settings and the allow lists filled in: exactly what generate.py writes
+    to js/poll.js, so its hash is the one the page's CSP names."""
     allow = {"tags": {t: 1 for t in sorted(TAGS)}, "svg": {t: 1 for t in sorted(SVG_TAGS)},
              "attrs": {a: 1 for a in sorted(ATTRS)}}
     js = (POLL_JS.read_text(encoding="utf-8")
@@ -136,21 +137,19 @@ def script() -> str:
           .replace("/*SAFE_URL*/null", "new RegExp(" + json.dumps(SAFE_URL) + ")")
           .replace("/*EVERY*/0", str(EVERY_SECONDS * 1000))
           .replace("/*STALE*/0", str(STALE_MINUTES * 60 * 1000)))
-    if "</" in js:
-        raise ValueError("poll.js can't contain '</'")
     return js
 
 
 def script_hash(js: str) -> str:
-    """The CSP source for an inline script: 'sha256-<base64 digest>'."""
+    """The CSP source for a script: 'sha256-<base64 digest>'."""
     return "'sha256-" + base64.b64encode(hashlib.sha256(js.encode("utf-8")).digest()).decode() + "'"
 
 
 def csp(js: str | None) -> str:
     """The page's Content-Security-Policy: same-origin fonts and fetches, inline styles
-    (the page's <style> and the precedent table's cell shading), and no script but the one
-    whose hash is given."""
-    scripts = script_hash(js) if js else "'none'"
+    (the page's <style> and the precedent table's cell shading), and no script but the
+    same-origin one whose hash is given (#1106)."""
+    scripts = f"'self' {script_hash(js)}" if js else "'none'"
     return ("default-src 'none'; "
             f"script-src {scripts}; "
             "style-src 'unsafe-inline'; "

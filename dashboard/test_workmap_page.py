@@ -40,9 +40,10 @@ def json_block(page: str) -> dict:
 class PageTest(unittest.TestCase):
     def test_one_script_allowed_by_its_hash(self):
         page = wp.page(model(), "t", "")
-        scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
-        self.assertEqual(scripts, [wp.script()])
-        self.assertIn(f"script-src {live.script_hash(wp.script())};", page)
+        scripts = re.findall(r"<script(?! type=\"application/json\")[^>]*>.*?</script>", page, re.S)
+        h = live.script_hash(wp.script())
+        self.assertEqual(scripts, [f'<script src="js/workmap.js" integrity="{h[1:-1]}"></script>'])
+        self.assertIn(f"script-src 'self' {h};", page)
         self.assertNotIn("data-built-at", page)   # no live refresh: that's the desk's
 
     def test_script_builds_nodes_without_html_parsing(self):

@@ -360,7 +360,7 @@ class CommitteeTest(Fixture):
         self.assertIn("<h2>Past committees</h2>", pages["decisions.html"])   # it ended
         # The Work map shows cost per issue by design (GOV-0049); test_workmap_page checks it.
         page = "".join(v for k, v in pages.items() if k != workmap_page.FILE)
-        self.assertNotIn("<script", page.replace(f"<script>{live.script()}</script>", "").lower())
+        self.assertNotIn("<script", page.replace(g.layout.script_tag(live.FILE, live.script()), "").lower())
         for text in (repr(model), page):
             self.assertNotIn("2.89", text)
             self.assertNotIn("Cost", text)

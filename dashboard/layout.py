@@ -6,14 +6,16 @@ static/fonts/LICENSE.txt), self-hosted: generate.py copies them beside the pages
 public page loads nothing from a third party. Only the Latin-1 subset of the four faces the
 CSS uses is shipped; other characters (arrows, for one) fall back to the system font.
 
-Stdlib only. Every page carries a Content-Security-Policy. Two pages carry a script, each
-allowed by its hash alone: the desk's live refresh (live.py, #411, option 2 of #396) and the
-Work map's treemap (workmap.js, #1082).
+Stdlib only. Every page carries a Content-Security-Policy. Two pages load a script, each a
+same-origin file in js/ beside the pages (#1106, option 3 of #1102) that the CSP allows by its
+hash and the <script> tag pins with the same hash as its integrity: the desk's live refresh
+(live.py, #411) and the Work map's treemap (workmap.js, #1082).
 """
 from __future__ import annotations
 
 import datetime as dt
 import html
+import re
 import shutil
 from pathlib import Path
 
@@ -21,6 +23,8 @@ import live
 
 FONTS_SRC = Path(__file__).resolve().parent / "static" / "fonts"
 FONTS_DIR = "fonts"          # beside the pages, so the pages link fonts/<file>
+JS_DIR = "js"                # beside the pages, so the pages load js/<file> (#1106)
+SCRIPT_NAME = re.compile(r"[a-z][a-z0-9_-]*\.js")
 REFRESH_SECONDS = 300        # an open page reloads itself, script or not (#351); the desk also polls (#411)
 
 # (family, weight, file). Only the faces the CSS below uses.
@@ -456,16 +460,17 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "") -> st
 
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
-         live_refresh: bool = False, script: str | None = None) -> str:
+         live_refresh: bool = False, script: tuple[str, str] | None = None) -> str:
     """One whole page in the shared shell: head (noindex, CSP, refresh, CSS), masthead (#402),
-    the body, and the footer linking every page. With `live_refresh`, the page also carries the
-    live refresh script, which polls state.json (#411); only the desk does. `script` is another
-    page's own inline script (the Work map's, #1082); the CSP allows it by its hash."""
+    the body, and the footer linking every page. With `live_refresh`, the page also loads the
+    live refresh script, js/poll.js, which polls state.json (#411); only the desk does. `script`
+    is another page's own script as (file name, text), e.g. the Work map's (#1082). The page
+    loads it from js/ (write_scripts puts it there) and the CSP allows it by its hash."""
     built_at = built.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if live_refresh else None
     name = dict(PAGES)[current]
-    js = live.script() if built_at else script
-    if js is not None and "</" in js:
-        raise ValueError("an inline script can't contain '</'")
+    if built_at:
+        script = (live.FILE, live.script())
+    js = script[1] if script else None
     box = ' data-panel="mast"' if built_at else ""
     return "\n".join(part for part in [
         '<!doctype html><html lang="en"><head><meta charset="utf-8">',
@@ -478,9 +483,32 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         f'<header class="mast"{box}>{masthead(current, repo, built, owner)}</header>',
         f"<main>{body}</main>",
         f'<footer class="foot">{nav(current)}</footer>',
-        f"<script>{js}</script>" if js else None,
+        script_tag(*script) if script else None,
         "</body></html>\n",
     ] if part is not None)
+
+
+def script_tag(file: str, js: str) -> str:
+    """The tag that loads js/<file>, pinned to its hash: the browser runs it only if the bytes it
+    fetched are the ones the page was built with."""
+    if not SCRIPT_NAME.fullmatch(file):
+        raise ValueError(f"not a script file name: {file!r}")
+    return f'<script src="{JS_DIR}/{file}" integrity="{live.script_hash(js)[1:-1]}"></script>'
+
+
+def write_scripts(out_dir: Path, scripts: dict[str, str]) -> int:
+    """Write each script (file name -> text) into out_dir/js, exactly the text a page's hash
+    names. Returns the bytes written."""
+    dest = Path(out_dir) / JS_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    size = 0
+    for file, js in scripts.items():
+        if not SCRIPT_NAME.fullmatch(file):
+            raise ValueError(f"not a script file name: {file!r}")
+        data = js.encode("utf-8")
+        (dest / file).write_bytes(data)
+        size += len(data)
+    return size
 
 
 def copy_fonts(out_dir: Path) -> int:
