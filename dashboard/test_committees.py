@@ -19,6 +19,7 @@ sys.path.insert(0, str(HERE))
 import committees as c  # noqa: E402
 import generate as g    # noqa: E402
 import live  # noqa: E402
+import workmap_page  # noqa: E402
 
 REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
@@ -357,7 +358,8 @@ class CommitteeTest(Fixture):
         pages = g.render(model)
         self.assertNotIn('class="desk"', pages["index.html"])            # it ended: no desk (#404)
         self.assertIn("<h2>Past committees</h2>", pages["decisions.html"])   # it ended
-        page = "".join(pages.values())
+        # The Work map shows cost per issue by design (GOV-0049); test_workmap_page checks it.
+        page = "".join(v for k, v in pages.items() if k != workmap_page.FILE)
         self.assertNotIn("<script", page.replace(f"<script>{live.script()}</script>", "").lower())
         for text in (repr(model), page):
             self.assertNotIn("2.89", text)

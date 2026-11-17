@@ -152,7 +152,7 @@ class DeskTest(unittest.TestCase):
         self.assertIn("couldn't be read", effort.render(model({"error": "bad"})["effort"]))
 
     def test_no_new_colours(self):
-        css = layout.CSS[layout.CSS.index("/* Effort (#1013)"):]
+        css = layout.CSS[layout.CSS.index("/* Effort (#1013)"):layout.CSS.index("/* The Work map (#1082)")]
         css = css[css.index("*/"):]
         self.assertEqual(re.findall(r"#[0-9A-Fa-f]{3,6}\b", css), [])   # only layout.py's variables
         self.assertEqual(set(re.findall(r"var\(--(\w+)\)", css)) - set(layout.PALETTE), set())

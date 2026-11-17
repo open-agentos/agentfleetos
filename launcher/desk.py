@@ -15,7 +15,7 @@ replayed event can at most cause one extra build (the reconciler's rule, GOV-002
              state.json, swaps the desk/live symlink to it, so a reader never sees half a
              build. A skipped or failed build leaves the last good desk up. generate.py's own
              allowance check (PAGE_NEEDS) still applies.
-    serves   GET and HEAD only, on 127.0.0.1:8080 by default: / (the Bridge, HOME, #1035),
+    serves   GET and HEAD only, on 127.0.0.1:8080 by default: / (the Work map, HOME, #1082),
              the pages, state.json and fonts/. Any other method is 405 and any other path 404. There is no form
              and no POST route until Google login.
     trouble  trouble_panel(report) renders `swarm trouble --json` per Goal and Area as a
@@ -45,9 +45,11 @@ GENERATE = ROOT / "dashboard" / "generate.py"
 DESK_DIR = "desk"            # under ~/.productswarm/launcher
 LIVE = "live"                # symlink to the build being served
 STATE = "state.json"
-# What / serves: the Bridge (#1035), the owner's home until M8 (#1029) and the other pages
-# catch up; the old desk stays at /index.html. A build without bridge.html falls back to it.
-HOME = "bridge.html"
+# What / serves: the Work map (#1082), which replaced the Bridge there (#1035); the Bridge stays
+# at /bridge.html and the old desk at /index.html. A build without the Work map falls back to
+# the Bridge, and one without either to the desk.
+HOME = "workmap.html"
+HOME_FALLBACKS = (HOME, "bridge.html", "index.html")
 NUDGE_FILE = "nudge"         # webhooks.NUDGE_FILE; not imported so the desk needs no db
 MIN_GAP = 120                # seconds from one build's start before a nudge starts another
 SWEEP_MINUTES = 10           # a build this often with no nudge, inside the desk's 15-min stale mark
@@ -174,7 +176,8 @@ def handle(live: Path | None, method: str, path: str) -> tuple[int, dict[str, st
         return 405, headers | {"Content-Type": "text/plain; charset=utf-8"}, b"read-only\n"
     path = path.split("?", 1)[0].split("#", 1)[0]
     if path == "/":
-        path = "/" + HOME if live is not None and (live / HOME).is_file() else "/index.html"
+        path = "/" + next((f for f in HOME_FALLBACKS if live is not None and (live / f).is_file()),
+                          "index.html")
     ctype = TYPES.get(Path(path).suffix)
     if not PATH_RE.fullmatch(path) or ctype is None:
         return 404, headers | {"Content-Type": "text/plain; charset=utf-8"}, b"not found\n"

@@ -165,25 +165,24 @@ class BuildTest(unittest.TestCase):
 class RenderTest(unittest.TestCase):
     def test_sections_in_order(self):
         html = bridge.render(bridge.build(model(), OWNER))
-        order = [html.index(x) for x in ('aria-label="Briefing"', 'aria-label="Status"', ">Decisions waiting<", ">Reports<",
+        order = [html.index(x) for x in ('aria-label="Status"', ">Decisions waiting<", ">Reports<",
                                          ">In flight<", ">Orders received<")]
         self.assertEqual(order, sorted(order))
         self.assertIn("Answer on GitHub", html)
         self.assertIn("you, via GitHub", html)
         self.assertIn("<b>Daily report, Thu 11-12.</b>", html)
-        self.assertIn("<p><b>The Desk (M3).</b> The Bridge is &lt;the&gt; front page.</p>", html)
-        self.assertNotIn("None yet today", html)
 
-    def test_an_older_briefing_says_so(self):
-        m = model()
-        m["report"]["briefing"]["day"] = NOW.date() - dt.timedelta(days=1)
-        self.assertIn("None yet today; this is the newest.", bridge.render(bridge.build(m, OWNER)))
+    def test_the_briefing_moved_to_the_work_map(self):
+        html = bridge.render(bridge.build(model(), OWNER))   # #1082: one place only
+        self.assertNotIn("Briefing", html)
+        self.assertNotIn("The Bridge is &lt;the&gt; front page.", html)
+        self.assertIn('href="workmap.html"', html)
 
     def test_empty_states(self):
         empty = {"repo": REPO, "now": NOW, "trouble": {"scopes": [], "outside": {}}, "floor": None,
                  "sessions": [], "gov": [], "report": None, "merged": [], "activity": None, "plan": None}
         html = bridge.render(bridge.build(empty, OWNER))
-        for text in ("No briefing from the lead in the last few days.", "Nothing is waiting on you.", "No reports in the last 7 days.", "No open Goal or Area.",
+        for text in ("Nothing is waiting on you.", "No reports in the last 7 days.", "No open Goal or Area.",
                      "No acts of yours in the events read.", "nothing waits on you"):
             self.assertIn(text, html)
 
@@ -194,8 +193,8 @@ class RenderTest(unittest.TestCase):
         for href in __import__("re").findall(r'href="([^"]+)"', page):
             self.assertRegex(href, r"^(https://github\.com/|[a-z]+\.html)")
 
-    def test_generate_writes_it_first_in_the_footer(self):
-        self.assertEqual(layout.PAGES[0], ("bridge.html", "Bridge"))
+    def test_generate_writes_it_second_in_the_footer(self):
+        self.assertEqual(layout.PAGES[1], ("bridge.html", "Bridge"))   # after the Work map (#1082)
         self.assertIn('<span class="here" aria-current="page">Bridge</span>', layout.nav("bridge.html"))
         self.assertIn('href="bridge.html"', layout.nav("index.html"))
 

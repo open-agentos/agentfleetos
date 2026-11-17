@@ -15,9 +15,12 @@ Reads, through `gh api` (in a swarm session that's ops/shims/gh acting as the ro
   - for every page's header (#402, activity.py): the repo's public events, 1 to 3 pages, to
     say when the owner last acted.
 
-Builds eight pages in one look (layout.py), each headed by a red LIVE mark, the build time
+Builds nine pages in one look (layout.py), each headed by a red LIVE mark, the build time
 and the owner's last act (#402), and copies the self-hosted fonts beside them:
-  - bridge.html, the Bridge (bridge.py, #926): the owner's home, read-only: status, decisions
+  - workmap.html, the Work map (workmap_page.py, #1082): a treemap of what each issue cost
+    and what it returned, from map.json's data, with the lead's Briefing under it; the live
+    Desk's home;
+  - bridge.html, the Bridge (bridge.py, #926): read-only: status, decisions
     waiting, the crew's reports, Goals and Areas in flight, and the owner's acts on GitHub;
   - commissions.html (commissions.py, #931): each open Goal and Area, grouped by what it needs
     from the owner, with a focus drawer for the one picked;
@@ -34,7 +37,8 @@ and the owner's last act (#402), and copies the self-hosted fonts beside them:
   - authority.html: the authority map, who may decide what, from governance/jurisdictions.yml
     in the checkout (authority.py, #410).
 Stdlib only. The desk carries one inline script, the live refresh (live.py, #411), per
-option 2 of gov question #396; the other pages carry none.
+option 2 of gov question #396, and the Work map one, its treemap (workmap.js); the other
+pages carry none.
 
     python3 dashboard/generate.py                 # writes dashboard/out/{index,operations,decisions,authority}.html
     python3 dashboard/generate.py --out /tmp/x/index.html --days 7 --idle-minutes 15
@@ -72,6 +76,7 @@ import reviewer_runs
 import spend
 import trends
 import wire
+import workmap_page
 
 HERE = Path(__file__).resolve().parent
 
@@ -874,6 +879,11 @@ def render_decisions(m: dict) -> str:
     return layout.page("decisions.html", TITLE, repo, now, "\n".join(o for o in out if o), owner_line(m))
 
 
+def render_workmap(m: dict) -> str:
+    """workmap.html: the Work map, the live Desk's home (#1082)."""
+    return workmap_page.page(m, TITLE, owner_line(m))
+
+
 def render_bridge(m: dict) -> str:
     """bridge.html: the Bridge, the owner's "v5 · the bridge" home, read-only (#926)."""
     return bridge.page(m, committees.owner_login(), TITLE, owner_line(m))
@@ -904,7 +914,7 @@ def render_authority(m: dict) -> str:
 
 def render(m: dict) -> dict[str, str]:
     """Every page, by file name, in layout.PAGES order."""
-    pages = {"bridge.html": render_bridge, "commissions.html": render_commissions,
+    pages = {"workmap.html": render_workmap, "bridge.html": render_bridge, "commissions.html": render_commissions,
              "agents.html": render_agents, "index.html": render_desk, "effort.html": render_effort, "operations.html": render_operations,
              "decisions.html": render_decisions, "authority.html": render_authority}
     return {f: pages[f](m) for f, _ in layout.PAGES}
@@ -999,21 +1009,35 @@ def too_soon(repo: str, now: dt.datetime) -> str | None:
 STATE_FILE = "state.json"   # the page's data, written beside it (state.py, #400)
 
 
-def write_map(data: dict, model: dict, now: dt.datetime, out_dir: Path, days: int = DAYS,
-              fetch_prs=None) -> str:
-    """The Work map's data, map.json, beside the pages (workmap.py, #1081): cost per issue,
-    which GOV-0049 lets both Desks publish, never a total (GOV-0033). It reuses this build's
-    data and adds one PR search. If that fails, no map.json is written and the pages still are."""
+def map_data(data: dict, model: dict, now: dt.datetime, days: int = DAYS,
+             fetch_prs=None) -> dict:
+    """The Work map's data (workmap.py, #1081): {"desk": map.json's dict} or {"error": why}.
+    Cost per issue, which GOV-0049 lets both Desks publish, never a total (GOV-0033). It reuses
+    this build's data and adds one PR search."""
     import workmap   # here, not at the top: workmap imports this module
     try:
         since = now - dt.timedelta(days=days)
         prs = (fetch_prs or workmap.fetch_prs)(data["repo"], since)
         g = {"data": data, "model": model, "prs": prs, "effort": data.get("effort"), "since": since}
-        text = json.dumps(workmap.desk_file(g, now), indent=1) + "\n"
+        return {"desk": workmap.desk_file(g, now)}
     except (RuntimeError, OSError, subprocess.SubprocessError, ValueError) as e:
-        return f"generate.py: {workmap.FILE} not written: {e}"
-    (out_dir / workmap.FILE).write_text(text, encoding="utf-8")
+        return {"error": str(e) or type(e).__name__}
+
+
+def save_map(wm: dict, out_dir: Path) -> str:
+    """Write map_data()'s map.json beside the pages. If its read failed, none is written and the
+    pages still are (the Work map page says why)."""
+    import workmap
+    if not wm.get("desk"):
+        return f"generate.py: {workmap.FILE} not written: {wm.get('error')}"
+    (out_dir / workmap.FILE).write_text(json.dumps(wm["desk"], indent=1) + "\n", encoding="utf-8")
     return f"wrote {workmap.FILE}"
+
+
+def write_map(data: dict, model: dict, now: dt.datetime, out_dir: Path, days: int = DAYS,
+              fetch_prs=None) -> str:
+    """map_data() then save_map(): map.json beside the pages."""
+    return save_map(map_data(data, model, now, days, fetch_prs), out_dir)
 
 
 def main(argv: list[str]) -> int:
@@ -1054,12 +1078,13 @@ def main(argv: list[str]) -> int:
     data_json = json.dumps(state.state(model), indent=1) + "\n"
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    model["workmap"] = map_data(data, model, now, args.days)   # the Work map page carries it (#1082)
     pages = render(model)
     layout.copy_fonts(out.parent)   # before the pages, so a published page never lacks them
     for name, page in pages.items():
         (out if name == "index.html" else out.parent / name).write_text(page, encoding="utf-8")
     (out.parent / STATE_FILE).write_text(data_json, encoding="utf-8")   # #400
-    print(write_map(data, model, now, out.parent, args.days))
+    print(save_map(model["workmap"], out.parent))
     live = sum(s["status"] != "stopped" for s in model["sessions"])
     others = ", ".join(n for n in pages if n != "index.html")
     print(f"wrote {out}, {others}, {STATE_FILE} and {layout.FONTS_DIR}/ beside it: "
