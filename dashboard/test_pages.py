@@ -1,12 +1,12 @@
 """Where every panel went when the Desk became three pages (#1113): Map · Crew · Governance.
 
 PANELS lists every panel the seven older pages drew before #1113, by page. Each has a home on
-Crew or Governance (HOMES: its page and section) or is retired (RETIRED: where what it showed
-went, or why it went). The tests swap each panel's renderer for a marker, draw the pages from
-the fixtures the old pages' own tests used, and check that each marker lands in its home's
-section and on no other page, and that no retired panel's marker or heading is drawn anywhere.
-Governance's panels are drawn client-side (#1140, JS_HOMES): for those, the page must carry the
-state.json key the panel draws from and its section be on that page alone.
+Crew or Governance (JS_HOMES: its page and section) or is retired (RETIRED: where what it
+showed went, or why it went). Both pages are drawn client-side (Crew #1139, Governance #1140):
+for each home, the page must carry the state.json key the panel draws from and its section be
+on that page alone. The tests swap each retired panel's renderer for a marker, draw the pages
+from the fixtures the old pages' own tests used, and check that no retired panel's marker or
+heading is drawn anywhere.
 
 Run: python3 -m unittest discover -s dashboard
 """
@@ -21,14 +21,9 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import agents  # noqa: E402
-import effort  # noqa: E402
-import floor  # noqa: E402
 import generate as g  # noqa: E402
-import grants  # noqa: E402
 import plan  # noqa: E402
 import report  # noqa: E402
-import reviewer_runs  # noqa: E402
 import wire  # noqa: E402
 from test_generate import PageTest  # noqa: E402
 from test_live import desk_model  # noqa: E402
@@ -45,20 +40,16 @@ PANELS = {
     "agents.html": ("agents",),
 }
 
-# panel -> (page, section id, the renderer drawing it as (module, function), keyword arguments
-# that pick out this call). A panel's marker is "@@<panel>@@".
-HOMES = {
-    "agents": ("crew.html", "roles", (agents, "render"), {}),
-    "floor": ("crew.html", "floor", (floor, "render"), {}),
-    "sessions": ("crew.html", "sessions", (g, "session_rows"), {}),
-    "reviewer": ("crew.html", "reviewer", (reviewer_runs, "render"), {}),
-    "grants": ("crew.html", "grants", (grants, "render"), {}),
-    "effort": ("crew.html", "effort", (effort, "render"), {}),
-}
-
-# Governance's panels are drawn client-side (#1140): panel -> (page, section id, the state.json
-# key governance.js draws it from). The page must carry that key, and the section be its own.
+# Every home's panels are drawn client-side, Crew's (#1139) and Governance's (#1140): panel ->
+# (page, section id, the state.json key its script draws it from). The page must carry that
+# key in its data block, and the section be its own.
 JS_HOMES = {
+    "agents": ("crew.html", "roles", "crew_roles"),
+    "floor": ("crew.html", "floor", "floor"),
+    "sessions": ("crew.html", "sessions", "sessions"),
+    "reviewer": ("crew.html", "reviewer", "reviewer_runs"),
+    "grants": ("crew.html", "grants", "grants"),
+    "effort": ("crew.html", "effort", "effort"),
     "decision_log": ("governance.html", "rulings", "governance"),
     "gov_questions": ("governance.html", "questions", "gov_questions"),
     "committee_desk": ("governance.html", "committees", "committee_desk"),
@@ -70,6 +61,7 @@ JS_HOMES = {
     "trends": ("governance.html", "trends", "trends"),
     "questions_went": ("governance.html", "trends", "questions_went"),
 }
+DATA_IDS = {"crew.html": "crew-data", "governance.html": "gov-data"}
 
 # panel -> (where it went, a renderer to check is never drawn or None, text the old panel drew).
 RETIRED = {
@@ -104,9 +96,9 @@ class InventoryTest(unittest.TestCase):
     def test_every_panel_has_a_home_or_is_retired(self):
         panels = [p for ps in PANELS.values() for p in ps]
         self.assertEqual(len(panels), len(set(panels)))
-        self.assertEqual(sorted(panels), sorted([*HOMES, *JS_HOMES, *RETIRED]))
-        self.assertFalse((set(HOMES) | set(JS_HOMES)) & set(RETIRED))
-        for page, *_ in [*HOMES.values(), *JS_HOMES.values()]:
+        self.assertEqual(sorted(panels), sorted([*JS_HOMES, *RETIRED]))
+        self.assertFalse(set(JS_HOMES) & set(RETIRED))
+        for page, *_ in JS_HOMES.values():
             self.assertIn(page, dict(g.layout.PAGES))
 
     def test_the_old_pages_redirect(self):
@@ -118,8 +110,6 @@ class PlacementTest(unittest.TestCase):
 
     def render(self, m: dict) -> dict[str, str]:
         by_fn: dict[tuple, list] = {}
-        for panel, (_, _, (mod, fn), kw) in HOMES.items():
-            by_fn.setdefault((mod, fn), []).append((panel, kw))
         for panel, (_, renderer, _) in RETIRED.items():
             if renderer:
                 by_fn.setdefault(renderer, []).append((panel, {}))
@@ -143,23 +133,15 @@ class PlacementTest(unittest.TestCase):
 
     def check(self, m: dict):
         pages = self.render(m)
-        data = re.search(r'<script type="application/json" id="gov-data">(.*?)</script>', pages["governance.html"])
-        carried = json.loads(data.group(1))
+        carried = {f: json.loads(re.search(rf'<script type="application/json" id="{i}">(.*?)</script>', pages[f])[1])
+                   for f, i in DATA_IDS.items()}
         for panel, (home, anchor, key) in JS_HOMES.items():
             with self.subTest(panel):
                 self.assertIn(anchor, sections(pages[home]), f"{panel}: no {home}#{anchor}")
-                self.assertIn(key, carried, f"{panel}: {home} doesn't carry {key}")
+                self.assertIn(key, carried[home], f"{panel}: {home} doesn't carry {key}")
                 for f, _ in g.layout.PAGES:
                     if f != home:
                         self.assertNotIn(f'id="{anchor}"', pages[f], f"{panel}'s section also on {f}")
-        for panel, (home, anchor, *_) in HOMES.items():
-            with self.subTest(panel):
-                self.assertIn(marker(panel), sections(pages[home]).get(anchor, ""), f"{panel} not in {home}#{anchor}")
-                # On no other of the three pages. (effort.html, Crew's drill-down, repeats the
-                # Effort panel's empty state when there's no cache to drill into.)
-                for f, _ in g.layout.PAGES:
-                    if f != home:
-                        self.assertNotIn(marker(panel), pages[f], f"{panel} also on {f}")
         for panel, (_, _, old) in RETIRED.items():
             with self.subTest(panel):
                 for name, page in pages.items():

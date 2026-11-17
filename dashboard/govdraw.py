@@ -1,4 +1,4 @@
-"""Test helper (#1140): run governance.js in node against a fake DOM and read back what it drew.
+"""Test helper (#1140): run governance.js (or crew.js, #1139) in node against a fake DOM and read back what it drew.
 
 Governance's panels are drawn client-side, so their tests give the script the data the page
 carries (govpage.data(), the same slice of state.json) and check the markup it builds. The fake
@@ -47,7 +47,7 @@ function html(n) {
   if (VOID.has(n.tag)) { return `<${n.tag}${a}>`; }
   return `<${n.tag}${a}>${n.children.map(html).join("")}</${n.tag}>`;
 }
-const SECTIONS = ["rulings", "questions", "committees", "authority", "precedent", "trends"];
+const SECTIONS = c.sections;
 const sections = {};
 for (const s of SECTIONS) { sections[s] = el("section"); sections[s].children.push({ text: "static" }); }
 const block = { textContent: JSON.stringify(c.data) };
@@ -59,7 +59,7 @@ global.document = {
   hidden: false,
   createElement: (t) => el(t), createElementNS: (ns, t) => el(t, ns),
   createTextNode: (t) => ({ text: t }), createDocumentFragment: () => Object.assign(el("#frag"), { frag: true }),
-  getElementById: (id) => id === "gov-data" ? block : sections[id] || null,
+  getElementById: (id) => id === c.data_id ? block : sections[id] || null,
   querySelector: (q) => q === 'header.mast [data-panel="mast"]' ? mast : null,
   querySelectorAll: (q) => q === "header.mast .live" ? mast.children.filter((x) => x.classes && x.attrs.class === "live") : [],
 };
@@ -87,16 +87,19 @@ function dump() {
 """
 
 
-def run(data: dict, served: dict | None = None, clock: str | None = None, advance_ms: int = 15000) -> dict:
-    """What governance.js drew from `data` (`first`), and, when `served` is given, after one
-    poll that fetched it (`after`), with the URLs it `fetched`."""
+def run(data: dict, served: dict | None = None, clock: str | None = None, advance_ms: int = 15000,
+        page=govpage) -> dict:
+    """What `page`'s script (governance.js, or crewpage's crew.js) drew from `data` (`first`),
+    and, when `served` is given, after one poll that fetched it (`after`), with the URLs it
+    `fetched`."""
     with tempfile.TemporaryDirectory() as d:
-        (Path(d) / "governance.js").write_text(govpage.script(), encoding="utf-8")
+        (Path(d) / "page.js").write_text(page.script(), encoding="utf-8")
         (Path(d) / "harness.js").write_text(HARNESS, encoding="utf-8")
         case = {"data": data, "served": served, "advance_ms": advance_ms,
+                "sections": list(page.SECTIONS), "data_id": page.DATA_ID,
                 "clock": clock or data.get("built_at") or "2026-11-05T10:00:00Z"}
         (Path(d) / "case.json").write_text(json.dumps(case), encoding="utf-8")
-        r = subprocess.run([NODE, str(Path(d) / "harness.js"), str(Path(d) / "governance.js"),
+        r = subprocess.run([NODE, str(Path(d) / "harness.js"), str(Path(d) / "page.js"),
                             str(Path(d) / "case.json")], capture_output=True, text=True, timeout=30)
     if r.returncode:
         raise RuntimeError(r.stderr)

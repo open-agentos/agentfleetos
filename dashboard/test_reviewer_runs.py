@@ -12,8 +12,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import crewdraw  # noqa: E402
 import generate as g  # noqa: E402
 import reviewer_runs as rr  # noqa: E402
+import state  # noqa: E402
 
 REPO = "open-agentos/agentfleetos"
 NOW = dt.datetime(2026, 11, 4, 12, 0, tzinfo=dt.timezone.utc)
@@ -48,7 +50,12 @@ def model(runs, jobs, reviews=None, commits=None, unreviewed=()):
 
 
 def page(m):
-    return rr.render(m, REPO, NOW, g.ago, g.stamp)
+    """The section as crew.js draws it from state.json's `reviewer_runs` (#1139)."""
+    d = crewdraw.base(repo=REPO, built_at=g.rfc3339(NOW), reviewer_runs=state.plain(state.reviewer_runs(m)))
+    return crewdraw.draw(d)["reviewer"]
+
+
+needs_node = unittest.skipUnless(crewdraw.NODE, "node isn't installed")
 
 
 class StartedByTest(unittest.TestCase):
@@ -63,6 +70,7 @@ class StartedByTest(unittest.TestCase):
         self.assertEqual(rr.started_by(r), "manual (mattmcalister)")
 
 
+@needs_node
 class SweepTest(unittest.TestCase):
     def test_reviewed_jobs_and_nothing_to_review(self):
         m = model([run(1, minutes_ago=20), run(2, minutes_ago=5)],
@@ -91,6 +99,7 @@ class SweepTest(unittest.TestCase):
         self.assertNotIn("nothing to review", html)
 
 
+@needs_node
 class TimeTest(unittest.TestCase):
     def test_commit_to_review_median_and_longest(self):
         reviews = {7: [review(A, 50), review(A, 10)],    # second review of A doesn't count again
@@ -123,7 +132,9 @@ class TimeTest(unittest.TestCase):
         self.assertIn("no reviewer reviews in the window", page(m))
 
     def test_duration(self):
-        self.assertEqual([rr.duration(s) for s in (5, 120, 3720, 90000)], ["5s", "2m", "1h 2m", "1d 1h"])
+        for secs, words in ((5, "5s"), (120, "2m"), (3720, "1h 2m"), (90000, "1d 1h")):
+            m = model([], {}, {7: [review(A, 1)]}, {7: [commit(A, 1 + secs / 60)]})
+            self.assertIn(f"median {words}, longest {words}", page(m))
 
 
 FAKE_GH = r"""#!/usr/bin/env python3
@@ -207,17 +218,21 @@ class FetchTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             rr._gh(f"repos/{REPO}/actions/runs/1/logs", ".", False)
 
+    @needs_node
     def test_token_without_actions_read_degrades(self):
         out, _ = self.fetch({"error": "gh: Resource not accessible by integration (HTTP 403)"})
         self.assertEqual(out, {"error": rr.NO_ACTIONS})
         html = page(rr.build(out, [], NOW))
-        self.assertIn("can&#x27;t read Actions runs: the token needs `actions: read`", html)
+        self.assertIn("can't read Actions runs: the token needs `actions: read`", html)
         self.assertIn("0 builder PRs with no reviewer review", html)
 
     def test_page_still_builds_without_actions(self):
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": [],
                      "actions": {"error": rr.NO_ACTIONS}}, NOW, dt.timedelta(minutes=15))
-        html = g.render(m)["crew.html"]
+        self.assertIn('<section class="sec" id="reviewer"></section>', g.render(m)["crew.html"])
+        if not crewdraw.NODE:
+            return
+        html = crewdraw.page(m)
         self.assertIn("<h2>Actions reviewer</h2>", html)
         self.assertIn("actions: read", html)
         self.assertNotIn("cost", html.split("<h2>Actions reviewer</h2>")[1].split("<h2>")[0]

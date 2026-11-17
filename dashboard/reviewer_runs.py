@@ -9,12 +9,12 @@ Reads only run, job, review and commit metadata. It never fetches job logs: GOV-
 `total_cost_usd` in them, and #348 keeps cost off the page. Without `actions: read` the
 section says so in one line and the rest of the page still builds.
 
-generate.py fetches the data and calls build() and render(). Stdlib only, no JavaScript.
+generate.py fetches the data and calls build(); state.json carries it and crew.js draws it
+(#1139). Stdlib only.
 """
 from __future__ import annotations
 
 import datetime as dt
-import html
 import json
 import statistics
 import subprocess
@@ -195,77 +195,3 @@ def build(data: dict | None, unreviewed_prs: list[dict], now: dt.datetime) -> di
             "times": times, "times_error": data.get("times_error"),
             "median": statistics.median(secs) if secs else None,
             "longest": max(times, key=lambda t: t["seconds"]) if times else None}
-
-
-# ---------------------------------------------------------------- rendering
-
-def esc(x) -> str:
-    return html.escape("" if x is None else str(x))
-
-
-def duration(seconds: float) -> str:
-    s = int(seconds)
-    d, h, mi = s // 86400, s % 86400 // 3600, s % 3600 // 60
-    if d:
-        return f"{d}d {h}h"
-    if h:
-        return f"{h}h {mi}m"
-    return f"{mi}m" if mi else f"{s}s"
-
-
-def render(r: dict, repo: str, now: dt.datetime, ago, stamp) -> str:
-    def pr_link(n, head=None):
-        label = f"#{n}" + (f" <code>{esc(head[:7])}</code>" if head else "")
-        return f'<a href="https://github.com/{esc(repo)}/pull/{n}">{label}</a>'
-
-    out = ["<h2>Actions reviewer</h2>"]
-    unrev = r["unreviewed"]
-    unrev_line = (f"{len(unrev)} builder PR{'s' if len(unrev) != 1 else ''} with no reviewer review "
-                  f"at {'their' if len(unrev) != 1 else 'its'} head"
-                  + (": " + ", ".join(pr_link(p["number"]) for p in unrev) if unrev else "")
-                  + " (also in Needs you).")
-    if r.get("error"):
-        out.append(f'<p class="muted">{esc(r["error"])}</p><p>{unrev_line}</p>')
-        return "\n".join(out)
-
-    days = r["window_days"]
-    rate = f"{r['jobs_ok']} of {r['jobs_done']} review jobs succeeded in the last {days} days"
-    if r["failed"]:
-        rate += ". Failed: " + ", ".join(
-            f'<a href="{esc(j["url"])}">#{j["pr"]} <code>{esc(j["head"][:7])}</code></a> '
-            f'({esc(j["outcome"])})' for j in r["failed"])
-    if r.get("times_error"):
-        times = f'<span class="muted">Commit to review: {esc(r["times_error"])}</span>'
-    elif r["times"]:
-        lg = r["longest"]
-        times = (f"Commit to review: median {duration(r['median'])}, longest {duration(lg['seconds'])} "
-                 f"({pr_link(lg['pr'], lg['head'])}), over {len(r['times'])} reviewed heads.")
-    else:
-        times = '<span class="muted">Commit to review: no reviewer reviews in the window.</span>'
-    out.append(f"<p>{rate}.<br>{times}<br>{unrev_line}</p>")
-
-    if not r["sweeps"]:
-        out.append(f'<p class="muted">No reviewer sweeps in the last {days} days.</p>')
-    else:
-        rows = []
-        for s in r["sweeps"]:
-            if s["reviewed"]:
-                what = "<br>".join(f"{pr_link(j['pr'], j['head'])} "
-                                   + (f'<a href="{esc(j["url"])}">{esc(j["outcome"])}</a>'
-                                      if j["url"] else esc(j["outcome"]))
-                                   for j in s["reviewed"])
-            else:
-                what = ('<span class="muted">nothing to review</span>'
-                        if s["outcome"] == "success" else '<span class="muted">no review jobs</span>')
-            rows.append(f"<tr><td title=\"{esc(stamp(s['ts']))}\">{esc(ago(s['ts'], now))}</td>"
-                        f"<td>{esc(s['started_by'])}</td>"
-                        f"<td><a href=\"{esc(s['url'])}\">{esc(s['outcome'])}</a></td>"
-                        f"<td>{what}</td></tr>")
-        out.append(f'<details><summary>{len(r["sweeps"])} sweeps in the last {days} days '
-                   f'(newest {MAX_RUNS} at most)</summary><div class="scroll"><table>'
-                   "<tr><th>Started</th><th>How</th><th>Sweep</th><th>Reviewed</th></tr>"
-                   f'{"".join(rows)}</table></div></details>')
-    out.append('<p class="muted method">Commit to review runs from the reviewed commit\'s committer '
-               "date (GitHub doesn't give push time) to the reviewer App's first review of that "
-               "commit. No cost is shown, and no job logs are read.</p>")
-    return "\n".join(out)
