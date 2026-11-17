@@ -1,0 +1,52 @@
+# Close a merged PR's linked issues (GOV-0050, #1109).
+# GitHub closes a PR's `Closes #N` issues as the actor who merged it, and only if that actor
+# may write issues. The merger App holds `issues: read` (GOV-0028, GOV-0041), so when it
+# merges, the close is dropped. This job closes them right after the merge with the
+# workflow's own GITHUB_TOKEN, so the merger's key never gains an issue right.
+# pull_request_target runs this file from main, with no checkout and no PR code.
+# The planner's daily sweep (GOV-0041) stays as a backstop.
+# Committed by the owner: the Apps have no `workflows` permission (#32).
+name: Close linked issues
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  close:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      issues: write          # close the linked issues
+      pull-requests: read    # read the PR's closing references
+    steps:
+      - name: Close still-open closing issues in this repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.event.repository.owner.login }}
+          NAME: ${{ github.event.repository.name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Give GitHub a moment to close them itself (owner merges), then read what's left.
+          sleep 10
+          issues=$(gh api graphql \
+            -f query='query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){closingIssuesReferences(first:50){nodes{number state repository{nameWithOwner}}}}}}' \
+            -f owner="$OWNER" -f name="$NAME" -F pr="$PR" \
+            --jq ".data.repository.pullRequest.closingIssuesReferences.nodes[]
+                  | select(.state == \"OPEN\" and .repository.nameWithOwner == \"$REPO\") | .number")
+          if [ -z "$issues" ]; then
+            echo "No open closing issues left for #$PR."
+            exit 0
+          fi
+          for n in $issues; do
+            gh issue close "$n" --repo "$REPO" --reason completed \
+              --comment "Closed by #$PR, which merged. GitHub drops this close when the merger App merges (GOV-0050)."
+            echo "Closed #$n"
+          done
