@@ -20,6 +20,23 @@ import committees as c  # noqa: E402
 import generate as g    # noqa: E402
 import live  # noqa: E402
 import workmap_page  # noqa: E402
+import govdraw  # noqa: E402
+import govpage  # noqa: E402
+
+
+def drawn(m, rulings=None) -> str:
+    """Governance's #committees as governance.js draws a committees model (#1140)."""
+    return govdraw.draw(govdraw.base(committee_views=c.views(m, REPO), committee_desk=c.desk_states(m),
+                                     past_committees=c.past_states(m, rulings or {}, REPO)))["committees"]
+
+
+def gov_drawn(model) -> str:
+    """Every Governance section as governance.js draws a generate.build() model."""
+    return "".join(govdraw.draw(govdraw.page_data(model)).values())
+
+
+def rulings(m) -> dict:
+    return {r["id"]: r["ruling"] for r in m["governance"]["all_records"]}
 
 REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
@@ -356,11 +373,16 @@ class CommitteeTest(Fixture):
         model = g.build(data, now, dt.timedelta(minutes=15))
         self.assertEqual(model["committees"]["committees"][0]["status"], "record GOV-0021")
         pages = g.render(model)
-        self.assertNotIn('class="desk"', pages["governance.html"])        # it ended: no desk (#404)
-        self.assertIn("<h2>Past committees</h2>", pages["governance.html"])   # it ended
+        gov = gov_drawn(model)
+        self.assertNotIn('class="desk"', gov)        # it ended: no desk (#404)
+        self.assertIn("<h2>Past committees</h2>", gov)   # it ended
         # The Work map shows cost per issue by design (GOV-0049); test_workmap_page checks it.
-        page = "".join(v for k, v in pages.items() if k != workmap_page.FILE)
-        self.assertNotIn("<script", page.replace(g.layout.script_tag(live.FILE, live.script()), "").lower())
+        page = "".join(v for k, v in pages.items() if k != workmap_page.FILE) + gov
+        for allowed in (g.layout.script_tag(live.FILE, live.script()),
+                        g.layout.script_tag(govpage.JS.name, govpage.script()),
+                        f'<script type="application/json" id="{govpage.DATA_ID}">'):
+            page = page.replace(allowed, "")
+        self.assertNotIn("<script", page.lower())
         for text in (repr(model), page):
             self.assertNotIn("2.89", text)
             self.assertNotIn("Cost", text)
@@ -378,11 +400,11 @@ class CommitteeTest(Fixture):
 
 class RenderTest(Fixture):
     def page(self, discussions, questions=None, notes=None):
-        return c.render(self.build(discussions, questions, notes), REPO)
+        return drawn(self.build(discussions, questions, notes))
 
     def test_314_with_311(self):
         html = self.page([discussion()])
-        self.assertIn("<details><summary>1 ended</summary>", html)    # record merged: collapsed
+        self.assertIn("<details><summary>Round grids of the 1 ended committee</summary>", html)   # record merged
         self.assertIn("No open committees.", html)
         self.assertIn(f'<a href="{QURL}">#311</a>', html)               # no title in the canned issue
         self.assertIn(f'<a href="{DURL}">#314</a>', html)
@@ -457,20 +479,21 @@ class RenderTest(Fixture):
 
     def test_cant_read_discussions(self):
         html = self.page([], notes=[c.NO_ACCESS])
-        self.assertEqual(html, "<h2>Committees</h2>\n" + '<p class="muted">No open committees.</p>\n'
+        self.assertEqual(html, "<h2>Committees</h2>" + '<p class="muted">No open committees.</p>'
                          f'<p class="muted">{g.esc(c.NO_ACCESS)}</p>')
 
-    def test_no_committees_no_section(self):
-        self.assertEqual(c.render(None, REPO), "")
-        self.assertEqual(self.page([]), "")
-        self.assertEqual(self.page([], notes=["no Committees Discussion category"]), "")
+    def test_no_committees_says_so(self):
+        empty = {"open": [], "ended": [], "unparsed": [], "notes": []}
+        self.assertEqual(c.views(None, REPO), empty)
+        self.assertEqual(c.views(self.build([], notes=["no Committees Discussion category"]), REPO), empty)
+        self.assertEqual(self.page([]), '<h2>Committees</h2><p class="muted">No open committees.</p>')
         data = {"repo": REPO, "issues": [], "comments": {}, "prs": [], "reviews": {}, "committees": None}
         now = dt.datetime(2026, 11, 4, 15, 0, tzinfo=dt.timezone.utc)
         pages = g.render(g.build(data, now, dt.timedelta(minutes=15)))
         for name, page in pages.items():   # Governance keeps its #committees section (#1113)
             self.assertNotIn("Committees" if name != "governance.html" else "Past committees", page)
-        self.assertIn('<section class="sec" id="committees"><h2>Committees</h2>', pages["governance.html"])
-        self.assertIn("No open committees.", pages["governance.html"])
+        self.assertIn('<section class="sec" id="committees"></section>', pages["governance.html"])
+        self.assertIn("No open committees.", gov_drawn(g.build(data, now, dt.timedelta(minutes=15))))
 
     def test_open_committees_are_on_the_desk(self):
         # g.build reads the checkout's records, where #311 has GOV-0021: use a question without one.
@@ -480,7 +503,7 @@ class RenderTest(Fixture):
                                "questions": {9999: question(False, False)}, "notes": []}}
         now = dt.datetime(2026, 11, 4, 15, 0, tzinfo=dt.timezone.utc)
         pages = g.render(g.build(data, now, dt.timedelta(minutes=15)))
-        gov = pages["governance.html"]   # #1113: the desk and the grid, one #committees section
+        gov = gov_drawn(g.build(data, now, dt.timedelta(minutes=15)))   # #1113: one #committees section
         self.assertIn('<section class="desk">', gov)     # the desk (#404)
         self.assertEqual(gov.count("<h2>Committees</h2>"), 1)
         self.assertLess(gov.index('<section class="desk">'), gov.index('<table class="grid">'))
@@ -491,8 +514,8 @@ class RenderTest(Fixture):
         open_one = discussion(comments=[post(*POSTS_314[0])])
         (self.decisions / "GOV-0021-when.md").unlink()
         m = self.build([open_one], {311: question(False, False)}, [])
-        self.assertIn("<h2>Committees</h2>", c.render(m, REPO, part="open"))
-        self.assertEqual(c.render(m, REPO, part="ended"), "")
+        self.assertEqual(len(c.views(m, REPO)["open"]), 1)
+        self.assertEqual(c.views(m, REPO)["ended"], [])
 
 
 def posts_314(n: int, **kw) -> list[dict]:
@@ -534,7 +557,7 @@ class DeskTest(Fixture):
         self.assertIsNone(d["seats"][1]["summary"])
         self.assertEqual(d["seats"][1]["recommendation"], "Option 3, as the proposer's 3b, plus these four "
                          "amendments (3c)")
-        html = c.desk(self.open(comments), REPO)
+        html = drawn(self.open(comments))
         self.assertIn('<p class="muted">no Position section</p>', html)
         self.assertEqual(c.summary("### Position\n\n\n### Evidence\n\nx"), None)
 
@@ -547,7 +570,7 @@ class DeskTest(Fixture):
         self.assertEqual(proposer["moved_from"], "Option 3, with changes 1 and 2 (3b)")
         self.assertEqual(proposer["round"], 2)
         self.assertEqual((challenger["swing"], challenger["round"]), (None, 1))   # no round 2 post yet
-        html = c.desk(self.open(posts_314(4)), REPO)
+        html = drawn(self.open(posts_314(4)))
         self.assertIn('<div class="band"><span class="live">LIVE</span><span class="tag">Committee</span>'
                       f'<span class="q"><a href="{QURL}">#311</a></span><span>Round 2 of 3</span>'
                       '<span>waiting on challenger</span>', html)
@@ -571,7 +594,7 @@ class DeskTest(Fixture):
         third = posts_314(6) + [post(3, "proposer", 40, "**Option 3 as 3c+E**")]
         self.assertEqual(self.desk(third)["consensus"]["text"], "consensus")
         self.assertEqual(self.desk(third)["seats"][0]["moved_from"], "Option 3 as 3c")
-        html = c.desk(self.open(third), REPO)
+        html = drawn(self.open(third))
         self.assertIn('<div class="bar done"><span class="marks"><span class="on"></span>'
                       '<span class="on"></span><span class="on"></span></span><b>consensus</b></div>', html)
 
@@ -580,12 +603,12 @@ class DeskTest(Fixture):
         d = self.desk(held)
         self.assertEqual(d["consensus"]["text"], "1 of 3")                # no rise: no "converging"
         self.assertEqual((d["seats"][0]["swing"], d["seats"][0]["moved_from"]), ("held", None))
-        self.assertIn('<div class="swing">held</div>', c.desk(self.open(held), REPO))
+        self.assertIn('<div class="swing">held</div>', drawn(self.open(held)))
 
     def test_convened_with_no_posts(self):
         d = self.desk([])
         self.assertEqual((d["round"], d["waiting_on"], d["consensus"]["text"]), (1, "proposer", "0 of 3"))
-        html = c.desk(self.open([]), REPO)
+        html = drawn(self.open([]))
         self.assertEqual(html.count('<div class="reco none">no recommendation yet</div>'), 3)
         self.assertIn('<div class="when muted">up next</div>', html)
         self.assertEqual(html.count('<div class="when muted">not posted yet</div>'), 2)
@@ -594,9 +617,9 @@ class DeskTest(Fixture):
         (self.decisions / "GOV-0021-when.md").write_text('---\nid: GOV-0021\nquestion: "#311"\n---\n')
         m = self.build([discussion()])
         self.assertEqual(c.desk_states(m), [])
-        self.assertEqual(c.desk(m, REPO), "")
-        self.assertEqual(c.desk(None, REPO), "")
-        self.assertEqual(c.desk(self.build([discussion(number=400, title="chat", body="x")]), REPO), "")
+        self.assertNotIn('class="desk"', drawn(m))
+        self.assertEqual(c.desk_states(None), [])
+        self.assertEqual(c.desk_states(self.build([discussion(number=400, title="chat", body="x")])), [])
 
     def test_state_json_carries_the_desk(self):
         import json
@@ -633,7 +656,7 @@ class PastTest(Fixture):
 
     def test_314_card(self):
         m = self.model([discussion()])
-        (p,) = c.past_states(m["committees"], g.rulings(m), REPO)
+        (p,) = c.past_states(m["committees"], rulings(m), REPO)
         self.assertEqual(p["record"], {"id": "GOV-0021", "url": f"https://github.com/{REPO}/blob/main/"
                                                                   "governance/decisions/GOV-0021-when.md"})
         self.assertTrue(p["summary"].startswith("Reviewer requests changes only for a numbered block-list"))
@@ -645,7 +668,7 @@ class PastTest(Fixture):
         self.assertEqual(p["minutes"], 7)          # 14:18 to 14:25
         self.assertEqual((p["swing"], p["seats"]), (3, 3))   # every seat moved from round 1
 
-        desk = g.render(m)["governance.html"]
+        desk = gov_drawn(m)
         self.assertEqual(desk.count("<h2>Past committees</h2>"), 1)   # cards and grids merged (#1113)
         self.assertIn(f'<div class="past"><div class="rec"><a href="https://github.com/{REPO}/blob/main/'
                       'governance/decisions/GOV-0021-when.md">GOV-0021</a></div>', desk)
@@ -662,11 +685,11 @@ class PastTest(Fixture):
     def test_no_record_yet(self):
         (self.decisions / "GOV-0021-when.md").unlink()
         m = self.model([discussion()])                     # #311 closed, but no record merged
-        (p,) = c.past_states(m["committees"], g.rulings(m), REPO)
+        (p,) = c.past_states(m["committees"], rulings(m), REPO)
         self.assertIsNone(p["record"])
         self.assertIsNone(p["summary"])
         self.assertEqual(p["consensus"]["text"], "dissent: proposer")
-        desk = g.render(m)["governance.html"]
+        desk = gov_drawn(m)
         self.assertIn('<div class="rec"><span class="muted">no record yet</span></div>', desk)
         self.assertIn('<p class="muted">no ruling recorded</p>', desk)
 
@@ -674,16 +697,16 @@ class PastTest(Fixture):
         m = self.model([discussion()])
         (p,) = c.past_states(m["committees"], {}, REPO)
         self.assertIsNone(p["summary"])
-        self.assertIn("not in governance/INDEX.md yet", c.past(m["committees"], {}, REPO))
+        self.assertIn("not in governance/INDEX.md yet", drawn(m["committees"]))
 
     def test_stopped_early(self):
         agree = [post(1, "proposer", 18, "**Option 3.**"), post(1, "challenger", 21, "**Option 3**"),
                  post(1, "domain reviewer", 30, "**option 3.**")]
         m = self.model([discussion(comments=agree)])
-        (p,) = c.past_states(m["committees"], g.rulings(m), REPO)
+        (p,) = c.past_states(m["committees"], rulings(m), REPO)
         self.assertEqual(p["consensus"], {"text": "consensus after round 1", "consensus": True, "dissent": []})
         self.assertEqual((p["rounds_used"], p["stopped_early"], p["minutes"], p["swing"]), (1, True, 12, 0))
-        desk = g.render(m)["governance.html"]
+        desk = gov_drawn(m)
         self.assertIn('<div class="call">consensus after round 1</div>', desk)
         self.assertIn("<li>1 of 3 rounds · stopped early</li>", desk)
         self.assertIn("<li>swing: 0 of 3 seats changed</li>", desk)
@@ -691,9 +714,9 @@ class PastTest(Fixture):
     def test_open_committee_has_no_card(self):
         (self.decisions / "GOV-0021-when.md").unlink()
         m = self.model([discussion()], {311: question(False, False)})
-        self.assertEqual(c.past_states(m["committees"], g.rulings(m), REPO), [])
-        self.assertNotIn("Past committees", g.render(m)["governance.html"])
-        self.assertEqual(c.past(None, {}, REPO), "")
+        self.assertEqual(c.past_states(m["committees"], rulings(m), REPO), [])
+        self.assertNotIn("Past committees", gov_drawn(m))
+        self.assertEqual(c.past_states(None, {}, REPO), [])
 
     def test_state_json_carries_the_cards(self):
         import state as st

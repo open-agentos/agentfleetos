@@ -537,7 +537,7 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "", live_
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
          live_refresh: bool = False, script: tuple[str, str] | None = None,
-         libs: dict[str, bytes] | None = None) -> str:
+         libs: dict[str, bytes] | None = None, live_mast: bool = False) -> str:
     """One whole page in the shared shell: head (noindex, CSP, refresh, CSS), masthead (#402),
     the nav (Map · Crew · Governance, #1113), then the body. With `live_refresh`, the page also
     loads the live refresh script, js/poll.js, which polls state.json and redraws the page's
@@ -545,7 +545,9 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
     is another page's own script as (file name, text), e.g. the Work map's (#1082). The page
     loads it from js/ (write_scripts puts it there) and the CSP allows it by its hash. `libs` are
     vendored libraries the page loads before its own script, as layout.libs() returns them
-    (#1107): each is served from js/ too and allowed by its hash."""
+    (#1107): each is served from js/ too and allowed by its hash. With `live_mast`, the
+    masthead's changing part is a `data-panel="mast"` box for the page's own script to redraw
+    (Governance's, #1140)."""
     built_at = built.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if live_refresh else None
     name = NAMES[current]
     if built_at:
@@ -560,7 +562,7 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         f'<meta http-equiv="refresh" content="{REFRESH_SECONDS}">',
         f"<title>{esc(name)} · {esc(title)} · {esc(repo)}</title><style>{CSS}</style></head>"
         + (f'<body data-built-at="{esc(built_at)}">' if built_at else "<body>"),
-        f'<header class="mast">{masthead(current, repo, built, owner, live_box=bool(built_at))}</header>',
+        f'<header class="mast">{masthead(current, repo, built, owner, live_box=bool(built_at) or live_mast)}</header>',
         f'<nav class="top" aria-label="Pages">{nav(current)}</nav>',
         f"<main>{body}</main>",
         *(script_tag(f, b) for f, b in libs.items()),

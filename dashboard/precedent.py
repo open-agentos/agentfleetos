@@ -21,12 +21,11 @@ the Pages URL, not the API), and only the days from its build day onwards are re
 With no usable published copy, the whole window is read.
 
 Findings are templates filled from the counts (#397), never written by a model.
-Stdlib only, no JavaScript.
+Stdlib only. Governance's script draws the grid from state()'s plain fields (#1140).
 """
 from __future__ import annotations
 
 import datetime as dt
-import html
 import json
 import re
 import urllib.request
@@ -304,62 +303,12 @@ def build(data: dict | None, records: dict[str, dict], now: dt.datetime, days: i
                      "calls": data.get("calls")}}
 
 
-def esc(x) -> str:
-    return html.escape("" if x is None else str(x))
-
-
-def shade(n: int, top: int) -> str:
-    """A cell's tint: agents blue, stronger with more citations; never dark enough to hide
-    the number."""
-    if not n or not top:
-        return ""
-    return f' style="background:rgba(31,79,184,{0.08 + 0.32 * n / top:.2f})"'
-
-
-def render(p: dict | None, repo: str) -> str:
-    """The grid (records down, days across, then totals) in its own scrolling box, and the
-    findings above it."""
-    if not p:
-        return ""
-    days, counts = p["days"], p["counts"]
-    top = max((c["n"] for d in counts.values() for c in d.values()), default=0)
-    head = ("<tr><th>Record</th>"
-            + "".join(f'<th class="num" title="{d.isoformat()}">{d.strftime("%m-%d")}</th>'
-                      for d in days)
-            + '<th class="num">Total</th><th class="num">Agents</th><th class="num">Owner</th>'
-            '<th class="num">By reviewer</th></tr>')
-    rows = []
-    for r in sorted(p["records"], key=lambda r: r["id"], reverse=True):
-        mine, t = counts.get(r["id"], {}), p["totals"].get(r["id"]) or dict.fromkeys(WHO, 0)
-        cells = []
-        for d in days:
-            n = (mine.get(d.isoformat()) or {}).get("n", 0)
-            before = d < r["date"]
-            cells.append(f'<td class="num{" muted" if before or not n else ""}"{shade(n, top)}>'
-                         f'{"" if before else n or "·"}</td>')
-        quiet = " muted" if r["status"] != "in-force" else ""
-        url = f"https://github.com/{esc(repo)}/blob/main/governance/decisions/{esc(r.get('file', ''))}"
-        rows.append(f'<tr><td class="id{quiet}"><a href="{url}">{esc(r["id"])}</a></td>'
-                    + "".join(cells)
-                    + "".join(f'<td class="num">{t[k]}</td>' for k in WHO) + "</tr>")
-    note = ("A citation is a GOV-NNNN mention in an issue or PR body, comment or review, "
-            "once per text, on or after the record's date. Signature lines, tracking issues, "
-            "the digest issue and review comments on governance/ files don't count. "
-            "Days are UTC; a blank cell is before the record was made.")
-    findings_html = "".join(f"<li>{esc(f)}</li>" for f in p["findings"])
-    return "\n".join([
-        "<h2>Precedent in use</h2>",
-        f'<ul class="findings">{findings_html}</ul>',
-        f'<div class="scroll"><table class="precedent">{head}{"".join(rows)}</table></div>',
-        f'<p class="muted method">{esc(note)}</p>'])
-
-
 def state(p: dict | None) -> dict | None:
     """The block state.json carries, and the next build carries forward from."""
     if not p:
         return None
-    return {"version": p["version"], "from": p["from"], "counts": p["counts"],
+    return {"version": p["version"], "from": p["from"], "days": p["days"], "counts": p["counts"],
             "totals": p["totals"], "findings": p["findings"],
-            "records": [{"id": r["id"], "date": r["date"], "status": r["status"]}
+            "records": [{"id": r["id"], "date": r["date"], "status": r["status"], "file": r.get("file", "")}
                         for r in p["records"]],
             "read": p["read"]}

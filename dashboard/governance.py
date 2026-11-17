@@ -8,12 +8,12 @@ Three parts, all from public repo data:
     Governance question template's body and the issue's labels;
   - lapsed questions (`gov:lapsed`), open, or closed within the page's window.
 
-generate.py fetches the data and calls build(), rulings() and questions(). Stdlib only, no JavaScript.
+generate.py fetches the data and calls build(); Governance's script draws its plain fields from
+state.json (#1140).
 """
 from __future__ import annotations
 
 import datetime as dt
-import html
 import re
 from collections import Counter
 from pathlib import Path
@@ -184,121 +184,3 @@ def build(index_text: str | None, gov: list[dict], issues: list[dict], now: dt.d
             "questions": questions,
             "by_shape": counts(questions, "shape"), "by_domain": counts(questions, "domain"),
             "lapsed": lapsed(issues, since, parse_ts, time_to_live)}
-
-
-# ---------------------------------------------------------------- rendering
-
-NONE = '<span class="muted">none</span>'
-DASH = '<span class="muted">—</span>'
-
-
-def esc(x) -> str:
-    return html.escape("" if x is None else str(x))
-
-
-def inline(text: str) -> str:
-    """A ruling cell: escaped, with `code` spans kept as <code>."""
-    parts = esc(text).split("`")
-    return "".join(f"<code>{p}</code>" if i % 2 else p for i, p in enumerate(parts))
-
-
-def records_html(g: dict, repo: str, full: bool = False) -> str:
-    """The records table: the RECENT newest with a line for older flagged ones, or, when
-    full, every record in INDEX.md (the decisions page's log, #401)."""
-    base = f"https://github.com/{esc(repo)}/blob/main/governance"
-    records = g["all_records"] if full else g["records"]
-    if not records:
-        why = "none" if g["index_found"] else f"{INDEX_PATH} not found"
-        return f'<p class="muted">{esc(why)}</p>'
-    rows = []
-    for r in records:
-        flag = {"passed": ' <span class="pill s-blocked">review date passed</span>'
-                          '<br><span class="muted">not precedent until re-affirmed</span>',
-                "soon": ' <span class="pill s-idle">review due soon</span>'}.get(r["flag"], "")
-        rows.append(f'<tr><td><a class="id" href="{base}/{esc(r["file"])}">{esc(r["id"])}</a></td>'
-                    f"<td>{inline(r['ruling'])}</td><td>{esc(r['domain'])}</td>"
-                    f"<td>{esc(r['shape'])}</td><td>{esc(r['status'])}</td>"
-                    f"<td>{esc(r['review_by_text'])}{flag}</td></tr>")
-    return ('<div class="scroll"><table><tr><th>Record</th><th>Ruling</th><th>Domain</th>'
-            f'<th>Shape</th><th>Status</th><th>Review by</th></tr>{"".join(rows)}</table></div>'
-            f'{"" if full else older_html(g, base)}<p class="muted"><a href="https://github.com/{esc(repo)}/blob/main/{INDEX_PATH}">'
-            "Full index</a></p>")
-
-
-def older_html(g: dict, base: str) -> str:
-    """One line naming older records whose review date has passed or is due soon."""
-    if not g["older_flagged"]:
-        return ""
-    words = {"passed": "review date passed", "soon": "review due"}
-    bits = [f'<a href="{base}/{esc(r["file"])}">{esc(r["id"])}</a> '
-            f'({words[r["flag"]]} {esc(r["review_by"])})' for r in g["older_flagged"]]
-    return f'<p>Older records to review: {", ".join(bits)}</p>'
-
-
-def ttl_html(q: dict) -> str:
-    if q["ttl"] is None:
-        return '<span class="muted">none given</span>'
-    if q["ttl_date"] is None:
-        return f'{esc(q["ttl"])}<br><span class="muted">no date</span>'
-    if q["past_ttl"]:
-        return (f'{esc(q["ttl_date"])}<br><span class="pill s-blocked">past TTL</span>'
-                f' <span class="muted">{-q["days_left"]}d ago</span>')
-    return f'{esc(q["ttl_date"])}<br><span class="muted">{q["days_left"]}d left</span>'
-
-
-def questions_html(g: dict, now: dt.datetime, ago, stamp) -> str:
-    if not g["questions"]:
-        return '<p class="muted">None.</p>'
-
-    def line(name, pairs):
-        return f"{name}: " + ", ".join(f"{esc(k)} {n}" for k, n in pairs)
-
-    rows = []
-    for q in g["questions"]:
-        shape = (f'{esc(q["shape"])}<br><span class="muted">suggested</span>'
-                 if q["shape_suggested"] else esc(q["shape"]) if q["shape"]
-                 else DASH)
-        blocking = {True: "yes", False: "no", None: DASH}[q["blocking"]]
-        waiting = ", ".join(f"{esc(s['role'])} <code>{esc(s['session_id'][:8])}</code>"
-                            for s in q["waiting"])
-        labels = [lb for lb in q["labels"]
-                  if not lb.startswith(SHAPE_LABEL) and lb != BLOCKING_LABEL]
-        rows.append(f"<tr><td><a href=\"{esc(q['url'])}\">#{q['number']}</a> {esc(q['title'])}"
-                    + (f'<br><span class="muted">{esc(", ".join(labels))}</span>' if labels else "")
-                    + f"</td><td>{esc(q['domain']) if q['domain'] else DASH}</td>"
-                    f"<td>{shape}</td><td>{blocking}</td>"
-                    f"<td title=\"{esc(stamp(q['created_ts']))}\">{esc(ago(q['created_ts'], now))}</td>"
-                    f"<td>{ttl_html(q)}</td><td>{waiting or NONE}</td></tr>")
-    return (f'<p class="muted">{line("By shape", g["by_shape"])} · '
-            f'{line("by domain", g["by_domain"])}</p>'
-            '<div class="scroll"><table><tr><th>Question</th><th>Domain</th><th>Shape</th>'
-            '<th>Blocking</th><th>Opened</th><th>Time to live</th><th>Sessions waiting</th></tr>'
-            f'{"".join(rows)}</table></div>')
-
-
-def lapsed_html(g: dict, days: int) -> str:
-    note = ('<p class="muted">A lapsed default stands but is not precedent: the next agent '
-            "to hit the same situation asks again (GOVERNANCE.md §8).</p>")
-    if not g["lapsed"]:
-        return f'<p class="muted">None open or closed in the last {days} days.</p>'
-    items = []
-    for q in g["lapsed"]:
-        state = "open" if q["state"] == "open" else "closed"
-        ttl = f", time to live {esc(q['ttl'])}" if q["ttl"] else ", no time to live given"
-        items.append(f'<li><a href="{esc(q["url"])}">#{q["number"]}</a> {esc(q["title"])}'
-                     f' <span class="muted">({state}{ttl})</span></li>')
-    return f'<ul>{"".join(items)}</ul>{note}'
-
-
-def rulings(g: dict, repo: str) -> str:
-    """Governance's #rulings (#1113): the whole decision log from INDEX.md (#401)."""
-    return f"<h2>Rulings</h2><h3>Decision log ({len(g['all_records'])})</h3>" + records_html(g, repo, full=True)
-
-
-def questions(g: dict, now: dt.datetime, days: int, ago, stamp) -> str:
-    """Governance's #questions (#1113): open gov questions, then lapsed ones."""
-    return "\n".join([
-        "<h2>Questions</h2>",
-        f"<h3>Open gov questions ({len(g['questions'])})</h3>{questions_html(g, now, ago, stamp)}",
-        f"<h3>Lapsed questions</h3>{lapsed_html(g, days)}",
-    ])

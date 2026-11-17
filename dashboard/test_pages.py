@@ -5,11 +5,14 @@ Crew or Governance (HOMES: its page and section) or is retired (RETIRED: where w
 went, or why it went). The tests swap each panel's renderer for a marker, draw the pages from
 the fixtures the old pages' own tests used, and check that each marker lands in its home's
 section and on no other page, and that no retired panel's marker or heading is drawn anywhere.
+Governance's panels are drawn client-side (#1140, JS_HOMES): for those, the page must carry the
+state.json key the panel draws from and its section be on that page alone.
 
 Run: python3 -m unittest discover -s dashboard
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 import unittest
@@ -19,19 +22,13 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import agents  # noqa: E402
-import authority  # noqa: E402
-import committees  # noqa: E402
 import effort  # noqa: E402
 import floor  # noqa: E402
 import generate as g  # noqa: E402
-import governance  # noqa: E402
 import grants  # noqa: E402
 import plan  # noqa: E402
-import precedent  # noqa: E402
-import questions  # noqa: E402
 import report  # noqa: E402
 import reviewer_runs  # noqa: E402
-import trends  # noqa: E402
 import wire  # noqa: E402
 from test_generate import PageTest  # noqa: E402
 from test_live import desk_model  # noqa: E402
@@ -57,16 +54,21 @@ HOMES = {
     "reviewer": ("crew.html", "reviewer", (reviewer_runs, "render"), {}),
     "grants": ("crew.html", "grants", (grants, "render"), {}),
     "effort": ("crew.html", "effort", (effort, "render"), {}),
-    "decision_log": ("governance.html", "rulings", (governance, "rulings"), {}),
-    "gov_questions": ("governance.html", "questions", (governance, "questions"), {}),
-    "committee_desk": ("governance.html", "committees", (committees, "desk"), {}),
-    "committee_grids": ("governance.html", "committees", (committees, "render"), {"part": "open"}),
-    "past_committees": ("governance.html", "committees", (committees, "past"), {}),
-    "past_committee_grids": ("governance.html", "committees", (committees, "render"), {"part": "ended"}),
-    "authority_map": ("governance.html", "authority", (authority, "render"), {}),
-    "precedent": ("governance.html", "precedent", (precedent, "render"), {}),
-    "trends": ("governance.html", "trends", (trends, "render"), {}),
-    "questions_went": ("governance.html", "trends", (questions, "render_went"), {}),
+}
+
+# Governance's panels are drawn client-side (#1140): panel -> (page, section id, the state.json
+# key governance.js draws it from). The page must carry that key, and the section be its own.
+JS_HOMES = {
+    "decision_log": ("governance.html", "rulings", "governance"),
+    "gov_questions": ("governance.html", "questions", "gov_questions"),
+    "committee_desk": ("governance.html", "committees", "committee_desk"),
+    "committee_grids": ("governance.html", "committees", "committee_views"),
+    "past_committees": ("governance.html", "committees", "past_committees"),
+    "past_committee_grids": ("governance.html", "committees", "committee_views"),
+    "authority_map": ("governance.html", "authority", "authority"),
+    "precedent": ("governance.html", "precedent", "precedent"),
+    "trends": ("governance.html", "trends", "trends"),
+    "questions_went": ("governance.html", "trends", "questions_went"),
 }
 
 # panel -> (where it went, a renderer to check is never drawn or None, text the old panel drew).
@@ -94,7 +96,7 @@ def marker(panel: str) -> str:
 
 def sections(page: str) -> dict[str, str]:
     """Each top-level <section class="sec" id=...> by id."""
-    return dict(re.findall(r'<section class="sec" id="([a-z]+)">(.*?)</section>\n?(?=<section class="sec"|</main>)',
+    return dict(re.findall(r'<section class="sec" id="([a-z]+)">(.*?)</section>\n?(?=<section class="sec"|<script|</main>)',
                            page, re.S))
 
 
@@ -102,9 +104,9 @@ class InventoryTest(unittest.TestCase):
     def test_every_panel_has_a_home_or_is_retired(self):
         panels = [p for ps in PANELS.values() for p in ps]
         self.assertEqual(len(panels), len(set(panels)))
-        self.assertEqual(sorted(panels), sorted([*HOMES, *RETIRED]))
-        self.assertFalse(set(HOMES) & set(RETIRED))
-        for page, *_ in HOMES.values():
+        self.assertEqual(sorted(panels), sorted([*HOMES, *JS_HOMES, *RETIRED]))
+        self.assertFalse((set(HOMES) | set(JS_HOMES)) & set(RETIRED))
+        for page, *_ in [*HOMES.values(), *JS_HOMES.values()]:
             self.assertIn(page, dict(g.layout.PAGES))
 
     def test_the_old_pages_redirect(self):
@@ -141,6 +143,15 @@ class PlacementTest(unittest.TestCase):
 
     def check(self, m: dict):
         pages = self.render(m)
+        data = re.search(r'<script type="application/json" id="gov-data">(.*?)</script>', pages["governance.html"])
+        carried = json.loads(data.group(1))
+        for panel, (home, anchor, key) in JS_HOMES.items():
+            with self.subTest(panel):
+                self.assertIn(anchor, sections(pages[home]), f"{panel}: no {home}#{anchor}")
+                self.assertIn(key, carried, f"{panel}: {home} doesn't carry {key}")
+                for f, _ in g.layout.PAGES:
+                    if f != home:
+                        self.assertNotIn(f'id="{anchor}"', pages[f], f"{panel}'s section also on {f}")
         for panel, (home, anchor, *_) in HOMES.items():
             with self.subTest(panel):
                 self.assertIn(marker(panel), sections(pages[home]).get(anchor, ""), f"{panel} not in {home}#{anchor}")

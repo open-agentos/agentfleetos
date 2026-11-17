@@ -15,6 +15,18 @@ import generate as g  # noqa: E402
 import questions as q  # noqa: E402
 import state  # noqa: E402
 import trends as t  # noqa: E402
+import govdraw  # noqa: E402
+
+
+def gov(m) -> str:
+    """Every Governance section as governance.js draws a generate.build() model (#1140)."""
+    return "".join(govdraw.draw(govdraw.page_data(m)).values())
+
+
+def spark(tr) -> str:
+    """One trend's sparkline as governance.js draws it."""
+    return govdraw.draw(govdraw.base(trends={"days": 14, "min_count": 3, "trends": [
+        {"label": t.LABELS[tr["name"]], "sentence": "", "too_few": False, **tr}]}))["trends"]
 
 REPO = "open-agentos/agentfleetos"
 OWNER = "mattmcalister"
@@ -185,12 +197,13 @@ class RecordsTest(unittest.TestCase):
         self.assertGreaterEqual(len(q.record_dates()), 21)
 
 
+@unittest.skipUnless(govdraw.NODE, "node isn't installed")
 class SparkTest(unittest.TestCase):
     def test_gap_and_text_alternative(self):
         tr = {"name": "hours_to_decide", "series": [
             {"date": dt.date(2026, 11, 1), "value": 1.0}, {"date": dt.date(2026, 11, 2), "value": 3.0},
             {"date": dt.date(2026, 11, 3), "value": None}, {"date": dt.date(2026, 11, 4), "value": 2.5}]}
-        svg = t.spark(tr)
+        svg = spark(tr)
         self.assertEqual(svg.count("<polyline"), 1)   # days 1-2
         self.assertEqual(svg.count("<circle"), 1)     # day 4 stands alone after the gap
         self.assertIn('role="img"', svg)
@@ -201,7 +214,7 @@ class SparkTest(unittest.TestCase):
     def test_all_empty(self):
         tr = {"name": "records_per_day",
               "series": [{"date": dt.date(2026, 11, d), "value": 0} for d in (1, 2)]}
-        self.assertIn("<polyline", t.spark(tr))
+        self.assertIn("<polyline", spark(tr))
 
 
 class PageTest(unittest.TestCase):
@@ -214,7 +227,7 @@ class PageTest(unittest.TestCase):
 
     def test_desk_shows_three_sentences_with_sparklines(self):
         pages = g.render(self.model())
-        desk = pages["governance.html"]
+        desk = gov(self.model())
         self.assertIn("<h2>What the numbers say</h2>", desk)
         self.assertEqual(desk.count('<svg class="spark"'), 3)
         self.assertIn("0.3 questions per merged PR this week", desk)
@@ -223,7 +236,7 @@ class PageTest(unittest.TestCase):
     def test_no_panel_without_history(self):
         m = self.model()
         m["trends"] = None
-        self.assertNotIn("What the numbers say", g.render(m)["governance.html"])
+        self.assertNotIn("What the numbers say", gov(m))
 
     def test_state_json_has_series_and_sentences(self):
         s = json.loads(json.dumps(state.state(self.model())))["trends"]
@@ -232,6 +245,7 @@ class PageTest(unittest.TestCase):
         self.assertEqual(s["trends"][2]["series"][-1], {"date": "2026-11-05", "value": 1})
         self.assertEqual((s["days"], s["first_day"], s["min_count"]), (14, "2026-10-23", 3))
         self.assertTrue(all("sentence" in x for x in s["trends"]))
+        self.assertEqual(s["trends"][1]["label"], "Median hours to decide")
 
 
 class FetchTest(unittest.TestCase):

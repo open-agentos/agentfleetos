@@ -9,6 +9,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import authority as a  # noqa: E402
 import governance as gv  # noqa: E402
+import govdraw  # noqa: E402
+
+
+def render(model) -> str:
+    """Governance's #authority as governance.js draws authority.build()'s model (#1140)."""
+    return govdraw.draw(govdraw.base(authority=model, repo=REPO))["authority"]
 
 REPO = "open-agentos/agentfleetos"
 TODAY = dt.date(2026, 11, 5)
@@ -120,9 +126,10 @@ class BuildTest(unittest.TestCase):
         self.assertIn("can't read governance/jurisdictions.yml", a.build("domains: |\n", [])["error"])
 
 
+@unittest.skipUnless(govdraw.NODE, "node isn't installed")
 class RenderTest(unittest.TestCase):
     def test_page(self):
-        html = a.render(a.build(YML, records()), REPO)
+        html = render(a.build(YML, records()))
         self.assertIn('<tr id="code-conventions"><td><b>code-conventions</b>', html)
         self.assertIn('<span class="w-agent" title="productswarm-builder[bot]">builder</span>', html)
         self.assertIn('<span class="w-owner" title="@someone">owner</span>', html)
@@ -133,11 +140,11 @@ class RenderTest(unittest.TestCase):
         self.assertIn("nobody: ask", html)
         self.assertIn('<a href="#rulings">2 in force</a>', html)
         self.assertIn("review date passed: GOV-0002", html)
-        self.assertIn("domains the file doesn't list: nowhere", html)
+        self.assertIn("domains the file doesn&#x27;t list: nowhere", html)
         self.assertIn("quorum of 0.5", html)
 
     def test_error_is_muted_and_nothing_guessed(self):
-        html = a.render(a.build("domains: |\n", []), REPO)
+        html = render(a.build("domains: |\n", []))
         self.assertIn('<p class="muted">can&#x27;t read governance/jurisdictions.yml', html)
         self.assertNotIn("<table", html)
 
@@ -145,7 +152,7 @@ class RenderTest(unittest.TestCase):
         text = a.JURISDICTIONS.read_text(encoding="utf-8")
         names = domain_names(text)
         self.assertGreater(len(names), 5)
-        html = a.render(a.build(text, records(gv.INDEX.read_text(encoding="utf-8"))), REPO)
+        html = render(a.build(text, records(gv.INDEX.read_text(encoding="utf-8"))))
         self.assertNotIn("can&#x27;t read", html)
         for name in names:
             self.assertIn(f'<tr id="{name}"><td><b>{name}</b>', html, f"{name} missing")

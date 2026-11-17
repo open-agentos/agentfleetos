@@ -1,8 +1,9 @@
 """The authority map: who may decide what, from governance/jurisdictions.yml (#410, part 11
 of #397).
 
-Governance's #authority section (#1113; authority.html until then), not live data, so it isn't in state.json. One row per
-domain: who decides (agents blue, owner amber), owner, ratify, vote-eligible and default
+Governance's #authority section (#1113; authority.html until then). It's reference, not live
+data, but state.json carries build()'s plain fields as `authority` so Governance's script can
+draw it (#1140). One row per domain: who decides (agents blue, owner amber), owner, ratify, vote-eligible and default
 shape, with the domain's in-force records from governance/INDEX.md (the rows the governance
 section already parses), counted and linked to the decision log (#rulings) on the same page.
 
@@ -12,7 +13,6 @@ raises ValueError, and the page says it can't read the file rather than guess.
 """
 from __future__ import annotations
 
-import html
 import re
 from pathlib import Path
 
@@ -160,64 +160,3 @@ def build(text: str | None, records: list[dict]) -> dict:
     elsewhere = sorted({r["domain"] for r in in_force if r.get("domain") not in known})
     return {"error": None, "domains": rows, "quorum": doc.get("quorum"),
             "consent_window": doc.get("consent_window"), "elsewhere": elsewhere}
-
-
-# ---------------------------------------------------------------- rendering
-
-def esc(x) -> str:
-    return html.escape("" if x is None else str(x))
-
-
-def who(i: dict) -> str:
-    title = f' title="{esc(i["login"])}"' if i["login"] else ""
-    return f'<span class="w-{i["kind"]}"{title}>{esc(i["name"])}</span>'
-
-
-def whos(items: list[dict], empty: str) -> str:
-    return ", ".join(who(i) for i in items) if items else f'<span class="muted">{esc(empty)}</span>'
-
-
-def records_cell(d: dict) -> str:
-    if not d["records"]:
-        return '<span class="muted">none</span>'
-    n = len(d["records"])
-    out = f'<a href="#rulings">{n} in force</a><br><span class="muted">{esc(", ".join(d["records"]))}</span>'
-    if d["passed"]:
-        out += (f'<br><span class="muted">review date passed: {esc(", ".join(d["passed"]))}'
-                "</span>")
-    return out
-
-
-def render(a: dict, repo: str) -> str:
-    """The page body."""
-    src = f'<a href="https://github.com/{esc(repo)}/blob/main/{JURISDICTIONS_PATH}">{JURISDICTIONS_PATH}</a>'
-    out = ["<h2>Authority map</h2>"]
-    if a.get("error"):
-        out.append(f'<p class="muted">{esc(a["error"])}</p>')
-        return "\n".join(out)
-    out.append(f'<p class="muted">Who may decide what, from {src}. '
-               '<span class="w-agent">Agents</span> in blue, the <span class="w-owner">owner</span> '
-               "in amber. Agents decide only two-way choices in their domains (GOVERNANCE.md §3); "
-               "everything else is a <code>gov:question</code>. "
-               f"Votes need a quorum of {esc(a['quorum'])} of those eligible; the consent window "
-               f"is {esc(a['consent_window'])}.</p>")
-    rows = []
-    for d in a["domains"]:
-        flags = ' <span class="pill s-stopped">always one-way</span>' if d["always_one_way"] else ""
-        notes = "".join(f'<br><span class="muted">{esc(t)}</span>'
-                        for t in (d["description"], d["note"]) if t)
-        rows.append(f'<tr id="{esc(d["name"])}"><td><b>{esc(d["name"])}</b>{flags}{notes}</td>'
-                    f'<td>{whos(d["decide"], "nobody: ask")}</td><td>{who(d["owner"])}</td>'
-                    f'<td>{whos(d["ratify"], "nobody")}</td>'
-                    f'<td>{whos(d["vote_eligible"], "—")}</td>'
-                    f'<td>{esc(d["default_shape"])}</td><td>{records_cell(d)}</td></tr>')
-    out.append('<div class="scroll"><table class="authority"><tr><th>Domain</th><th>Decides</th>'
-               "<th>Owner</th><th>Ratify</th><th>Vote-eligible</th><th>Default shape</th>"
-               f'<th>Records</th></tr>{"".join(rows)}</table></div>')
-    if a["elsewhere"]:
-        out.append(f'<p class="muted">In-force records in domains the file doesn\'t list: '
-                   f'{esc(", ".join(a["elsewhere"]))}.</p>')
-    out.append('<p class="muted">Records count as precedent only while in force and before '
-               'their review-by date (GOVERNANCE.md §6). The full log is under '
-               '<a href="#rulings">Rulings</a>.</p>')
-    return "\n".join(out)

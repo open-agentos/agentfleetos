@@ -4,22 +4,18 @@ Sentences are templates filled from numbers (#397), never written by a model, an
 direction word ("up from", "down from") only when both weeks have enough data to compare.
 Below MIN_COUNT the sentence says "too few to tell" instead of a number.
 
-Reads questions.build()'s history; makes no API calls of its own. Stdlib only, no JavaScript.
+Reads questions.build()'s history; makes no API calls of its own. Governance's script draws
+each sentence and its sparkline from build()'s plain fields in state.json (#1140).
 """
 from __future__ import annotations
 
 import datetime as dt
-import html
 import statistics
 
 # Under 3, a ratio or a median rests on one or two values: one more question or PR moves it
 # by half or more, so it says nothing about a trend. 3 is the smallest count with a middle.
 MIN_COUNT = 3
 WEEK = 7
-
-
-def esc(x) -> str:
-    return html.escape(str(x), quote=True)
 
 
 def day_text(d: dt.date) -> str:
@@ -117,7 +113,7 @@ LABELS = {"questions_per_merged_pr": "Questions per merged PR",
 
 
 def trend(name: str, sentence: str, series: list, too_few: bool = False) -> dict:
-    return {"name": name, "sentence": sentence, "too_few": too_few,
+    return {"name": name, "label": LABELS[name], "sentence": sentence, "too_few": too_few,
             "series": [{"date": d, "value": None if v is None else round(v, 2)} for d, v in series]}
 
 
@@ -126,48 +122,3 @@ def build(h: dict | None) -> dict | None:
         return None
     return {"days": h["days"], "first_day": h["start"].date(), "min_count": MIN_COUNT,
             "trends": [questions_per_pr(h), hours_to_decide(h), records_per_day(h)]}
-
-
-# ---------------------------------------------------------------- rendering
-
-W, H, PAD = 120, 24, 2
-
-
-def spark(t: dict) -> str:
-    """Inline SVG, one point per day, no axes. A day with no value (no PRs merged, nothing
-    decided) is a gap. The title and aria-label give every day's value as text."""
-    pts = t["series"]
-    vals = [p["value"] for p in pts if p["value"] is not None]
-    top = max(vals, default=0) or 1
-    step = (W - 2 * PAD) / max(len(pts) - 1, 1)
-
-    def xy(i, v):
-        return f"{PAD + i * step:.1f},{H - PAD - (v / top) * (H - 2 * PAD):.1f}"
-
-    runs, run = [], []
-    for i, p in enumerate(pts):
-        if p["value"] is None:
-            runs, run = runs + ([run] if run else []), []
-        else:
-            run.append(xy(i, p["value"]))
-    runs += [run] if run else []
-    marks = "".join(f'<polyline points="{" ".join(r)}"/>' if len(r) > 1 else
-                    f'<circle cx="{r[0].split(",")[0]}" cy="{r[0].split(",")[1]}" r="1.5"/>'
-                    for r in runs)
-    alt = (f'{LABELS[t["name"]]} by day, {day_text(pts[0]["date"])} to {day_text(pts[-1]["date"])}: '
-           + ", ".join("none" if p["value"] is None else f'{p["value"]:g}' for p in pts)) if pts else ""
-    return (f'<svg class="spark" role="img" aria-label="{esc(alt)}" width="{W}" height="{H}" '
-            f'viewBox="0 0 {W} {H}"><title>{esc(alt)}</title>{marks}</svg>')
-
-
-def render(tr: dict | None) -> str:
-    if tr is None:
-        return ""
-    items = "".join(f'<li class="{"few" if t["too_few"] else ""}">{spark(t)}'
-                    f'<span>{esc(t["sentence"])}</span></li>' for t in tr["trends"])
-    note = (f'The last {tr["days"]} days in UTC; "this week" is the last 7. Under '
-            f'{tr["min_count"]} merged PRs, decided questions or records a trend says "too few '
-            'to tell": one or two values can\'t show a direction. A question is decided when the '
-            'owner first adds gov:ruled or ready, or else when it closes.')
-    return (f'<h2>What the numbers say</h2><ul class="trends">{items}</ul>'
-            f'<p class="muted method">{esc(note)}</p>')
