@@ -32,7 +32,7 @@ The Work map may show cost per issue, priced with `dashboard/spend.py`, on both 
 ## Applies when / does not apply when
 
 - Applies when: building or changing the Work map's per-issue cost, its size options, or the public data that feeds them.
-- Does not apply when: showing session cost, daily spend, a cap, an over-cap flag or any spend total (GOV-0033 and GOV-0014 still bar these), or putting cost on another Desk page, which is a new `security` question.
+- Does not apply when: showing session cost, daily spend, a cap, an over-cap flag or any spend total, or putting cost on another Desk page, which is a new `security` question.
 
 ## Context
 
@@ -52,6 +52,6 @@ n/a. This is an authoritative decision by the owner, who confirmed option 1, the
 
 - The Work map may default to Cost on both Desks.
 - The question's recommendation said this record should also amend the "no cost" line in `dashboard/README.md` (line 156) so later panels aren't confused. That edit is left to the PR that ships the Work map, so the README stays accurate until cost is shown.
-- GOV-0014 and GOV-0033 are unchanged: no session cost, daily spend, cap, over-cap flag or totals.
+- Showing session cost, daily spend, a cap, an over-cap flag or totals is outside this ruling. Each would be a new `security` question; this record neither allows nor bars them.
 - The team accepts publishing per-issue cost in ready-made form. The owner can revert by switching the default size to Tokens.
 - Expires on 2026-12-15 (the question's time to live) unless re-affirmed.
