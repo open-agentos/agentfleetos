@@ -420,7 +420,7 @@ class OtherRolesTest(HookCase):
         self.run_as("planner", 9)
         self.gh.put("issues/9", issue(9, ("gov:question", "ready")))
         self.assertAllows()
-        self.assertEqual(self.gh.calls, [])
+        self.assertEqual(self.gh.calls, ["closing/9"])     # only the note's PR paths (#1184)
 
     def test_builder_on_its_own_answered_question_has_no_condition(self):
         self.run_as("builder", 9)
@@ -565,14 +565,14 @@ class GuardTest(HookCase):
 
     def test_stop_hook_active_allows(self):
         self.assertIsNone(self.decide(active=True))
-        self.assertEqual(self.gh.calls, [])
+        self.assertEqual(self.gh.calls, ["closing/7"])     # no done check; the note's PR paths
 
     def test_allows_after_max_blocks(self):
         for _ in range(stophook.MAX_BLOCKS):
             self.assertIsNotNone(self.decide())
         self.assertIsNone(self.decide())
         got = json.loads((self.home / "launcher" / f"{SID}.stop.json").read_text())
-        self.assertEqual(got, {"blocks": stophook.MAX_BLOCKS})
+        self.assertEqual(got, {"blocks": stophook.MAX_BLOCKS, "noted": True})   # too late to ask
 
     def test_failed_github_read_allows(self):
         self.gh.fail = True

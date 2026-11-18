@@ -61,6 +61,16 @@ missing, and Claude Code continues the run. It allows the stop:
 - if GitHub can't be read, or anything else fails: it never fails closed.
 The run's budget (GOV-0012) is what bounds spend; MAX_BLOCKS is a code value.
 
+**The session note (#1184, FEAT-14).** Once a `swarm watch` run may stop, the hook asks it,
+once, for a note: a JSON object with three short fields, tried, surprised and blocked, written
+to episodes.NOTE_FILE in its worktree (the payload's cwd), which the hook first adds to that
+repo's info/exclude so no repo can commit it. When the run next stops, the hook
+writes a note episode (episodes.py) with the run's session id, role, model, repo, issue or PR
+and the files its PR touched, scrubbed, with any field that quotes the run's prompt cut. A run
+that stops without a note, or that the hook can't ask (it has blocked MAX_BLOCKS times), gets
+an episode marked no note. One episode per run. A reviewer run in Actions isn't asked: its
+host doesn't outlive the job. Writing the note never blocks a stop past that one ask.
+
 A run in another org repo (its launcher entry's repo, #912, GOV-0036) is checked in that
 repo, and its reasons name the issue or PR as owner/name#N; the gov:questions that block it
 are looked for in this repo, where governance is.
@@ -79,6 +89,7 @@ from typing import Callable
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import episodes  # noqa: E402
 import swarm  # noqa: E402
 
 MAX_BLOCKS = 3
@@ -89,6 +100,11 @@ CHANGES = "CHANGES_REQUESTED"
 # Who starts runs this hook keeps going: `swarm watch`, and a reviewer run in Actions
 # (launcher/actions_review.py run, #215), which records its entry the same way.
 HEADLESS = ("watch", "actions")
+NOTED = ("watch",)    # runs asked for a session note (#1184); an Actions host is gone after its job
+NOTE_ASK = ("Before you stop, write your session note: a JSON object with three fields, \"tried\", "
+            "\"surprised\" and \"blocked\", each one or two sentences, or \"none\" if there is "
+            "nothing to say, to {path}. It is published in this public repo: no secrets, and don't "
+            "quote your prompt. Then stop.")
 
 
 def app_login(role: str) -> str:
@@ -406,20 +422,125 @@ def entry_for(home: Path, sid: str) -> swarm.Started | None:
     return None
 
 
-def decide(payload: dict, home: Path, repo: str | None, g: GitHub,
-           owner: Callable[[], str] = swarm.owner_login) -> dict | None:
-    """The hook's output: {"decision": "block", "reason": ...}, or None to allow the stop."""
-    if payload.get("stop_hook_active"):
+def read_state(path: Path) -> dict:
+    try:
+        d = json.loads(path.read_text())
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def prompt_of(payload: dict, e: swarm.Started) -> str:
+    """The run's prompt, to cut a note that quotes it: its opener (the transcript's first user
+    message) and its role file. Read here only; never written anywhere."""
+    parts = []
+    try:
+        with open(str(payload.get("transcript_path") or ""), encoding="utf-8") as f:
+            for line in f:
+                m = json.loads(line)
+                if m.get("type") == "user":
+                    c = (m.get("message") or {}).get("content")
+                    parts.append(c if isinstance(c, str) else " ".join(
+                        x.get("text", "") for x in c or [] if isinstance(x, dict)))
+                    break
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        parts.append((HERE.parent / "roles" / f"{e.role}.md").read_text())
+    except OSError:
+        pass
+    return "\n".join(parts)
+
+
+def touched(g: GitHub, repo: str | None, e: swarm.Started) -> list[str]:
+    """The files the run's PR touched: its PR, or the first PR that closes its issue. A run
+    that posts rather than opening a PR (a call-in, [daily], [ask]) has none."""
+    if not repo or e.called_by or e.daily or e.ask or not (e.issue or e.pr):
+        return []
+    n = e.pr or next(iter(closed_by(g, repo, e.issue)), None)
+    if not n:
+        return []
+    return [str(f.get("filename")) for f in g.items(f"repos/{repo}/pulls/{n}/files?per_page=100")
+            if f.get("filename")]
+
+
+def exclude_note(work: Path) -> None:
+    """Add episodes.NOTE_FILE to the run's repo's info/exclude, so a run in a repo whose
+    .gitignore doesn't list it (another org repo, GOV-0036) can't commit it. Best effort."""
+    try:
+        out = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=work,
+                             capture_output=True, text=True, timeout=10)
+        if out.returncode != 0 or not out.stdout.strip():
+            return
+        exclude = work / out.stdout.strip()
+        lines = exclude.read_text().splitlines() if exclude.exists() else []
+        if episodes.NOTE_FILE not in lines and f"/{episodes.NOTE_FILE}" not in lines:
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            with exclude.open("a") as f:
+                f.write(("\n" if lines and lines[-1] else "") + f"/{episodes.NOTE_FILE}\n")
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def note_step(payload: dict, home: Path, e: swarm.Started, g: GitHub, repo: str | None,
+              state_file: Path, now: Callable[[], dt.datetime]) -> dict | None:
+    """Ask the run for its note once, then record it as an episode (#1184)."""
+    state = read_state(state_file)
+    if e.by not in NOTED or state.get("noted"):
         return None
+    cwd = str(payload.get("cwd") or "")
+    path = Path(cwd) / episodes.NOTE_FILE if cwd else None
+    note = episodes.read_note(path) if path else None
+    if note is None and path and not state.get("note_asked") and int(state.get("blocks", 0)) < MAX_BLOCKS:
+        state_file.write_text(json.dumps({**state, "note_asked": True}) + "\n")
+        exclude_note(Path(cwd))
+        return {"decision": "block", "reason": NOTE_ASK.format(path=path)}
+    try:
+        paths = touched(g, repo, e)
+    except Exception as ex:   # noqa: BLE001 -- the note is still recorded, without paths
+        log(home, f"{e.session_id}: can't read the PR's files for the note: {ex!r}")
+        paths = []
+    ep = episodes.note_episode(session_id=e.session_id, role=e.role, model=e.model, repo=repo,
+                               issue=e.issue, pr=e.pr, note=note, paths=paths,
+                               prompt=prompt_of(payload, e), at=now())
+    episodes.write(episodes.outbox(home), [ep])
+    state_file.write_text(json.dumps({**state, "noted": True}) + "\n")
+    if path and note is not None:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    return None
+
+
+def decide(payload: dict, home: Path, repo: str | None, g: GitHub,
+           owner: Callable[[], str] = swarm.owner_login,
+           now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.timezone.utc)) -> dict | None:
+    """The hook's output: {"decision": "block", "reason": ...}, or None to allow the stop."""
     sid = str(payload.get("session_id") or "")
     e = entry_for(home, sid)
-    if e is None or e.by not in HEADLESS or not repo:
+    if e is None or e.by not in HEADLESS:
         return None
     work = e.repo or repo     # a run in another org repo is checked there (#912)
     count_file = home / "launcher" / f"{sid}.stop.json"
+    if not payload.get("stop_hook_active") and repo:
+        out = done_check(home, repo, work, e, g, owner, sid, count_file)
+        if out:
+            return out
     try:
-        blocks = int(json.loads(count_file.read_text()).get("blocks", 0))
-    except (OSError, ValueError, AttributeError):
+        return note_step(payload, home, e, g, work, count_file, now)
+    except Exception as ex:   # noqa: BLE001 -- never fail closed
+        log(home, f"{sid}: no note episode: {ex!r}")
+        return None
+
+
+def done_check(home: Path, repo: str, work: str, e: swarm.Started, g: GitHub,
+               owner: Callable[[], str], sid: str, count_file: Path) -> dict | None:
+    """Block the stop while the run's done-condition isn't met, at most MAX_BLOCKS times."""
+    state = read_state(count_file)
+    try:
+        blocks = int(state.get("blocks", 0))
+    except (TypeError, ValueError):
         blocks = 0
     if blocks >= MAX_BLOCKS:
         return None
@@ -430,7 +551,7 @@ def decide(payload: dict, home: Path, repo: str | None, g: GitHub,
         return None
     if not reason:
         return None
-    count_file.write_text(json.dumps({"blocks": blocks + 1}) + "\n")
+    count_file.write_text(json.dumps({**state, "blocks": blocks + 1}) + "\n")
     log(home, f"{sid}: blocked stop {blocks + 1} of {MAX_BLOCKS} on {work}: {reason}")
     return {"decision": "block", "reason": reason}
 

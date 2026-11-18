@@ -348,6 +348,9 @@ PUBLIC_FILE = "watch-public.json"   # the watch state's no-cost form, beside it 
 MAX_RETRIES = 2               # times a run that never started is started again (#550)
 WAIT_RE = re.compile(r"\bwait(?:s|ing)?\s+(?:on|for)\b([^\n]*)", re.IGNORECASE)
 BUILDER_APP = "productswarm-builder[bot]"
+EPISODES_EVERY = 3600         # seconds between episode sweeps (#1184)
+EPISODES_LOOKBACK = dt.timedelta(hours=26)   # the first sweep's window, and the longest any sweep reads
+EPISODES_OVERLAP = dt.timedelta(hours=2)     # later sweeps start this long before the last one
 
 # How a headless run ended, from the `subtype` of its --output-format json result: the
 # SDKResultMessage type in the Claude Code Agent SDK reference (#149). Any other subtype,
@@ -1810,6 +1813,9 @@ class Watch:
     clock: Callable[[], float] = time.monotonic
     nudged: int | None = None         # the nudge file's mtime when the last check started
     checked_at: float | None = None   # clock() when the last check started
+    swept_at: float | None = None     # clock() when episodes were last recorded (#1184)
+    swept_since: dt.datetime | None = None   # and the check's time then
+    sweep: Callable[..., int] | None = None   # episodes.sweep from `swarm watch` (#1184); None: no sweep
 
     def __post_init__(self) -> None:
         # Sessions in other org repos are told where governance is: this repo (#912).
@@ -2065,6 +2071,7 @@ class Watch:
         acted, before = st["acted"], {x["key"]: x for x in st["waiting"]}
         runs = self.record_ended(st["runs"], live, now, acted, w)
         self.record_ledger(runs, w)
+        self.record_episodes(now)
         limited = limit_reason(runs, now)
         if limited and not any(x.get("reason") == limited for x in st["waiting"]):
             out(f"swarm watch: a run hit the account's usage limit; {limited}, for every start (#489)")
@@ -2340,6 +2347,26 @@ class Watch:
                 ledger.set_scopes(self.launcher.dir, {**known, **read}, self.repo)
         except (RuntimeError, OSError, ValueError, sqlite3.Error) as e:
             self.once(f"swarm watch: the runs ledger couldn't be updated: {e}; trying again next check")
+
+    def record_episodes(self, now: dt.datetime) -> None:
+        """Once every EPISODES_EVERY, record the signals of the last EPISODES_LOOKBACK as
+        episodes in the outbox (#1184, episodes.py), with no model call. Episodes already
+        written aren't written again, so the windows may overlap. Not in dry-run. A failure is
+        said once and tried again next check; it never stops the tick."""
+        if (self.sweep is None or self.dry_run
+                or (self.swept_at is not None and self.clock() - self.swept_at < EPISODES_EVERY)):
+            return
+        import episodes
+        since = now - EPISODES_LOOKBACK
+        if self.swept_since is not None:      # after the first, from shortly before the last
+            since = max(since, self.swept_since - EPISODES_OVERLAP)
+        try:
+            g = swarm.dashboard()
+            self.sweep(episodes.outbox(self.launcher.home), self.launcher.dir, self.repo,
+                       self.owner, since, g.gh_json, g.gh_items)
+            self.swept_at, self.swept_since = self.clock(), now
+        except (RuntimeError, OSError, ValueError, sqlite3.Error) as e:
+            self.once(f"swarm watch: episodes couldn't be recorded: {e}; trying again next check")
 
     def never_started(self, r: dict) -> bool:
         """Whether an ended run never got as far as Claude Code (#550): no result file, or no
