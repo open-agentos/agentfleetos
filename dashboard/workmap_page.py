@@ -4,10 +4,7 @@
 issue, inside one box per group. Since #1082 it is the live Desk's home at `/` (launcher/desk.py);
 it retired the Bridge (#1114). Top to bottom:
 
-  - the title and one line saying what size, shade and the markers mean;
-  - the counts strip (strip.py, #1114): Goals and Areas flagged, decisions waiting, agents
-    working and authority used. Picking flagged or decisions waiting sets Group by to Goal and
-    outlines the matching boxes;
+  - the title (the legend under the map says what size, shade and the markers mean);
   - four controls, segmented buttons: Group by (Effort, Goal, Role, Stage), Size (Cost, Tokens,
     Lines changed), Colour (Yield, Velocity, Change) and Window (Hour, Day, Week, Month). The
     viewer's choices are kept in this browser's localStorage, if it has one;
@@ -87,8 +84,6 @@ LISTS = (   # (key, heading, one-line description, empty sentence), in reading o
      "Nothing here has gone quiet."),
     ("yield", "Best yield", "Outcomes for their size, highest first.", "Nothing here has an outcome and a size."),
 )
-KEY_LINE = ("Size is what each issue used in the window. Shade is the colour measure: darker is more. "
-            "A folded corner: spend but no outcome. An amber outline: needs you. A red left edge: blocked.")
 
 
 def script() -> str:
@@ -365,7 +360,7 @@ def memory_html(mem: dict | None, repo: str) -> str:
 def strip_data(sp: dict) -> dict:
     """The counts strip as the page's block and state.json carry it: `flagged` (Goal and Area
     numbers) and `decisions` (the map refs they are about) for the map's outline, and the counts
-    strip.strip_html() shows, so workmap.js can redraw it (#1135). Counts only (GOV-0033)."""
+    the map's outline uses (#1135). Counts only (GOV-0033)."""
     return {"flagged": sp["flagged"], "decisions": sp["decision_refs"], "scopes": sp["scopes"],
             "waiting": sp["decisions"], "oldest": sp["oldest"], "working": sp["working"],
             "agents": sp["agents"], "authority": sp["authority"],
@@ -400,14 +395,11 @@ def render(m: dict, owner: str | None = None) -> str:
     """The Work map's <main> content."""
     pd = page_data(m.get("workmap"))
     on_map = {r.get("ref") for rows in (pd.get("windows") or {}).values() for r in rows if r.get("issue") is not None}
-    sp = strip.strip(m)
     d = {**pd, "repo": m["repo"],
          **{k: v for k, v in live_data(m, owner).items() if k not in ("tape", "briefing")},
          "live": live_settings()}
     method = (f'<p class="muted method">Cost: {esc(d["method"])}</p>' if d.get("method") else "")
     return (f'<div class="br-main wm-main"><div class="br-titlebar"><h1>Work map</h1></div>'
-            f'{strip.strip_html(sp)}'
-            f'<p class="wm-keyline">{esc(KEY_LINE)}</p>'
             f'{controls_html()}'
             '<div class="wm-top"><section class="wm-mapcol" aria-label="Work map">'
             '<p class="wm-crumb" id="wm-crumb">All effort types</p>'

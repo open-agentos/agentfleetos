@@ -6,12 +6,12 @@ the owner is the Needs you list and stuck items the Blocked list (#1084), and ea
 show when it's selected (#1115). The rest is here, built from what the desk already reads, so it
 costs no API calls of its own:
 
-  - strip(): one line of counts between the masthead and the map controls: Goals and Areas
-    flagged (something under it is stuck, a criterion fails or its date is missed), decisions
+  - strip(): counts, carried in the page's data and state.json (no longer drawn on the page,
+    at the owner's request): Goals and Areas flagged (something under it is stuck, a criterion fails or its date is missed), decisions
     waiting with the oldest one's age, agents working of the live sessions, and the authority
     used in `swarm trouble`'s window. Counts only, never money (GOV-0033).
   - decisions(): what waits on the owner, each issue or PR once, oldest first, as the Bridge
-    listed it. The strip counts them; those the Needs you list doesn't already show join it.
+    listed it. Those the Needs you list doesn't already show join it.
   - tape(): at the foot of the page, newest first, at most MAX_TAPE: the daily report (flagged
     when it's late), items `swarm trouble` says are stuck, PRs a role's App merged in the last
     REPORT_DAYS days (SHIPPED, or DELIVERED for a title starting "Brief"), the owner's acts on
@@ -236,33 +236,6 @@ def memory_counts(mem: dict | None) -> dict | None:
     role, used = max(roles.items(), key=lambda kv: (kv[1], kv[0]), default=(None, 0))
     return {"used": used, "role": role, "budget": c.get("budget"), "active": c.get("active") or 0,
             "dormant": c.get("dormant") or 0}
-
-
-def strip_html(s: dict) -> str:
-    """One line of counts. The flagged and decisions counts are buttons (enabled by workmap.js)
-    that set Group by to Goal and outline the matching boxes; pressing one changes no size."""
-    f = len(s["flagged"])
-    flag_word = f'{f} of {s["scopes"]} Goals and Areas flagged'
-    dec_word = (f'{s["decisions"]} decision{"s" if s["decisions"] != 1 else ""} waiting'
-                + (f', oldest {s["oldest"]}' if s["oldest"] else ""))
-    items = [
-        f'<button type="button" class="sp-i sp-pick{" sp-red" if f else ""}" data-mark="flagged" '
-        f'aria-pressed="false" disabled>{esc(flag_word)}</button>',
-        f'<button type="button" class="sp-i sp-pick{" sp-owner" if s["decisions"] else ""}" data-mark="decisions" '
-        f'aria-pressed="false" disabled>{esc(dec_word)}</button>',
-        f'<span class="sp-i">{s["working"]} agents working of {s["agents"]} live</span>',
-        f'<span class="sp-i">{s["authority"]} uses of your authority, last {s["authority_hours"]}h</span>',
-    ]
-    mem = s.get("memory")
-    if mem and mem.get("error"):
-        items.append('<span class="sp-i sp-red">memory not read</span>')
-    elif mem:
-        items.append(f'<span class="sp-i">memory {mem["used"]} of {mem["budget"]} lessons'
-                     + (f', fullest role {esc(mem["role"])}' if mem["role"] and mem["used"] else "") + '</span>')
-        items.append(f'<span class="sp-i">{mem["dormant"]} lesson{"" if mem["dormant"] == 1 else "s"} dormant</span>')
-    err = (f'<span class="sp-i sp-red">trouble report not read: counts may be low</span>'
-           if s.get("error") else "")
-    return f'<section class="sp" aria-label="Counts">{"".join(items)}{err}</section>'
 
 
 # ---------------------------------------------------------------- the tape

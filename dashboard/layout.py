@@ -74,7 +74,7 @@ CSS = FONT_FACES + "\n:root { " + " ".join(f"--{k}:{v};" for k, v in PALETTE.ite
 html { background:var(--paper); }
 body { margin:0; padding:20px 16px 32px; background:var(--paper); color:var(--ink);
   font:15px/1.5 var(--sans); }
-main, header.mast { max-width:1100px; margin:0 auto; }
+main, header.mast, footer.foot { max-width:1100px; margin:0 auto; }
 main { overflow-wrap:anywhere; }
 header.mast { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 16px;
   border-bottom:2px solid var(--ink); padding-bottom:6px; margin-bottom:8px; }
@@ -275,11 +275,12 @@ table.authority td:first-child { min-width:200px; }
 nav.top { max-width:1100px; margin:0 auto 4px; display:flex; flex-wrap:wrap; gap:4px 18px;
   font:600 13px/1.6 var(--cond); text-transform:uppercase; letter-spacing:.06em; }
 nav.top .here { text-decoration:none; color:var(--muted); }
+footer.foot { margin-top:40px; padding-top:8px; border-top:1px solid var(--line); font-size:13px; }
 .sec { scroll-margin-top:12px; }
 /* Wide pages (#1273): page(wide=True), and every rail page, is up to 1440px wide, not 1100px,
    with a side gutter that grows with the screen (16px on a phone, 56px from 1400px). */
 body.wide { padding-inline:clamp(16px, 4vw, 56px); }
-body.wide main, body.wide header.mast, body.wide nav.top { max-width:1440px; }
+body.wide main, body.wide header.mast, body.wide nav.top, body.wide footer.foot { max-width:1440px; }
 /* The rail (#1249): a right-hand column that shows its base (the Work map's Briefing) and slides
    a drawer (the Selected panel) over it while something is selected. page(rail=True) makes the
    page wide for it; `.rail-open` on the rail opens the drawer. The covered side is visibility:hidden,
@@ -378,7 +379,6 @@ a.cm-row .br-av { align-self:flex-start; }
 svg.ef-line { display:block; max-width:100%; height:auto; fill:none; stroke:var(--agent); stroke-width:1.5; }
 svg.ef-line circle { fill:var(--agent); stroke:none; }
 /* The Work map (#1082): workmap_page.py and workmap.js. One warm ramp; markers by shape too. */
-.wm-keyline { margin:4px 0 0; font-size:14px; color:var(--muted); max-width:80ch; }
 .wm-ctls { display:flex; flex-wrap:wrap; gap:10px 22px; }
 .wm-ctl { display:flex; flex-direction:column; gap:4px; min-width:0; }
 .wm-ctl .br-kind { margin:0; }
@@ -559,17 +559,8 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-dep::before { content:""; position:absolute; inset:1px; border:1px dashed var(--ink); pointer-events:none; }
 .wm-dark.wm-dep::before { border-color:var(--paper); }
 .wm-key .wm-k-dep { outline:1px dashed var(--ink); outline-offset:-2px; }
-/* #1114: the counts strip (one line, wrapping on a phone) and the tape (a fixed-height box that
-   scrolls inside itself), which retired the Bridge. The strip's pick outlines boxes on the map. */
-.sp { display:flex; flex-wrap:wrap; gap:4px 18px; align-items:baseline; font-size:14px; line-height:28px; }
-.sp-i { white-space:nowrap; }
-.sp-pick { font:inherit; line-height:26px; padding:0 8px; border:1px solid var(--line); background:var(--card);
-  color:var(--ink); cursor:pointer; }
-.sp-pick:disabled { cursor:default; }
-.sp-pick[aria-pressed="true"] { border-color:var(--ink); background:var(--ink); color:var(--paper); }
-.sp-pick:focus-visible { outline:3px solid var(--agent); outline-offset:1px; }
+/* #1114: the tape (a fixed-height box that scrolls inside itself), which retired the Bridge. */
 .sp-red { color:var(--red); } .sp-owner { color:var(--owner); }
-.sp-pick[aria-pressed="true"].sp-red, .sp-pick[aria-pressed="true"].sp-owner { color:var(--paper); }
 .wm-box.wm-mark { outline:2px solid var(--ink); outline-offset:-6px; }
 .wm-dark.wm-mark { outline-color:var(--paper); }
 .wm-markg { position:absolute; box-sizing:border-box; border:3px solid var(--red); pointer-events:none; z-index:1; }
@@ -663,6 +654,7 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         f'<header class="mast">{masthead(current, repo, built, owner, live_box=live_mast)}</header>',
         f'<nav class="top" aria-label="Pages">{nav(current)}</nav>',
         f"<main>{body}</main>",
+        f'<footer class="foot"><a href="https://github.com/{esc(repo)}">{esc(repo)} on GitHub</a></footer>',
         *(script_tag(f, b) for f, b in libs.items()),
         script_tag(*script) if script else None,
         "</body></html>\n",
