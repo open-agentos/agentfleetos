@@ -79,9 +79,10 @@ class StateTest(unittest.TestCase):
         self.assertNotIn("$", json.dumps(self.s))   # figures, never Crew's text
 
     def test_session_fields_are_ones_the_page_renders(self):
-        # crew.js draws Crew's sessions table from these (#1139): it reads every one.
+        # crew.js draws Crew's sessions table from these (#1139): it reads every one, the
+        # table's rows and the sessions() that hides never_acted ones (#1262).
         js = crewpage.JS.read_text(encoding="utf-8")
-        seen = set(re.findall(r"\bx\.([a-z_]+)", js[js.index("function sessionRows"):js.index("function sessions(")]))
+        seen = set(re.findall(r"\bx\.([a-z_]+)", js[js.index("function sessionRows"):js.index("#reviewer (#356)")]))
         for s in self.s["sessions"]:
             self.assertLessEqual(set(s), seen)
         self.assertEqual(set(self.s["sessions"][0]), {*st.SESSION_FIELDS, "issue_title"})

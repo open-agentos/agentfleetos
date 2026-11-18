@@ -150,7 +150,7 @@ Each item has a time, a role or "owner", and a link to GitHub. Its text is a tem
 `crew.html` (#1113) is who's doing what. It opens with one row per role (planner, builder, reviewer, analyst, designer, docs) plus the merger App, grouped as **working** (a live session that's active or blocked; for the merger, a call in the last 24 hours) and **idle** (`agents.py`, from the Agents page, #932). Each row shows what the role does, what it's on now or the last PR it merged, and its merged-PR count over the build's window, and links to the role's view on the Work map (`workmap.html?group=role#role-<name>`, #1115): its record, current work, recent merges, the authority it used and how to ask it something. Then, each in a section the brief's links land on:
 
 - `#floor`: [On the floor](#on-the-floor), what each live session is doing, and [the watcher](#the-watcher);
-- `#sessions`: every live session (status, role, model, issue, PR, last activity and its own spend estimate), with stopped ones collapsed, and the [spend method](#spend);
+- `#sessions`: every live session (status, role, model, issue, PR, last activity and its own spend estimate), with stopped ones collapsed, and the [spend method](#spend). Sessions that never reported (`never_acted`, #454) aren't rows; a line under the table counts them (#1262);
 - `#reviewer`: the [Actions reviewer](#actions-reviewer)'s sweeps, success rate and commit-to-review time;
 - `#grants`: [grants in use](#grants-in-use);
 - `#effort`: [Effort](#effort), linking to `effort.html`.
@@ -256,7 +256,7 @@ Each build also writes `state.json` beside `index.html` (so `_site/state.json` o
 | `needs_you` | the needs-you list below, without over-cap items |
 | `floor` | [on the floor](#on-the-floor): `cards`, each with `session_id`, `role`, `model`, `status`, `started_ts`, `run_minutes`, `issue`, `pr`, `gov_question`, `activity` (the plain words), `events_per_slot` (six counts, oldest first) and `slots_used` (`editing`, `reading`, `commands`); and `idle`, each with `session_id`, `role` and `idle_minutes` |
 | `watcher` | [the watcher](#the-watcher): `status` (`ok`, `missing`, `not_owner`, `several` or `malformed`); when `ok`, also `issue`, `checked` (when its state last changed), `age_minutes`, `stale`, and `running`, `held`, `skipped` and `failed` with #456's fields only. No cost |
-| `sessions` | each session's `session_id`, `role`, `model`, `status`, `issue`, `pr`, `gov_question`, `last_event`, `last_ts`, `started_ts` and `tracking_issue`, and `issue_title` (#1139); its own spend estimate `cost` (USD, list-price equivalent; null when unpriced), its role's `cap` (null when none) and `over_cap` (GOV-0057) |
+| `sessions` | each session's `session_id`, `role`, `model`, `status`, `issue`, `pr`, `gov_question`, `last_event`, `last_ts`, `started_ts` and `tracking_issue`, and `issue_title` (#1139); its own spend estimate `cost` (USD, list-price equivalent; null when unpriced), its role's `cap` (null when none) and `over_cap` (GOV-0057); and `never_acted` (#454), which Crew's table hides and counts (#1262) |
 | `crew_roles` | Crew's role rows (#1139), working first: `role`, `does`, `group` (`working` or `idle`), `lead`, `badge`, `line` (what it's on, or its last merge, as text), `count` (`3 merged`, or the merger's `2 calls`) and `href` (its role view on the Work map) |
 | `prs` | open PRs: `number`, `title`, `url`, `author`, `draft`, `review`, `created_ts`, `closes`, `needs_owner` |
 | `gov_questions` | open `gov:question`s with their fields, time to live and the `session_id`s waiting on them |

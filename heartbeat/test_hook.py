@@ -30,7 +30,9 @@ if os.environ.get("FAKE_GH_FAIL"):
     print("boom", file=sys.stderr); sys.exit(1)
 a = sys.argv[1:]
 if a[:2] == ["issue", "create"]:
-    print("https://github.com/open-agentos/agentfleetos/issues/99")
+    print(os.environ.get("FAKE_GH_CREATED", "https://github.com/open-agentos/agentfleetos/issues/99"))
+elif a[:1] == ["api"]:
+    print(os.environ.get("FAKE_GH_OPEN", ""))   # open issues, one JSON line each, as --jq @json prints
 elif a[:2] == ["pr", "view"]:
     print("3")
 """
@@ -122,7 +124,9 @@ class HookTest(unittest.TestCase):
         self.assertEqual(events[0]["model"], "claude-opus-5-5")
 
         calls = self.gh_calls()
-        self.assertEqual(calls[0]["argv"][:2], ["issue", "create"])
+        self.assertEqual(calls[0]["argv"][:2], ["api", "--paginate"])   # no open one to reuse (#1262)
+        self.assertEqual(calls[1]["argv"][:2], ["issue", "create"])
+        calls = calls[1:]
         self.assertEqual(calls[0]["argv"][calls[0]["argv"].index("--title") + 1], f"[heartbeat] builder {SID}")
         self.assertIn(f"session_id={SID}", calls[0]["stdin"])
         self.assertNotIn("--label", calls[0]["argv"])
@@ -167,11 +171,44 @@ class HookTest(unittest.TestCase):
         self.run_hook("SessionStart", source="startup")
         sending = self.tmp / "home" / "outbox" / f"{SID}.sending.jsonl"
         self.assertTrue(sending.exists())
-        self.assertIn("gh issue create failed", (self.tmp / "home" / "heartbeat.log").read_text())
+        self.assertIn("failed: boom", (self.tmp / "home" / "heartbeat.log").read_text())
         del self.env["FAKE_GH_FAIL"]
         self.run_hook("SessionEnd", reason="exit")
         self.assertEqual([e["event"] for e in self.remote_events()], ["session_started", "stopped"])
         self.assertFalse(sending.exists())
+
+    def creates(self):
+        return sum(c["argv"][:2] == ["issue", "create"] for c in self.gh_calls())
+
+    def test_pre_rename_checkout_reads_the_new_url_and_creates_once(self):
+        # #1262: origin still named the old repo, `gh issue create` printed the new name's URL,
+        # and the hook couldn't read it, so each retry opened another tracking issue.
+        subprocess.run(["git", "-C", str(self.repo), "remote", "set-url", "origin",
+                        "https://github.com/open-agentos/productswarm.git"], check=True)
+        self.run_hook("SessionStart", source="startup")
+        r = subprocess.run([sys.executable, "-I", str(HOOK), "emit", "working_on", "--issue", "4"],
+                           capture_output=True, text=True, env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.run_hook("SessionEnd", reason="exit")
+        self.assertEqual(self.creates(), 1)
+        self.assertEqual([c["argv"][2] for c in self.gh_calls() if c["argv"][:2] == ["issue", "comment"]],
+                         ["99", "99", "99"])
+        self.assertEqual(self.gh_calls()[-1]["argv"][:3], ["issue", "close", "99"])
+
+    def test_an_open_tracking_issue_for_the_session_is_reused(self):
+        marker = f"<!-- productswarm-heartbeat schema_version=1 session_id={SID} -->\nHeartbeat.\n"
+        def it(n, title=f"[heartbeat] builder {SID}", body=marker, login="productswarm-builder[bot]"):
+            return json.dumps({"number": n, "title": title, "body": body, "login": login})
+        self.env["FAKE_GH_OPEN"] = "\n".join([
+            it(7, title="Something else"),
+            it(8, login="productswarm-docs[bot]"),            # another App's: not ours
+            it(9, body="no marker"),
+            it(42), it(43)])                                   # ours: the oldest wins
+        self.run_hook("SessionStart", source="startup")
+        self.run_hook("SessionEnd", reason="exit")
+        self.assertEqual(self.creates(), 0)
+        self.assertEqual({c["argv"][2] for c in self.gh_calls() if c["argv"][:2] == ["issue", "comment"]}, {"42"})
+        self.assertEqual(self.gh_calls()[-1]["argv"][:3], ["issue", "close", "42"])
 
     def test_blocking_gov_question_and_emit(self):
         self.run_hook("SessionStart", source="startup")

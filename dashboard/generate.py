@@ -90,6 +90,10 @@ EVENTS = {"session_started", "prompt_submitted", "working_on", "pr_opened",
 REQUIRED = ("schema_version", "ts", "session_id", "repo", "role", "model", "event")
 # Fields allowed in the GitHub copy of an event (#/$defs/remote in event.schema.json).
 REMOTE_FIELDS = set(REQUIRED) | {"issue", "pr", "gov_question", "cost_usd", "token_counts", "tools"}
+# A repo's earlier names (#1262). Sessions from before the rename wrote the old name in each
+# event's `repo`; per GOV-0048 parsers of old-name text accept both. GitHub redirects the old
+# name to this repo, and the event must still be on this repo's tracking issue, by its App.
+FORMER_NAMES = {"open-agentos/agentfleetos": ("open-agentos/productswarm",)}
 QUIET_EVENTS = {"heartbeat", "prompt_submitted"}
 STATUS_ORDER = {"blocked": 0, "active": 1, "idle": 2, "stopped": 3}
 
@@ -374,7 +378,7 @@ def valid_event(ev: dict, session: dict, repo: str) -> bool:
         return False
     # The comment must describe this tracking issue's session, role and repo.
     return (ev["session_id"] == session["session_id"] and ev["role"] == session["role"]
-            and ev["repo"] == repo)
+            and ev["repo"] in (repo, *FORMER_NAMES.get(repo, ())))
 
 
 def session_events(session: dict, comments: list[dict], repo: str) -> list[dict]:
