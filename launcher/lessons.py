@@ -45,10 +45,6 @@ REQUIRED = ("id", "title", "status", "scope", "applies_to", "sources", "confiden
 # Anything else, including a type this list doesn't know, is not an engine-recorded signal.
 ENGINE_TYPES = frozenset({"owner_act", "review", "revert", "closed_unmerged", "failed_run",
                           "cap_hit", "gov_answer"})
-# Episodes are kept about 30 days (FEAT-14; the dream deletes older files). A lesson created
-# within this window must resolve every source; after it, a missing source has expired. The
-# lesson passed the source rules when it merged, because tests run the validator on every PR.
-EPISODE_DAYS = 30
 
 FILE_RE = re.compile(r"^(L-\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$")
 ID_RE = re.compile(r"^L-\d{4}$")
@@ -388,7 +384,7 @@ def validate(lesson: Lesson, ctx: Context) -> list[str]:
         elif st != "in-force":
             err(f"names {g}, which is {st}, not in force")
 
-    errs += [f"{name}: {e}" for e in source_errors(m, ctx, created)]
+    errs += [f"{name}: {e}" for e in source_errors(m, ctx)]
 
     body = lesson.body
     if not body:
@@ -405,32 +401,29 @@ def validate(lesson: Lesson, ctx: Context) -> list[str]:
     return errs
 
 
-def source_errors(m: dict, ctx: Context, created: dt.date | None) -> list[str]:
+def source_errors(m: dict, ctx: Context) -> list[str]:
     """GOV-0055 (option 1 of #1151) on a lesson's sources."""
     sources = m.get("sources")
     if not isinstance(sources, list) or not all(isinstance(s, str) and s for s in sources):
         return ["sources must be a list of episode ids"]
     if len(set(sources)) < 2:
         return [f"needs at least two sources; has {len(set(sources))} (GOV-0055)"]
-    fresh = created is not None and (ctx.today - created).days <= EPISODE_DAYS
     found = [ctx.episodes[s] for s in dict.fromkeys(sources) if s in ctx.episodes]
     missing = [s for s in dict.fromkeys(sources) if s not in ctx.episodes]
     errs = []
-    if missing and fresh:
+    # Every source must resolve, whatever the lesson's age: GOV-0055 makes no exception (#1206).
+    if missing:
         errs.append(f"source {', '.join(missing)} isn't an episode in memory/episodes/")
-    if not fresh and not found:
-        return errs   # every source has expired; it passed these rules when it merged
     trusted = {norm_login(t) for t in ctx.trusted}
     for e in found:
         if norm_login(e.get("author")) not in trusted:
             errs.append(f"source {e['id']} is by {e.get('author') or 'an unknown author'}, not the "
                         f"owner, a swarm App or a listed maintainer (GOV-0055)")
-    if fresh or not missing:
-        if len({independence_key(e) for e in found}) < 2:
-            errs.append("needs two independent sources: different sessions or signals (GOV-0055)")
-        if not any(engine_recorded(e) for e in found):
-            errs.append("needs an engine-recorded signal among its sources (an owner act, a review "
-                        "outcome, a revert, a failed run), not only session notes (GOV-0055)")
+    if len({independence_key(e) for e in found}) < 2:
+        errs.append("needs two independent sources: different sessions or signals (GOV-0055)")
+    if not any(engine_recorded(e) for e in found):
+        errs.append("needs an engine-recorded signal among its sources (an owner act, a review "
+                    "outcome, a revert, a failed run), not only session notes (GOV-0055)")
     return errs
 
 
@@ -544,7 +537,7 @@ def show_text(les: Lesson, sources: list[dict], ev: dict, errors: list[str]) -> 
     out = [les.path.read_text().rstrip(), "", "Sources:"]
     for s in sources:
         if not s["found"]:
-            out.append(f"  {s['id']}: expired (no longer in memory/episodes/)")
+            out.append(f"  {s['id']}: missing (not in memory/episodes/)")
         else:
             kind = "engine signal" if s["engine_recorded"] else "session note"
             where = s.get("link") or (f"session {s['session']}" if s.get("session") else "")

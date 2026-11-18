@@ -852,7 +852,7 @@ The body says the lesson in a few plain sentences, then has a `## Why` and an `#
 - every ruling it names is in force in `governance/INDEX.md`, and the text doesn't set a ruling aside ("ignore GOV-0055");
 - neither title nor body asks to change permissions, credentials, tools or governance. Any sentence pairing a change verb with such a target (`GH_TOKEN`, `allowed_tools`, `GOVERNANCE.md`, the `ready` label and so on) is refused, even a negated one: rulings already say "never", and a lesson needn't.
 
-**Episodes expire** after about 30 days (FEAT-14). A lesson created within that window must resolve every source. After it, a missing source shows as `expired` in `swarm memory show` and isn't an error: the lesson passed the source rules when it merged, because the tests run the validator on every PR. Sources still present are still checked.
+**Every source must resolve**, however old the lesson is: GOV-0055 makes no exception for age, so a missing episode is an error (`swarm memory show` lists it as `missing`). Nothing deletes episodes yet. When FEAT-14's 30-day retention does, it must keep the episodes a lesson cites, or the owner must rule on how old lessons are checked.
 
 **What this reads from an episode:** `id`, `type`, `author`, `session` (notes) and `link` (signals), from `memory/episodes/*.jsonl`. Episodes are #1184's; nothing else in their schema matters here.
 

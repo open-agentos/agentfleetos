@@ -171,15 +171,15 @@ class SourceRulesTest(Fixture):
     def test_author_spellings_normalised(self):
         self.assertEqual(self.errors(sources="\n  - ep-review\n  - ep-act"), [])
 
-    def test_missing_source_while_fresh(self):
+    def test_missing_source(self):
         self.assertRejected(self.errors(sources="\n  - ep-act\n  - ep-gone"), "isn't an episode")
 
-    def test_expired_sources_after_the_window(self):
-        old = {"created": "2026-09-01", "review_by": "2026-12-01"}
-        self.assertEqual(self.errors(sources="\n  - ep-old-1\n  - ep-old-2", **old), [])
-        # what's still there is still checked
-        self.assertRejected(self.errors(sources="\n  - ep-outsider\n  - ep-old-2", **old),
-                            "not the owner")
+    def test_backdating_doesnt_skip_the_source_rules(self):
+        # #1206 review: an old `created` once let made-up sources through
+        old = {"created": "2026-01-01", "review_by": "2026-12-01"}
+        errs = self.errors(sources="\n  - made-up-1\n  - made-up-2", **old)
+        self.assertRejected(errs, "isn't an episode")
+        self.assertRejected(errs, "engine-recorded signal")
 
 
 class FieldRulesTest(Fixture):
@@ -336,13 +336,13 @@ class CommandTest(Fixture):
             code = swarm.main(list(argv), launcher)
         return code, "\n".join(out)
 
-    def test_show_resolves_or_says_expired(self):
+    def test_show_resolves_or_says_missing(self):
         self.write(sources="\n  - ep-note-a\n  - ep-act\n  - ep-note-b")
         code, out = self.run_swarm("memory", "show", "L-0001", "--repo", REPO)
         self.assertEqual(code, 0)
         self.assertIn("ep-note-a: note (session note) by productswarm-builder[bot]", out)
         self.assertIn("ep-act: owner_act (engine signal) by @mattmcalister", out)
-        self.assertIn("ep-note-b: expired", out)
+        self.assertIn("ep-note-b: missing", out)
         self.assertIn("Eval: evals/lessons/L-0001.json: not run yet", out)
 
     def test_show_hides_other_repos_lessons(self):
