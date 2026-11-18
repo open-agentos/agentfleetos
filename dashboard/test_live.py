@@ -75,7 +75,7 @@ class PageTest(unittest.TestCase):
     def test_state_json_carries_the_work_maps_other_parts(self):
         # What map.json doesn't carry, so workmap.js can redraw it from state.json (#1135).
         d = st.state(self.m)["workmap"]
-        self.assertEqual(set(d), {"strip", "needs_extra", "scopes", "roles", "briefing", "tape"})
+        self.assertEqual(set(d), {"strip", "needs_extra", "scopes", "roles", "briefing", "tape", "memory"})
         self.assertEqual(json.loads(json.dumps(d)), d)   # plain JSON
 
     def test_the_masthead_keeps_its_page_name(self):

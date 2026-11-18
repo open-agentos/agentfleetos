@@ -313,19 +313,19 @@
   }
 
   function sessions(d) {
-    // An idle session with no start and no event is a ghost row (#1261): hidden, with a note.
-    var ghost = function (x) { return x.status === "idle" && !x.started_ts && !x.last_ts; };
-    var all = (d.sessions || []).filter(function (x) { return !ghost(x); });
+    // A session that never acted (#454: no event, tracking issue older than the idle threshold)
+    // isn't a row: it would read "started never". A line counts them instead (#1262).
+    var all = (d.sessions || []).filter(function (x) { return !x.never_acted; });
     var ghosts = (d.sessions || []).length - all.length;
     var live = all.filter(function (x) { return x.status !== "stopped"; });
     var stopped = all.filter(function (x) { return x.status === "stopped"; });
     var out = [h("h2", null, "Sessions"), h("p", {"class": "muted"}, "idle after " + d.idle_minutes + " min without an event"),
       live.length ? sessionRows(d, live) : h("p", {"class": "muted"}, "No live sessions.")];
+    if (ghosts) {
+      out.push(h("p", {"class": "muted"}, ghosts + (ghosts === 1 ? " session" : " sessions") + " never reported; hidden"));
+    }
     if (stopped.length) {
       out.push(h("details", null, h("summary", null, stopped.length + " stopped"), sessionRows(d, stopped)));
-    }
-    if (ghosts) {
-      out.push(h("p", {"class": "muted"}, plural(ghosts, "idle session") + " with no start or event hidden."));
     }
     out.push(h("p", {"class": "muted method"}, "Spend (est.) is each session's own: " + (page.spend_method || "")));
     return out;

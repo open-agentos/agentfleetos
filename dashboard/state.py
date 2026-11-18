@@ -32,7 +32,8 @@ SCHEMA = 1
 
 # What Crew's sessions table shows for a session (crew.js, #1139), its spend included (#1153).
 SESSION_FIELDS = ("session_id", "role", "model", "status", "issue", "pr", "gov_question",
-                  "last_event", "last_ts", "started_ts", "tracking_issue", "cost", "cap", "over_cap")
+                  "last_event", "last_ts", "started_ts", "tracking_issue", "cost", "cap", "over_cap",
+                  "never_acted")   # crew.js hides these and counts them (#454, #1262)
 # What the page shows for a PR (render's "Open pull requests" and the needs-you list).
 PR_FIELDS = ("number", "title", "url", "author", "draft", "review", "created_ts", "closes",
              "needs_owner")

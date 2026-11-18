@@ -153,6 +153,36 @@ class NeverActedTest(unittest.TestCase):
         self.assertFalse(s["never_acted"])
         self.assertEqual(m["floor"]["idle"][0]["idle_minutes"], None)   # crew.js says "no events"
 
+    def test_state_json_carries_never_acted(self):   # #1262: crew.js needs it to hide the row
+        (s,) = st.state(self.built(60))["sessions"]
+        self.assertIs(s["never_acted"], True)
+
+    @unittest.skipUnless(crewdraw.NODE, "node not installed")
+    def test_crew_table_hides_and_counts_them(self):   # #1262
+        issues = [tracking(60, "ghost001"), tracking(62, "ghost002"), tracking(61, "livesess")]
+        m = g.build({"repo": REPO, "issues": issues, "prs": [],
+                     "comments": {61: [comment([ev("livesess", "working_on", 1, issue=4)])]}}, NOW, IDLE)
+        html_ = crewdraw.draw(crewdraw.page_data(m))["sessions"]
+        self.assertNotIn("ghost00", html_)
+        self.assertIn("livesess", html_)
+        self.assertIn("2 sessions never reported; hidden", html_)
+        self.assertNotIn("started never", html_)
+        one = crewdraw.draw(crewdraw.page_data(self.built(60)))["sessions"]
+        self.assertIn("No live sessions.", one)
+        self.assertIn("1 session never reported; hidden", one)
+
+    def test_pre_rename_events_count(self):   # #1262, per GOV-0048: parsers accept both names
+        old = [ev("old", "session_started", 300) | {"repo": "open-agentos/productswarm"},
+               ev("old", "working_on", 200, issue=458) | {"repo": "open-agentos/productswarm"}]
+        (s,) = model({"old": old})["sessions"]
+        self.assertFalse(s["never_acted"])
+        self.assertEqual((s["issue"], s["last_event"]), (458, "working_on"))
+        self.assertEqual(s["started_ts"], g.parse_ts(old[0]["ts"]))
+
+    def test_another_repos_events_still_dont(self):
+        (s,) = model({"other": [ev("other", "session_started", 300) | {"repo": "someone/else"}]})["sessions"]
+        self.assertIsNone(s["started_ts"])
+
     def test_a_session_with_events_is_never_never_acted(self):
         m = model({"old": [ev("old", "session_started", 300)]})
         self.assertFalse(m["sessions"][0]["never_acted"])

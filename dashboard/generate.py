@@ -90,6 +90,10 @@ EVENTS = {"session_started", "prompt_submitted", "working_on", "pr_opened",
 REQUIRED = ("schema_version", "ts", "session_id", "repo", "role", "model", "event")
 # Fields allowed in the GitHub copy of an event (#/$defs/remote in event.schema.json).
 REMOTE_FIELDS = set(REQUIRED) | {"issue", "pr", "gov_question", "cost_usd", "token_counts", "tools"}
+# A repo's earlier names (#1262). Sessions from before the rename wrote the old name in each
+# event's `repo`; per GOV-0048 parsers of old-name text accept both. GitHub redirects the old
+# name to this repo, and the event must still be on this repo's tracking issue, by its App.
+FORMER_NAMES = {"open-agentos/agentfleetos": ("open-agentos/productswarm",)}
 QUIET_EVENTS = {"heartbeat", "prompt_submitted"}
 STATUS_ORDER = {"blocked": 0, "active": 1, "idle": 2, "stopped": 3}
 
@@ -146,7 +150,8 @@ def fetch(repo: str, now: dt.datetime, days: int,
           with_actions: bool = False, with_committees: bool = False,
           with_questions: bool = False, with_precedent: bool = False,
           with_activity: bool = False, with_grants: bool = False,
-          with_plan: bool = False, with_trouble: bool = False, prev: Path | None = None) -> dict:
+          with_plan: bool = False, with_trouble: bool = False, with_memory: bool = False,
+          prev: Path | None = None) -> dict:
     """Everything the page needs, as plain API data. build() does the rest. `with_actions`
     reads the Actions
     reviewer section's (reviewer_runs.py), `with_committees` the committee Discussions
@@ -155,8 +160,9 @@ def fetch(repo: str, now: dt.datetime, days: int,
     (precedent.py), `with_activity` the repo's events for the header (activity.py), and
     `with_plan` the desk's plan and today's report (plan.py, report.py, #712), and `with_grants`
     the merger's comments for grants in use (grants.py, #713), and `with_trouble` the trouble
-    report (fetch_trouble, #903). Only the page shows them, so swarm's snapshot() and the
-    digest leave all eight off and make none of those calls; main() asks for them."""
+    report (fetch_trouble, #903), and `with_memory` `swarm memory desk`'s JSON (fetch_memory,
+    #1192, files only). Only the page shows them, so swarm's snapshot() and the digest leave
+    all nine off and make none of those calls; main() asks for them."""
     since = (now - dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     issues: dict[int, dict] = {}
     items: dict[int, dict] = {}   # issues and PRs, for precedent.py's bodies
@@ -195,6 +201,7 @@ def fetch(repo: str, now: dt.datetime, days: int,
             "plan": plan.fetch(repo) if with_plan else None,
             "report": fetch_report(repo, now) if with_plan else None,
             "trouble": fetch_trouble(repo, now) if with_trouble else None,
+            "memory": fetch_memory(repo) if with_memory else None,
             # The tape's shipped and delivered items (#926, #1114), from the closed items read above.
             "merged": merged_prs(items.values())}
 
@@ -230,6 +237,20 @@ def fetch_trouble(repo: str, now: dt.datetime) -> dict:
                            now=now, sync_acts=False)
         return trouble.report(d)
     except (RuntimeError, OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": str(e) or type(e).__name__}
+
+
+def fetch_memory(repo: str) -> dict:
+    """`swarm memory desk --json` (launcher/memdesk.py, #1192): the lessons this repo can see,
+    where they were given and cited, the counts, the last dream's lines, the owner model and
+    the open drafts, from memory/ in this checkout and the engine's episodes outbox where it
+    exists. No API call. If it can't be read, {"error": why}: the page says so."""
+    try:
+        sys.path.insert(0, str(HERE.parent / "launcher"))
+        import memdesk
+        import swarm
+        return memdesk.build(HERE.parent, repo, home=swarm.home())
+    except (RuntimeError, OSError, ValueError) as e:
         return {"error": str(e) or type(e).__name__}
 
 
@@ -374,7 +395,7 @@ def valid_event(ev: dict, session: dict, repo: str) -> bool:
         return False
     # The comment must describe this tracking issue's session, role and repo.
     return (ev["session_id"] == session["session_id"] and ev["role"] == session["role"]
-            and ev["repo"] == repo)
+            and ev["repo"] in (repo, *FORMER_NAMES.get(repo, ())))
 
 
 def session_events(session: dict, comments: list[dict], repo: str) -> list[dict]:
@@ -529,6 +550,7 @@ def build(data: dict, now: dt.datetime, idle_after: dt.timedelta,
                                 data["report"]["daily_at"]) if data.get("report") else None,
          # with_plan reads both; the plan's own None means its read failed, which the panel says
          "plan": plan.build(data.get("plan"), owner, repo) if data.get("report") else None,
+         "memory": data.get("memory"),   # #1192: memdesk.build()'s dict, {"error": why} or None
          "trouble": data.get("trouble"),   # #903: trouble.report()'s dict, or {"error": why}
          "merged": data.get("merged") or [],   # #1114: the Work map tape's merged PRs
          # #931: the owner's Goals and Areas closed in the window, for Commissions' "delivered"
@@ -905,6 +927,7 @@ def main(argv: list[str]) -> int:
         data = fetch(repo, now, args.days, with_actions=True,
                      with_committees=True, with_questions=True, with_precedent=True,
                      with_activity=True, with_grants=True, with_plan=True, with_trouble=True,
+                     with_memory=True,
                      prev=Path(args.prev) if args.prev else None)
         data["records"] = precedent.load_records()
         data["effort"] = effort.load()   # #1013: a local file, no API call

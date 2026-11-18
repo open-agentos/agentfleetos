@@ -434,10 +434,10 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-key .wm-k-sel { outline:2px dashed var(--ink); outline-offset:-2px; }
 /* The Selected panel (#1083): every section a fixed height, so selecting or clearing an issue
    moves nothing. Since #1249 it fills the rail's drawer (340px to 480px wide, the rail's height);
-   on a phone it is the bottom sheet, 460px tall. */
+   on a phone it is the bottom sheet, 500px tall (#1192). */
 .wm-selected { width:100%; height:100%; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column;
   justify-content:space-between; background:var(--card); border:1px solid var(--line); padding:12px 14px; }
-@media (max-width:900px) { .wm-selected { height:460px; } }
+@media (max-width:900px) { .wm-selected { height:500px; } }
 .wm-ss { flex:none; overflow:hidden; margin:0; }
 .wm-ss p { margin:0; }
 .wm-ss-head { height:20px; display:flex; justify-content:space-between; align-items:center; }
@@ -521,6 +521,16 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 /* #1115: what an issue waits on and holds up, and a Goal, Area or role in place of an issue's
    sections, scrolling inside the same fixed box. */
 .wm-ss-deps { height:40px; }
+/* #1192: the lessons given to and cited in the selected issue, two fixed lines like the deps; a
+   lesson's provenance shows in .wm-alt like a Goal or role; Memory sits under the Briefing. */
+.wm-ss-mem { height:40px; }
+.wm-alt .wm-dl { margin-top:2px; }
+.wm-body { white-space:pre-wrap; overflow-wrap:anywhere; }
+.wm-mem { margin-top:18px; font-size:13px; }
+.wm-mem p { margin:4px 0; }
+.wm-mh { margin:10px 0 2px; font:600 11px/18px var(--cond); text-transform:uppercase; letter-spacing:.04em; }
+.wm-own { list-style:none; margin:0; padding:0; }
+.wm-own li { margin:0 0 4px; overflow-wrap:anywhere; }
 .wm-dl { height:20px; display:flex; gap:8px; font-size:12px; line-height:20px; white-space:nowrap; overflow:hidden; }
 .wm-dl > span:first-child { flex:none; width:62px; color:var(--muted); }
 .wm-dl > span:last-child { flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; }

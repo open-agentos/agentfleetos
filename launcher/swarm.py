@@ -47,6 +47,10 @@
     launcher/swarm memory owner veto O-NNNN [--text T]
                                     the owner model, in full or the part a role is given; check
                                     it; veto an entry (#1188, FEAT-18; owner.py)
+    launcher/swarm memory desk [--repo R] [--memory DIR] [--json]
+                                    what the Desk shows of memory: lessons with provenance,
+                                    given and cited, counts, the dream's lines, the owner
+                                    model and open drafts (#1192, FEAT-22; memdesk.py)
     launcher/swarm memory pack <role> [--issue N] [--pr M] [--repo R] [--json]
                                     the context pack of lessons a session on that work
                                     would be given at start (#1187, FEAT-17; recall.py)
@@ -2765,6 +2769,25 @@ def memory_pack(launcher: Launcher, args, work: Callable | None = None) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- memory desk (#1192)
+
+def memory_desk(launcher: Launcher, args, repo: str) -> int:
+    """`swarm memory desk [--json]`: what the Desk shows of memory (memdesk.py). The Desk's
+    build calls the same memdesk.build(), so the two can't disagree."""
+    import memdesk
+    if not repo:
+        launcher.out("swarm memory desk: can't tell the repo; pass --repo owner/name")
+        return 2
+    try:
+        d = (memdesk.build(launcher.root, repo, memory=Path(args.memory)) if args.memory
+             else memdesk.build(launcher.root, repo, home=launcher.home))
+    except (OSError, RuntimeError, ValueError) as e:
+        launcher.out(f"swarm memory desk: {e}")
+        return 1
+    launcher.out(json.dumps(d, indent=2) if args.as_json else memdesk.text(d))
+    return 0
+
+
 # ---------------------------------------------------------------- memory (#1185)
 
 LESSON_CMDS = ("lessons", "show", "index", "check")
@@ -3052,6 +3075,13 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     p_mown.add_argument("--check", action="store_true", help="validate the file; exit 1 if it isn't")
     p_mown.add_argument("--memory", help="a memory/ directory to read instead, e.g. a fixture")
     p_mown.add_argument("--json", action="store_true", dest="as_json")
+    p_mdesk = memory_sub.add_parser("desk", help="what the Desk shows of memory: lessons this repo can see "
+                                                 "with provenance, given and cited, counts, the dream's "
+                                                 "lines, the owner model and open drafts (#1192)")
+    p_mdesk.add_argument("--repo", help="owner/name (default: this checkout's origin)")
+    p_mdesk.add_argument("--memory", help="a memory/ directory to read instead, e.g. a fixture; "
+                                          "the engine's outbox is then left out")
+    p_mdesk.add_argument("--json", action="store_true", dest="as_json")
     p_mindex = memory_sub.add_parser("index", help="regenerate memory/INDEX.md from memory/lessons/")
     p_mindex.add_argument("--check", action="store_true", help="write nothing; exit 1 if it's stale")
     p_mcheck = memory_sub.add_parser("check", help="validate every lesson (GOV-0055's source rules too)")
@@ -3109,6 +3139,8 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
         return escalate(launcher, args, args.repo or dashboard().default_repo() or "")
     if args.cmd == "memory" and args.memory_cmd == "pack":
         return memory_pack(launcher, args)
+    if args.cmd == "memory" and args.memory_cmd == "desk":
+        return memory_desk(launcher, args, args.repo or dashboard().default_repo() or "")
     if args.cmd == "memory" and args.memory_cmd in LESSON_CMDS:
         repo = getattr(args, "repo", None) or dashboard().default_repo() or ""
         return memory_lessons(launcher, args, repo)

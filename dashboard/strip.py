@@ -154,11 +154,15 @@ def decisions(m: dict) -> list[dict]:
                     "ref": x.get("ref") or "", "url": x.get("url"),
                     "title": title or x.get("reason") or "", "why": x.get("reason") if title else "",
                     "since": _ts(x.get("since"))}, pr=x.get("kind") == "pr" or "PR" in (x.get("ref") or ""))
+    drafts = {d["issue"]: d for d in (m.get("memory") or {}).get("drafts") or []
+              if isinstance(d, dict) and isinstance(d.get("issue"), int)}
     for q in m.get("gov") or []:
         if q.get("waiting") or "gov:ruled" in (q.get("labels") or []):
             continue
+        d = drafts.get(q["number"])   # Escalation's drafts are gov questions like any other (#1192)
         add(q["number"], {"scope": "gov question", "ref": f"#{q['number']}", "url": q.get("url"),
-                          "title": q.get("title") or "", "since": _ts(q.get("created_ts")), "ttl": q.get("ttl")})
+                          "title": q.get("title") or "", "since": _ts(q.get("created_ts")), "ttl": q.get("ttl"),
+                          "why": f"drafted by the dream: {d.get('kind') or 'a pattern'}" if d else ""})
     for s in m.get("sessions") or []:
         if s.get("status") == "blocked" and not s.get("never_acted") and s.get("gov_question"):
             n = s["gov_question"]
@@ -215,7 +219,23 @@ def strip(m: dict) -> dict:
             "decision_refs": sorted({f"#{n}" for d in ds for n in d["issues"]}, key=lambda r: int(r[1:])),
             "working": len((m.get("floor") or {}).get("cards") or []), "agents": len(live_sessions(m)),
             "authority": sum(len(s.get("authority") or []) for s in [*ss, t.get("outside") or {}]),
-            "authority_hours": t.get("authority_hours") or 24, "error": t.get("error")}
+            "authority_hours": t.get("authority_hours") or 24, "error": t.get("error"),
+            "memory": memory_counts(m.get("memory"))}
+
+
+def memory_counts(mem: dict | None) -> dict | None:
+    """Memory used against its budget and lessons dormant (#1192), as counts only (GOV-0033),
+    from `swarm memory desk`'s counts: the fullest role's active lessons against the dream's
+    per-role budget. None when the build didn't read memory; {"error": True} when it failed."""
+    if not isinstance(mem, dict):
+        return None
+    if mem.get("error"):
+        return {"error": True}
+    c = mem.get("counts") or {}
+    roles = c.get("roles") or {}
+    role, used = max(roles.items(), key=lambda kv: (kv[1], kv[0]), default=(None, 0))
+    return {"used": used, "role": role, "budget": c.get("budget"), "active": c.get("active") or 0,
+            "dormant": c.get("dormant") or 0}
 
 
 def strip_html(s: dict) -> str:
@@ -233,6 +253,13 @@ def strip_html(s: dict) -> str:
         f'<span class="sp-i">{s["working"]} agents working of {s["agents"]} live</span>',
         f'<span class="sp-i">{s["authority"]} uses of your authority, last {s["authority_hours"]}h</span>',
     ]
+    mem = s.get("memory")
+    if mem and mem.get("error"):
+        items.append('<span class="sp-i sp-red">memory not read</span>')
+    elif mem:
+        items.append(f'<span class="sp-i">memory {mem["used"]} of {mem["budget"]} lessons'
+                     + (f', fullest role {esc(mem["role"])}' if mem["role"] and mem["used"] else "") + '</span>')
+        items.append(f'<span class="sp-i">{mem["dormant"]} lesson{"" if mem["dormant"] == 1 else "s"} dormant</span>')
     err = (f'<span class="sp-i sp-red">trouble report not read: counts may be low</span>'
            if s.get("error") else "")
     return f'<section class="sp" aria-label="Counts">{"".join(items)}{err}</section>'
