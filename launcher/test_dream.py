@@ -1,6 +1,7 @@
 """Tests for dream.py and `swarm dream` (#1186, FEAT-16), over the fixture in testdata/dream/."""
 import datetime as dt
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -219,6 +220,21 @@ class Command(Base):
         self.assertEqual((entry.role, entry.issue, entry.budget_usd, entry.max_turns, entry.by),
                          ("librarian", 249, 3, 200, "watch"))
         self.assertEqual(entry.dream, "2026-11-10T00:00:00Z")
+
+    def test_first_run_opener_commands_parse(self):
+        # No dream.json yet: the opener's commands must still be ones swarm dream accepts.
+        (self.mem / "dream.json").unlink()
+        code, _, launcher = self.run_swarm("--dry-run")
+        self.assertEqual(code, 0)
+        (entry, _live, _dry), = [c.args for c in launcher.start.call_args_list]
+        self.assertEqual(entry.dream, swarm.DREAM_FROM_START)
+        cmds = re.findall(r"launcher/swarm dream (--.*?) (?:for|to) ",
+                          swarm.opener("librarian", 249, dream=entry.dream))
+        self.assertEqual([c.split()[0] for c in cmds], ["--dry-run", "--apply"])
+        self.assertNotIn("--since", " ".join(cmds))
+        for cmd in cmds:
+            code, _, _ = self.run_swarm(*cmd.split())
+            self.assertEqual(code, 0, cmd)
 
     def test_a_real_start_is_one_capped_run(self):
         code, _, launcher = self.run_swarm("--issue", "1186")

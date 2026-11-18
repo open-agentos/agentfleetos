@@ -194,10 +194,13 @@ def opener(role: str, issue: int | None = None, pr: int | None = None,
     home, this repo's owner/name, for where governance is. With dream, a dream run (#1186): the
     librarian runs the dream over the episodes since `dream` and reports on the issue."""
     if issue and dream:
+        # With no last run there is no stamp to pass: leave --since out, and the command reads
+        # every episode, as it did here.
+        since = "" if dream == DREAM_FROM_START else f" --since {dream}"
         then = (f"run the dream over the episodes since {dream}, as roles/{role}.md says, and report on "
                 f"issue #{issue}. swarm dream started this run (#1186). Run launcher/swarm dream "
-                f"--dry-run --since {dream} for each phase's plan (it makes no model call), then "
-                f"launcher/swarm dream --apply --since {dream} to make its decays, status changes, "
+                f"--dry-run{since} for each phase's plan (it makes no model call), then "
+                f"launcher/swarm dream --apply{since} to make its decays, status changes, "
                 f"merges and episode deletions in memory/. Write each proposed lesson you agree with "
                 f"as memory/lessons/<id>-<slug>.md with status proposed, using the ids, sources and "
                 f"review_by the plan gives; drop any you don't, and say why in the report. Run "
@@ -2381,6 +2384,8 @@ def classify_eval():
 
 # ---------------------------------------------------------------- the dream (#1186)
 
+DREAM_FROM_START = "the start"    # Started.dream when memory/dream.json has no last run yet
+
 def since_stamp(s: str) -> str:
     """`swarm dream --since`: a date, or the UTC stamp a dream run is handed, as a UTC stamp."""
     try:
@@ -2447,7 +2452,7 @@ def dream(launcher: Launcher, args, repo: str) -> int:
         return 2
     entry = Started(name="librarian-dream", role="librarian", model=lib.model,
                     session_id=str(uuid.uuid4()), started=launcher.clock(), issue=issue, by="watch",
-                    budget_usd=lib.spend_cap_usd, max_turns=limits.max_turns, dream=since or "the start")
+                    budget_usd=lib.spend_cap_usd, max_turns=limits.max_turns, dream=since or DREAM_FROM_START)
     return 0 if launcher.start(entry, launcher.live(), args.dry_run) else 1
 
 
