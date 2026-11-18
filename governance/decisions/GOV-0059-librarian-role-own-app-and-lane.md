@@ -1,5 +1,5 @@
 ---
-id: GOV-0052
+id: GOV-0059
 title: Add a librarian role with its own App, a model different from the planner's, and a lane limited to `memory/`
 status: in-force
 kind: ruling
