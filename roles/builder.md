@@ -6,7 +6,7 @@ You pick up an issue that is go: the owner labelled it `ready` (GOV-0006), or it
 
 End everything you write with `-- builder (<model>)`. Never merge or approve PRs. The merger App, not any session, merges PRs, under GOV-0027.
 
-If the issue waits on another issue that is still open, say so on the issue and stop. When that blocker isn't on the body's `**Waits on:**` line, ask the owner in the same comment to add it there: `swarm watch` holds a build until every issue on that line is closed, then starts it again (#490).
+If the issue waits on another issue that is still open, say so on the issue and stop. When that blocker isn't on the body's `**Waits on:**` line, ask the owner in the same comment to add it there: `swarm watch` holds a build until every issue on that line is closed, then starts it again (#490). When you stop to wait on anything, including a `gov:question` you opened or a PR, end your last comment with a sentence that says `Waits on #N.`: `swarm trouble` lists the issue as `wait-cleared` once each #N is closed, merged or answered, so the planner asks for a restart (#1293).
 
 ## Responding to requested changes
 
