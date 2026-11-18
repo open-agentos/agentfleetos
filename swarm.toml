@@ -86,6 +86,12 @@ parent_page = "416ec22e-b1e3-8129-8868-d1d23514d60e"   # "productswarm specs"
 model = "claude-haiku-5-5"
 eval_budget_usd = 5
 
+# The context pack of lessons each session is given at start (#1187, GOV-0058; launcher/recall.py).
+#   pack_cap  the most lessons in one pack, ranked by match strength times confidence;
+#             a whole number of at least 1, 10 if left out
+[memory]
+pack_cap = 10
+
 [[session]]
 role = "planner"
 count = 1

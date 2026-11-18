@@ -31,6 +31,15 @@ Episode types, each with `schema`, `id`, `type`, `at` (UTC) and `source` (a link
     run              a run that failed or hit its cap (the runs ledger, ledger.py)
     answer           the owner's answer on a gov:question, with took_default: whether it
                      chose the question's recommendation (None when it can't tell)
+    given            the lessons a session's context pack held (#1187, recall.py), written by
+                     the launcher as it starts the session: session_id, role, model, repo,
+                     issue, pr and lessons (ids)
+    cite             a swarm App citing lessons as `per L-NNNN` (#1187): in a merged PR's body
+                     (pr, closes: the issues it closes) or in a comment on an issue or PR
+                     (number); with by, repo and lessons (ids). The dream counts each as a use
+
+`given` and `cite` aren't signals for GOV-0055 (lessons.ENGINE_TYPES leaves them out), and
+carry no text: only ids and numbers.
 
 The engine records the signals with no model call: `swarm watch` sweeps once an hour
 (sweep()), and `swarm memory record` sweeps by hand.
@@ -46,7 +55,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 SCHEMA = 1
-TYPES = ("note", "act", "retag", "review", "revert", "closed-unmerged", "run", "answer")
+TYPES = ("note", "act", "retag", "review", "revert", "closed-unmerged", "run", "answer", "given", "cite")
 NOTE_FIELDS = ("tried", "surprised", "blocked")
 NOTE_FILE = ".session-note.json"     # in the session's worktree; .gitignore'd, and info/exclude'd
 FIELD_MAX = 400                      # characters kept of a note field
@@ -55,6 +64,8 @@ QUOTE_WORDS = 8                      # this many words in a row from the prompt 
 CUT = "[cut: quotes the session's prompt]"
 FAILED_ENDINGS = {"error": "failed", "ended at cap": "at cap"}   # watch.ERROR, watch.AT_CAP
 REVERT_RE = re.compile(r'^Revert "')
+CITE_RE = re.compile(r"\bper\s+(L-\d{4})\b")          # recall.CITE: how a session cites a lesson
+CLOSES_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", re.I)
 
 
 def outbox(home: Path) -> Path:
@@ -170,6 +181,21 @@ def note_episode(*, session_id: str, role: str, model: str, repo: str | None, is
             "source": source}
 
 
+def given_episode(*, session_id: str, role: str, model: str, repo: str, issue: int | None,
+                  pr: int | None, lessons: list[str], at: dt.datetime) -> dict:
+    """The lessons a session was given at start (#1187)."""
+    n = pr or issue
+    source = f"https://github.com/{repo}/{'pull' if pr else 'issues'}/{n}" if repo and n else None
+    return {"schema": SCHEMA, "id": f"given:{session_id}", "type": "given", "at": stamp(at),
+            "session_id": session_id, "role": role, "model": model, "repo": repo, "issue": issue,
+            "pr": pr, "lessons": list(lessons), "source": source}
+
+
+def cited(text: str | None) -> list[str]:
+    """The lesson ids `text` cites as `per L-NNNN`, once each, in order."""
+    return list(dict.fromkeys(CITE_RE.findall(text or "")))
+
+
 # ---------------------------------------------------------------- the store
 
 def stamp(t: dt.datetime) -> str:
@@ -266,6 +292,12 @@ def text(eps: list[dict]) -> str:
             took = {True: "took the default", False: "didn't take the default"}.get(ep.get("took_default"),
                                                                                    "default unclear")
             what = f"answered #{ep.get('number')} ({ep.get('domain') or '?'}): {took}"
+        elif t == "given":
+            on = f" on #{ep['pr'] or ep['issue']}" if ep.get("pr") or ep.get("issue") else ""
+            what = f"{ep.get('role')}{on} given {', '.join(ep.get('lessons') or []) or 'no lessons'}"
+        elif t == "cite":
+            on = f"PR #{ep['pr']}" if ep.get("pr") else f"#{ep.get('number')}"
+            what = f"{ep.get('by')} cited {', '.join(ep.get('lessons') or [])} on {on}"
         else:
             what = f"#{ep.get('number')}: {ep.get('title')}"
         out.append(f"{ep.get('at', '')[:16].replace('T', ' ')}  {t:<15}  {what}"
@@ -326,6 +358,29 @@ def from_pr(pr: dict, reviews: list[dict]) -> list[dict]:
     return out
 
 
+def from_merged_citations(pr: dict, repo: str) -> dict | None:
+    """A cite episode for a merged PR whose body cites lessons; None if it cites none or
+    isn't merged. Who wrote it is checked by the caller."""
+    lessons, merged = cited(pr.get("body")), pr.get("merged_at")
+    if not lessons or not merged:
+        return None
+    return {"schema": SCHEMA, "id": f"cite:pr:{pr.get('number')}", "type": "cite", "at": merged,
+            "repo": repo, "pr": pr.get("number"), "number": pr.get("number"),
+            "closes": sorted({int(n) for n in CLOSES_RE.findall(pr.get("body") or "")}),
+            "by": (pr.get("user") or {}).get("login"), "lessons": lessons, "source": pr.get("html_url")}
+
+
+def from_comment_citations(c: dict, repo: str) -> dict | None:
+    """A cite episode for a comment on an issue or PR that cites lessons; None if none."""
+    lessons = cited(c.get("body"))
+    m = re.search(r"/issues/(\d+)$", c.get("issue_url") or "")
+    if not lessons or c.get("id") is None or not c.get("created_at") or not m:
+        return None
+    return {"schema": SCHEMA, "id": f"cite:comment:{c['id']}", "type": "cite", "at": c["created_at"],
+            "repo": repo, "pr": None, "number": int(m.group(1)), "closes": [],
+            "by": (c.get("user") or {}).get("login"), "lessons": lessons, "source": c.get("html_url")}
+
+
 def section(body: str, heading: str) -> str:
     """The text under `### heading` in an issue form's body."""
     m = re.search(rf"^###\s*{re.escape(heading)}\s*$(.*?)(?=^###\s|\Z)", body or "", re.M | re.S | re.I)
@@ -361,11 +416,14 @@ def from_answer(q: dict, comment: dict) -> dict:
 
 
 def from_github(repo: str, owner: str, since: dt.datetime, gh_json: Callable,
-                gh_items: Callable) -> list[dict]:
+                gh_items: Callable, citers: set[str] | None = None) -> list[dict]:
     """Review, revert, unmerged-close and answer episodes in repo since `since`, read from
-    GitHub: PRs updated since, and gov:questions updated since."""
+    GitHub: PRs updated since, and gov:questions updated since. With `citers` (swarm Apps'
+    logins), also cite episodes: lessons cited in merged PR bodies and in comments since,
+    counted only when one of them wrote it, so nobody else can make a lesson look used."""
     day = since.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     out: list[dict] = []
+    who = {_login(x) for x in citers or ()}
     q = urllib.parse.quote(f"repo:{repo} is:pr updated:>={day}")
     for it in gh_items(f"search/issues?q={q}&per_page=100", ".items[]"):
         n = it.get("number")
@@ -375,6 +433,14 @@ def from_github(repo: str, owner: str, since: dt.datetime, gh_json: Callable,
         pr = {**it, "merged_at": (it.get("pull_request") or {}).get("merged_at")}
         out += [ep for ep in from_pr(pr, gh_items(f"repos/{repo}/pulls/{n}/reviews?per_page=100"))
                 if ep["at"] >= day]
+        c = from_merged_citations(pr, repo) if who else None
+        if c and c["at"] >= day and _login(c["by"]) in who:
+            out.append(c)
+    if who:
+        for cm in gh_items(f"repos/{repo}/issues/comments?since={day}&per_page=100"):
+            c = from_comment_citations(cm, repo)
+            if c and c["at"] >= day and _login(c["by"]) in who:
+                out.append(c)
     for it in gh_items(f"repos/{repo}/issues?labels=gov:question&state=all&since={day}&per_page=100"):
         if "pull_request" in it:
             continue
@@ -385,8 +451,14 @@ def from_github(repo: str, owner: str, since: dt.datetime, gh_json: Callable,
     return out
 
 
+def _login(x: str | None) -> str:
+    """lessons.norm_login(), without importing it here."""
+    s = (x or "").strip().lstrip("@").lower()
+    return s[4:] + "[bot]" if s.startswith("app/") else s
+
+
 def sweep(out_dir: Path, state_dir: Path, repo: str, owner: str, since: dt.datetime,
-          gh_json: Callable, gh_items: Callable) -> int:
+          gh_json: Callable, gh_items: Callable, citers: set[str] | None = None) -> int:
     """Record every signal since `since` as episodes in out_dir: owner acts already in
     swarm.db, failed and capped runs from the runs ledger, and what from_github() reads.
     Returns how many episodes were new. Raises RuntimeError if GitHub can't be read."""
@@ -395,5 +467,8 @@ def sweep(out_dir: Path, state_dir: Path, repo: str, owner: str, since: dt.datet
     day = stamp(since)
     eps = [ep for ep in from_acts(acts.stored(state_dir), acts.retags(state_dir)) if ep["at"] >= day]
     eps += [ep for ep in from_runs(ledger.rows(state_dir), repo) if ep["at"] >= day]
-    eps += from_github(repo, owner, since, gh_json, gh_items)
+    if citers is None:
+        import swarm
+        citers = swarm.agent_logins()
+    eps += from_github(repo, owner, since, gh_json, gh_items, citers)
     return write(out_dir, eps)
