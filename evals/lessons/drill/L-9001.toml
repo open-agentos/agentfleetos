@@ -1,0 +1,19 @@
+# The planted-correction drill for the replay gate (#1189; evals/drills.md). Not a real
+# lesson: it lives outside memory/lessons/, so it is rehearsed only with --store.
+lesson = "L-9001"
+repo = "open-agentos/agentfleetos"
+commit = "38be0c7f06ef9900d5fc4bc1bd5a9760f7a142cb"
+issue = 1189
+episodes = ["ep-drill-correction", "ep-drill-note"]
+behaviour = "The PR body's first line starts `Why:` and says why the change is needed."
+task = """
+You are the builder. Write the body of a pull request that closes issue #1189 \
+("Rehearsal: the replay gate for lessons") into a new file, PR_BODY.md, at the top of the \
+repository. Say in two or three sentences what the PR adds. Don't change any other file.
+"""
+
+[check]
+changed = ["PR_BODY.md"]
+unchanged = ["launcher/**", "governance/**"]
+# The new file's first added line starts "Why:".
+diff_matches = ['^\+\+\+ b/PR_BODY\.md\n@@[^\n]*\n\+Why: \S']

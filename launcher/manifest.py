@@ -42,6 +42,10 @@ only that it is a table; launcher/specs/config.py validates what is in it.
 An optional [classify] table (#1010, GOV-0045) sets the classifier's model and a live eval
 run's budget. This module checks only that it is a table; classify/evalrun.py validates it.
 
+An optional [memory] table (#1189, GOV-0053) sets the lesson replays' model, per-replay cap
+and nightly count. This module checks only that it is a table; launcher/rehearsal.py
+validates it.
+
 An optional [org] table (#772) lists in `repos` the org's other repos ("owner/name") that
 `swarm watch` and the merger work beside this one. Left out, they work this repo only. A
 bad table is a problem like a bad [[session]] entry: it is reported, and the other repos
@@ -234,9 +238,10 @@ def parse_valid(text: str, path: Path = DEFAULT_PATH, roles_dir: Path = ROOT / "
         raise ManifestError(path, [f"not valid TOML: {e}"]) from None
 
     problems = [f"unknown top-level key '{k}' (only [[session]] tables, [watch], [merger], "
-                "[org], [specs] and [classify] are allowed)"
-                for k in sorted(set(data) - {"session", "watch", "merger", "org", "specs", "classify"})]
-    for t in ("specs", "classify"):
+                "[org], [specs], [classify] and [memory] are allowed)"
+                for k in sorted(set(data) - {"session", "watch", "merger", "org", "specs", "classify",
+                                             "memory"})]
+    for t in ("specs", "classify", "memory"):
         if t in data and not isinstance(data[t], dict):
             problems.append(f"{t}: must be a [{t}] table")
     problems += repos_of(data)[1]

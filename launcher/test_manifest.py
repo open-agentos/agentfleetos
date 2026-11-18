@@ -85,6 +85,12 @@ class InvalidManifestTest(Base):
         self.assertIn("unknown top-level key 'other'",
                       self.problems(session() + '[other]\nbackend = "fake"\n')[0])
 
+    def test_memory_table_is_allowed_and_must_be_a_table(self):
+        """#1189: [memory] parses (launcher/rehearsal.py checks its contents)."""
+        self.assertEqual(len(self.parse(session() + '[memory]\nreplays_per_night = 10\n')), 1)
+        self.assertIn("memory: must be a [memory] table",
+                      self.problems('memory = 10\n' + session()))
+
     def test_classify_table_is_allowed_and_must_be_a_table(self):
         """#1010: [classify] parses (classify/evalrun.py checks its contents)."""
         self.assertEqual(len(self.parse(session() + '[classify]\nmodel = "m"\n')), 1)
