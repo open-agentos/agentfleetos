@@ -935,6 +935,16 @@ The thresholds are the defaults on the Goal (#1179), which the owner confirms af
 
 `--apply` writes only under `memory/`: confidence, status, merges, expired episodes, `memory/dream.json` and `memory/INDEX.md`. It doesn't touch the engine's outbox; its expired episodes stay there until #1199's record merges. `--memory DIR` reads another memory directory, such as the fixture, and not the outbox.
 
+**Nightly (#1190, FEAT-20).** With `dream = true` and `dream_at = "HH:MM"` in `swarm.toml`'s `[watch]` (and `report_issue`), `swarm watch`'s `[dream]` starts the same run once a night:
+
+- **When:** in the 8 hours from `dream_at`, local time, once no session the launcher knows of is live (after the day's last run). Its key is the night, so it starts at most once.
+- **Only if new:** it counts the episodes `swarm dream` would dream over (`dream.new_episodes()`). None, and nothing starts.
+- **Never twice:** it waits while a `memory: night of` PR is open, since `memory/dream.json` on main moves only when that PR merges.
+- **A missed night** is logged once. The next night's run reads every episode since the last run, so it catches up in one run.
+- **Off** (the default): no episodes are read for it, and no other trigger changes. `swarm inbox` shows a `[dream]` line while it is on.
+
+The planner's daily report copies its **Memory** section from the night's PR, and the briefing gets one line when something mattered (`roles/planner.md`).
+
 ## swarm escalate: drafts for the owner (#1191)
 
 ```bash

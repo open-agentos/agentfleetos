@@ -26,7 +26,8 @@ The plan is the owner's open Goal and Area issues and the sub-issues under them,
 4. **Risks and mitigations:** what could slip a Goal or Area, and what you're doing about it. List every Goal or Area edit `swarm daily` shows that the owner didn't make (body edit, rename, close or reopen), with who made it and a link (GOV-0031). If `swarm daily` couldn't read them, say so here.
 5. **Under delegated authority:** what agents did on their own authority (a `decide` from `jurisdictions.yml`, a ruling, a call-in), each with a link. List each merge by the merger with a link, saying whether a standing grant or an approved ask allowed it (GOV-0027); while the merger runs in shadow, list its "would merge" calls instead. List the issues you closed after their PR merged (#806) in one line. Say "none" when there was none.
 6. **Asks:** at most 5, each one thing the owner can say yes or no to, with a link. More than 5 means you rank them and carry the rest.
-7. **Trouble:** the Trouble section below, in every daily report as well as the Monday check-in (#760).
+7. **Memory:** the night's dream (#1190, FEAT-20). Find the latest `memory: night of <date>` PR opened since the last report, merged or open (`gh pr list --state all --search "memory: night of in:title" --limit 3`), and link it. From its body, with lesson ids, one line each: lessons learned (proposed, reconfirmed), changed (merged, flagged, confidence or status) and forgotten (dormant, retired, and the count of episodes deleted); rehearsal results (passed, failed, or still needing an eval case); and what's proposed for the owner (patterns, owner-model entries, draft `gov:question`s). Take each line from the PR, not from your own reading of `memory/`, so the section matches the night's PR. Any change to `memory/owner.md` waits for the owner: list it under Asks. With no dream PR since the last report, write "No dream since the last report", and why if `swarm inbox` shows `[dream]` held or skipped.
+8. **Trouble:** the Trouble section below, in every daily report as well as the Monday check-in (#760).
 
 Read state from GitHub (issues, PRs, reviews, label events) and from `swarm` commands; don't guess. If something can't be checked, say so in one line.
 
@@ -34,10 +35,11 @@ Read state from GitHub (issues, PRs, reviews, label events) and from `swarm` com
 
 1. After posting the daily report, post the briefing as a second, separate comment on the report issue. Its first line is `**Briefing, <weekday> <YYYY-MM-DD>**`. Never start it with "Daily report", so `swarm daily` doesn't count it as a report. The Bridge finds it by that first line (`dashboard/report.py`).
 2. Write about 300 words (2 minutes spoken) for the owner as the C-team, in plain words. Give one short chapter to each Goal or Area that moved or stalled since the last briefing: what the product can do now that it couldn't before, or why it stalled. A Goal or Area that held with no change gets no chapter. Separate chapters with a blank line: the Bridge shows each as a paragraph.
-3. Leave out issue and PR numbers, links, process noise (permissions, labels, untriaged counts, spend, merger calls) and asks.
-4. End with this line on its own: `N decisions wait on the Bridge.` N is the Bridge's "Decisions waiting" count: `swarm trouble`'s waiting items, open `gov:question`s not yet ruled and the daily report's asks, counting each issue or PR once (`dashboard/bridge.py`, `decisions()`).
-5. On Mondays, post the briefing beside the daily report as usual. The check-in gets no briefing.
-6. The owner may still mark a day on the report issue with a comment starting `Briefing <YYYY-MM-DD>: pass` or `Briefing <YYYY-MM-DD>: fail`. Take any failure as feedback for the next briefing.
+3. When the night's dream changed something that matters to the owner (a lesson went active, was retired after use, or a proposal waits on them), add one plain-words line on what the team learned, e.g. "The team learned to run the tests before asking for review." Otherwise leave it out: no line for a quiet night (#1190).
+4. Leave out issue and PR numbers, links, process noise (permissions, labels, untriaged counts, spend, merger calls) and asks.
+5. End with this line on its own: `N decisions wait on the Bridge.` N is the Bridge's "Decisions waiting" count: `swarm trouble`'s waiting items, open `gov:question`s not yet ruled and the daily report's asks, counting each issue or PR once (`dashboard/bridge.py`, `decisions()`).
+6. On Mondays, post the briefing beside the daily report as usual. The check-in gets no briefing.
+7. The owner may still mark a day on the report issue with a comment starting `Briefing <YYYY-MM-DD>: pass` or `Briefing <YYYY-MM-DD>: fail`. Take any failure as feedback for the next briefing.
 
 ## Monday check-in
 

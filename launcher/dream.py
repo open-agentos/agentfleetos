@@ -200,6 +200,15 @@ def _pr_numbers(e: dict) -> set[int]:
     return out
 
 
+def new_episodes(episodes: list[dict], since: str | None) -> list[dict]:
+    """The episodes a run dreams over: those at or after `since` (all, with None). A session
+    being given lessons is not, alone, something to dream over: plan() reads given episodes
+    for given-not-used, but they don't make a run start. swarm watch's [dream] counts these
+    too (#1190), so it starts a run exactly when `swarm dream` would find something new."""
+    return [e for e in episodes if (since is None or str(e.get("at") or "") >= since)
+            and e.get("type") != "given"]
+
+
 def plan(lessons: list[L.Lesson], episodes: list[dict], ctx: L.Context, *, since: str | None,
          in_repo_ids: set[str] | None = None, owner_model=None) -> Plan:
     """Every phase's outcome, with no model call. `episodes` are all those the store holds,
@@ -209,10 +218,7 @@ def plan(lessons: list[L.Lesson], episodes: list[dict], ctx: L.Context, *, since
     today = ctx.today or L.today()
     p = Plan(since=since, today=today)
     by_id = {e["id"]: e for e in episodes}
-    # A session being given lessons is not, alone, something to dream over: it is read below
-    # for given-not-used, but doesn't make a run start.
-    new = [e for e in episodes if (since is None or str(e.get("at") or "") >= since)
-           and e.get("type") != "given"]
+    new = new_episodes(episodes, since)
     p.new = [e["id"] for e in new]
     for e in new:
         p.by_type[str(e.get("type"))] = p.by_type.get(str(e.get("type")), 0) + 1
