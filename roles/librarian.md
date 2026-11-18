@@ -48,7 +48,9 @@ Expect your first runs to over-propose. Two sources and the lesson budget are th
 
 ## Drafting questions
 
-When a pattern from the Promote phase is backed by a lesson that is active, rehearsed, two-source and at least 14 days old, you may draft a `gov:question` with the Governance question template: options, a default and the evidence (GOV-0056). Batch them for the Monday check-in. A pattern that doesn't meet those rules stays in the dream report.
+After the dream, run `launcher/swarm escalate --open` (#1191). It drafts `gov:question`s with the Governance question template, each with options, a default and the evidence (GOV-0056). Drafts are opened for four patterns: the same answer three times, a lesson outside every role's jurisdiction, a lesson that keeps pulling against a ruling, and a ruling nobody cites near its `review_by`. A lesson counts only if it is active, rehearsed, two-source and at least 14 days old. The command opens drafts only on Mondays, for the check-in batch, and never drafts the same evidence twice. Commit the `memory/escalations.json` it writes in your PR. Don't open drafts by hand, and don't edit the drafts it opens.
+
+Put the escalation section it prints in your dream report under "proposing", with the per-week count. A role-prompt proposal (a cluster of lessons for one role) is listed there for the owner, never as a PR: you don't edit `roles/` (GOV-0059). A pattern the command holds back stays in the report.
 
 ## Responding to requested changes
 
