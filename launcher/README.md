@@ -876,7 +876,34 @@ The body says the lesson in a few plain sentences, then has a `## Why` and an `#
 
 **Listings are per repo.** `lessons` and `show` default to this checkout's repo and show fleet lessons plus that repo's `repo:<x>` lessons. A `repo:<x>` lesson never shows for another repo. `--role` and `--path` keep lessons that name the role or a matching path, or that name none.
 
-**The eval result** comes from the replay gate (#1189). Until it records results, `show` prints the eval case and `not run yet`.
+**The eval result** comes from the replay gate (#1189): `show` prints the lesson's last rehearsal, or `not rehearsed yet`.
+
+## swarm memory rehearse: the replay gate for lessons (#1189)
+
+```
+launcher/swarm memory rehearse [L-NNNN ...] [--json] [--repo owner/name] [--store DIR] [--manifest swarm.toml]
+```
+
+A proposed lesson goes active only through this command. With no lessons named, it rehearses every lesson that is due: proposed or active, with an eval case (format in `evals/lessons/README.md`), and either not rehearsed since its title, body or case last changed, or last inconclusive. For each, it replays the case's task twice in a throwaway repo at the case's commit, once without the lesson and once with it in the system prompt, as a context pack carries it, and runs the case's check on what each replay left. Then the gate:
+
+- **promoted** (to active): the run with the lesson passes and the run without it doesn't, or both pass and the run with it cost no more;
+- **kept** (stays proposed): otherwise. The dream may retire it;
+- **confirmed** or **demoted**: the same test for an active lesson that changed. Demoted puts it back to proposed;
+- **inconclusive** (status unchanged, due again next night): a replay ended at its cap or in an error. The second replay isn't run once the first hasn't finished.
+
+The result goes into the lesson's frontmatter as a `rehearsal:` block (`at`, `result`, `hash`, `model`, `without`, `with`, `cost_without_usd`, `cost_with_usd`), and the command regenerates `memory/INDEX.md`. It prints a `## Rehearsals` section for the dream report. The librarian commits the changed lessons in its nightly PR (GOV-0059). The validator refuses an active lesson whose last rehearsal isn't `promoted` or `confirmed`, so editing the status by hand doesn't get past the gate.
+
+**Caps (GOV-0053)** come from `swarm.toml`'s `[memory]`. Every replay runs on `replay_model` (Haiku-tier) with `--max-budget-usd replay_cap_usd` ($0.50). At most `replays_per_night` (10) replays run in a UTC day, counted from the ledger `$PRODUCTSWARM_HOME/memory/replays.jsonl`, which records each replay's lesson, side, cost and outcome. A lesson needs two replays, so once fewer than two are left the rest wait for the next night.
+
+**Credential and safety.** Replays run on the engine's Console key: the command refuses to start without `ANTHROPIC_API_KEY`, and `claude --bare` reads nothing else, never the machine's Claude login. A replay can't push, comment or label:
+- it runs in a fresh repo fetched by sha from the local clone, which has no remote;
+- it runs under `claude -p --bare --restricted --tools Read,Edit,Write,Glob,Grep`, so it has no shell (no `git`, no `gh`), no web, no hooks, MCP servers, settings files or `CLAUDE.md`;
+- `GH_*`, `GITHUB_*`, SSH and askpass variables are removed from its environment, and `gh` is pointed at an empty config;
+- the repo is deleted afterwards.
+
+A case for another org repo replays from the launcher's clone of it (`~/.productswarm/repos/<owner>/<name>`).
+
+`--store DIR` rehearses lessons from another directory. The planted-correction drill in `evals/drills.md` uses it.
 
 **`memory/INDEX.md`** is generated: one row per active or dormant lesson, like `governance/INDEX.md`. Don't edit it by hand; a test fails if it's stale.
 

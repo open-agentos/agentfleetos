@@ -42,3 +42,18 @@ merger: mode live: 0 PR(s) would merge
 `--repo` alone counts only that repo's shadow comments, so the dry run says live acts as shadow there. The PR is a miss before that matters: shadow or live, the missing approval stops the merge.
 
 **Leave scratch#4 open and unreviewed.** It stays as the drill's evidence. Don't approve or merge it.
+
+## The replay gate promotes a planted correction (#1189, FEAT-19)
+
+This drill checks that the gate tells a lesson that changes behaviour from one that doesn't. The planted lesson, `evals/lessons/drill/L-9001-pr-body-opens-with-why.md`, says to open a PR body with a `Why:` line. That stands in for an owner's correction. Nothing else in the repo asks for the line. Its case, `evals/lessons/drill/L-9001.toml`, asks for a PR body for #1189 in `PR_BODY.md`. The check passes only if the new file's first line starts `Why:`.
+
+**Offline, every test run.** `launcher/test_rehearsal.py` (`test_drill_planted_correction_fails_without_and_passes_with`) rehearses the drill against a stand-in model that follows the lesson only when it is in its system prompt. The case fails without the lesson and passes with it, and the lesson is promoted.
+
+**Live, on the engine host.** This spends up to $1, two replays under GOV-0053's caps, on the engine's Console key:
+
+```
+d=$(mktemp -d) && cp evals/lessons/drill/L-9001-*.md "$d"/
+launcher/swarm memory rehearse L-9001 --store "$d"
+```
+
+Pass: `L-9001: promoted (now active). Without it: fail ...; with it: pass ...`. A `kept` result with "without it: pass" means the model wrote the line unprompted. A `kept` result with "with it: fail" means the replay ignored the lesson. Either way, record the result here.

@@ -55,6 +55,10 @@ FRONT = {
     "eval_case": "evals/lessons/L-0001.json",
     "supersedes": "[]",
     "related_rulings": "[GOV-0055]",
+    # the replay gate's block (#1189): an active lesson needs a passing one
+    "rehearsal": "\n  at: 2026-11-12\n  result: promoted\n  hash: \"0123abcd\"\n  without: fail"
+                 "\n  with: pass\n  cost_without_usd: 0.11\n  cost_with_usd: 0.12"
+                 "\n  model: claude-haiku-5-5",
 }
 BODY = """Run `python3 run_tests.py launcher` rather than unittest from the repo root.
 
@@ -76,7 +80,7 @@ def lesson_text(body: str = BODY, **over) -> str:
     lines += ["applies_to:", f"  roles: {f['roles']}", f"  paths:{f['paths']}" if f["paths"].startswith("\n")
               else f"  paths: {f['paths']}", "  situations:", "    - running the tests"]
     for k in ("sources", "confidence", "uses", "last_used", "created", "review_by", "eval_case",
-              "supersedes", "related_rulings"):
+              "supersedes", "related_rulings", "rehearsal"):
         if f[k] is None:
             continue
         v = f[k]
@@ -212,6 +216,17 @@ class SourceRulesTest(Fixture):
 
 
 class FieldRulesTest(Fixture):
+    def test_active_needs_a_passing_rehearsal(self):
+        """#1189: the replay gate is the only way to active."""
+        self.assertRejected(self.errors(rehearsal=None), "active lesson needs a passing rehearsal")
+        for result in ("kept", "demoted", "inconclusive"):
+            self.assertRejected(self.errors(rehearsal=f"\n  result: {result}"),
+                                "active lesson needs a passing rehearsal")
+        self.assertEqual(self.errors(rehearsal="\n  result: confirmed"), [])
+        self.assertEqual(self.errors(status="proposed", rehearsal=None), [])
+        self.assertEqual(self.errors(status="proposed", rehearsal="\n  result: kept"), [])
+        self.assertRejected(self.errors(rehearsal=" promoted"), "rehearsal must be")
+
     def test_active_without_eval_case(self):
         self.assertRejected(self.errors(eval_case="''"), "active lesson needs an eval_case")
         self.assertRejected(self.errors(eval_case=""), "active lesson needs an eval_case")
@@ -378,7 +393,12 @@ class CommandTest(Fixture):
         self.assertIn("ep-note-a: note (session note) by productswarm-builder[bot]", out)
         self.assertIn("ep-act: act (engine signal) by mattmcalister", out)
         self.assertIn("ep-note-b: missing", out)
-        self.assertIn("Eval: evals/lessons/L-0001.json: not run yet", out)
+        self.assertIn("Eval: evals/lessons/L-0001.json: promoted on 2026-11-12: without it fail "
+                      "($0.11), with it pass ($0.12), on claude-haiku-5-5", out)
+        self.write(status="proposed", rehearsal=None)
+        code, out = self.run_swarm("memory", "show", "L-0001", "--repo", REPO)
+        self.assertIn("Eval: evals/lessons/L-0001.json: not rehearsed yet: launcher/swarm memory "
+                      "rehearse L-0001", out)
 
     def test_show_hides_other_repos_lessons(self):
         self.write(scope="repo:open-agentos/other", paths="[]")
