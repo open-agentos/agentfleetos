@@ -91,8 +91,8 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(sorted(roles), sorted(r for r, _ in agents.ROLES))
         self.assertNotIn("cm-drawer", html)
         self.assertIn("WORKING · 3", html)
-        self.assertIn("IDLE · 4", html)
-        self.assertIn("3 working · 4 idle · Thu 05 Nov, 12:00 UTC", html)
+        self.assertIn("IDLE · 5", html)
+        self.assertIn("3 working · 5 idle · Thu 05 Nov, 12:00 UTC", html)
         self.assertIn('<span class="br-av lead" aria-hidden="true">PL</span>', html)
 
     def test_rows_hold_no_link_inside_their_link(self):
@@ -110,7 +110,7 @@ class RenderTest(unittest.TestCase):
                  "report": None, "trouble": None, "plan": None}
         html = drawn(empty)
         self.assertIn("Nothing merged in the window.", html)
-        self.assertIn("IDLE · 7", html)
+        self.assertIn("IDLE · 8", html)
 
 
 if __name__ == "__main__":

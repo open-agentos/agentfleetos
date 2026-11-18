@@ -110,7 +110,7 @@ milestone again on fresh data.
 history, so the count holds across restarts. A third request starts nothing, and an
 Authority: fail review at the head starts nothing either. Requested changes start the PR's
 author role, read from its App login (#738, Option 1 of the owner's answer on #777):
-the builder, planner, docs, designer or analyst, each only on a PR its own App opened, with
+the builder, planner, docs, designer, analyst or librarian, each only on a PR its own App opened, with
 its own spend cap. Requested changes on a PR the owner or any other login opened start
 nothing (#178). `needs_you()` lists all three as needing the owner. A PR that doesn't close exactly one issue is skipped with a reason.
 

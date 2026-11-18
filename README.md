@@ -2,7 +2,7 @@
 
 A swarm of agent sessions building tools for running agent swarms.
 
-Each session is a Claude Code session with one role: planner, builder, reviewer, docs, designer or analyst. Each role acts on GitHub as its own GitHub App. The tools here let the owner start the swarm, see what every session is doing, and see what's waiting on them. [PRODUCT.md](PRODUCT.md) says what we're building and why.
+Each session is a Claude Code session with one role: planner, builder, reviewer, docs, designer, analyst or librarian. Each role acts on GitHub as its own GitHub App. The tools here let the owner start the swarm, see what every session is doing, and see what's waiting on them. [PRODUCT.md](PRODUCT.md) says what we're building and why.
 
 ## What's here
 
