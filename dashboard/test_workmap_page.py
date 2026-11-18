@@ -108,8 +108,8 @@ class PageTest(unittest.TestCase):
     def test_layout_map_then_briefing_then_lists(self):
         html = wp.render(model())
         order = [html.index(x) for x in ("<h1>Work map</h1>", 'class="wm-keyline"', 'class="wm-ctls"',
-                                         'id="wm-crumb"', 'id="wm-map"', 'id="wm-legend"', 'aria-label="Selected"',
-                                         'aria-label="Briefing"', 'aria-label="Lists"')]
+                                         'id="wm-crumb"', 'id="wm-map"', 'id="wm-legend"', 'class="rail"',
+                                         'aria-label="Briefing"', 'aria-label="Selected"', 'aria-label="Lists"')]
         self.assertEqual(order, sorted(order))
         self.assertIn("with JavaScript off", html)
 
@@ -149,8 +149,11 @@ class SelectedTest(unittest.TestCase):
         sel = re.search(r"\.wm-selected \{([^}]*)\}", css).group(1)
         frame = re.search(r"\.wm-frame \{([^}]*)\}", css).group(1)
         height = re.search(r"height:([^;]+);", frame).group(1)
-        self.assertIn(f"height:{height};", sel)   # the map's height
-        self.assertIn("320px", sel)
+        rail = re.search(r"\.wm-top > \.rail \{([^}]*)\}", css).group(1)
+        self.assertIn(f"height:calc({height} + 72px);", rail)   # the map's height plus the legend's (#1249)
+        self.assertIn("margin-top:30px", rail)                   # level with the frame, under the crumb
+        self.assertIn("width:100%; height:100%;", sel)           # it fills the rail's drawer
+        self.assertIn("minmax(340px, 1fr)", re.search(r"\.wm-top \{([^}]*)\}", css).group(1))
         self.assertIn("overflow:hidden", sel)
         heights = {}
         for cls in ("head", "title", "stage", "deps", "days", "peers", "nums"):
@@ -159,6 +162,25 @@ class SelectedTest(unittest.TestCase):
         # the sections, the padding and the border fit the smallest map height
         self.assertLessEqual(sum(heights.values()) + 24 + 2, 460)
         self.assertRegex(css, r"@media \(max-width:900px\) \{ \.wm-selected \{[^}]*height:460px")
+
+    def test_in_the_rail_over_the_briefing(self):
+        """#1249: the Briefing is the rail's base and the Selected panel its drawer, with "← Brief"."""
+        html = wp.render(model())
+        rail = re.search(r'<div class="rail" data-rail>(.*)</aside></div></div>', html, re.S).group(1)
+        base = re.search(r'<div class="rail-base" tabindex="-1">(.*?)</section></div>', rail, re.S).group(1)
+        self.assertIn('class="br-brief wm-brief"', base)
+        self.assertIn('<div class="rail-over"><aside class="wm-selected', rail)
+        self.assertEqual(html.count('aria-label="Briefing"'), 1)
+        self.assertIn('<button type="button" class="wm-back" id="wm-sel-close">← Brief</button>', self.panel())
+        page = wp.page(model(), "t", "")
+        self.assertIn('<body class="has-rail">', page)
+
+    def test_script_opens_and_closes_the_drawer(self):
+        js = wp.script()
+        self.assertIn('rail.classList.toggle("rail-open", open)', js)
+        self.assertIn('ev.key === "Escape"', js)
+        self.assertIn('$("wm-sel-close")', js)
+        self.assertIn("function toBrief() { if (st.selected !== null) select(st.selected); }", js)
 
     def test_script_fills_the_panel_from_the_map_and_lists(self):
         js = wp.script()
@@ -265,6 +287,40 @@ class GoalsRolesLinksTest(unittest.TestCase):
             self.assertIn(x, js)
         # the URL is read after localStorage, so it wins
         self.assertLess(js.index("localStorage.getItem"), js.index("readUrl();"))
+
+
+class RailTest(unittest.TestCase):
+    """The shell's rail (layout.rail, #1249), switched on only for the Work map so far."""
+
+    def test_markup(self):
+        self.assertEqual(layout.rail("<p>b</p>", "<p>o</p>"),
+                         '<div class="rail" data-rail><div class="rail-base" tabindex="-1"><p>b</p></div>'
+                         '<div class="rail-over"><p>o</p></div></div>')
+
+    def test_only_a_rail_page_is_wider(self):
+        t = dt.datetime(2026, 11, 18, tzinfo=dt.timezone.utc)
+        self.assertIn("<body>", layout.page("crew.html", "t", "o/r", t, "<p>x</p>"))
+        self.assertIn('<body class="has-rail">', layout.page("workmap.html", "t", "o/r", t, "<p>x</p>", rail=True))
+        self.assertIn("body.has-rail main, body.has-rail header.mast, body.has-rail nav.top { max-width:1440px; }",
+                      layout.CSS)
+        self.assertIn("main, header.mast { max-width:1100px;", layout.CSS)
+
+    def test_drawer_slides_and_is_hidden_when_closed(self):
+        css = layout.CSS
+        over = re.search(r"\n\.rail-over \{([^}]*)\}", css).group(1)
+        self.assertIn("transform:translateX(100%); visibility:hidden;", over)
+        self.assertIn("transform .28s", over)
+        self.assertRegex(css, r"\.rail-open \.rail-over \{ transform:none; visibility:visible;")
+        self.assertRegex(css, r"\.rail-open \.rail-base \{ visibility:hidden;")   # covered: not focusable
+        self.assertRegex(css, r"@media \(prefers-reduced-motion:reduce\) \{[^}]*\{\s*transition:none; \}")
+
+    def test_phone_briefing_first_and_a_bottom_sheet(self):
+        css = layout.CSS
+        self.assertRegex(css, r"@media \(max-width:900px\) \{ \.wm-top \{[^}]*flex-direction:column;[^}]*\}\s*"
+                              r"\.wm-top > \.rail \{ order:-1;")
+        self.assertIn("position:fixed; inset:auto 0 0 0;", css)
+        self.assertIn("max-height:75vh; overflow:auto;", css)
+        self.assertIn("transform:translateY(100%);", css)
 
 
 class BriefingTest(unittest.TestCase):

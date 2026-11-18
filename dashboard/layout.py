@@ -217,6 +217,28 @@ nav.top { max-width:1100px; margin:0 auto 4px; display:flex; flex-wrap:wrap; gap
   font:600 13px/1.6 var(--cond); text-transform:uppercase; letter-spacing:.06em; }
 nav.top .here { text-decoration:none; color:var(--muted); }
 .sec { scroll-margin-top:12px; }
+/* The rail (#1249): a right-hand column that shows its base (the Work map's Briefing) and slides
+   a drawer (the Selected panel) over it while something is selected. page(rail=True) widens the
+   page for it; `.rail-open` on the rail opens the drawer. The covered side is visibility:hidden,
+   once the slide is over, so nothing in it can be focused. Under 900px the base stays in the
+   flow and the drawer is a bottom sheet, up to 75vh. */
+body.has-rail main, body.has-rail header.mast, body.has-rail nav.top { max-width:1440px; }
+.rail { position:sticky; top:12px; min-width:0; overflow:hidden; }
+.rail-base, .rail-over { position:absolute; inset:0; transition:transform .28s ease, visibility 0s linear 0s; }
+.rail-base { overflow:auto; }
+.rail-base:focus { outline:none; }
+.rail-over { transform:translateX(100%); visibility:hidden; transition:transform .28s ease, visibility 0s linear .28s; }
+.rail-open .rail-over { transform:none; visibility:visible; transition:transform .28s ease, visibility 0s linear 0s; }
+.rail-open .rail-base { visibility:hidden; transition:visibility 0s linear .28s; }
+@media (max-width:900px) {
+  .rail { position:static; overflow:visible; }
+  .rail-base { position:static; overflow:visible; }
+  .rail-open .rail-base { visibility:visible; }
+  .rail-over { position:fixed; inset:auto 0 0 0; z-index:20; max-height:75vh; overflow:auto;
+    transform:translateY(100%); box-shadow:0 -6px 18px rgba(27,27,24,.18); }
+  .rail-open .rail-over { transform:none; } }
+@media (prefers-reduced-motion:reduce) { .rail-base, .rail-over, .rail-open .rail-base, .rail-open .rail-over {
+  transition:none; } }
 /* Shared by the Work map and Crew, from the Bridge (#926, retired in #1114). */
 .br-main { flex:999 1 520px; min-width:0; display:flex; flex-direction:column; gap:26px; }
 .br-titlebar { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 16px; }
@@ -305,8 +327,12 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-seg button[aria-pressed="true"] { background:var(--ink); color:var(--paper); }
 .wm-seg button:disabled { cursor:default; }
 .wm-seg button:focus-visible, .wm-gh:focus-visible, .wm-back:focus-visible { outline:3px solid var(--agent); outline-offset:1px; }
-.wm-top { display:flex; flex-wrap:wrap; gap:16px 20px; align-items:flex-start; }
-.wm-mapcol { flex:999 1 300px; min-width:0; }
+.wm-top { display:grid; grid-template-columns:minmax(0, 2fr) minmax(340px, 1fr); gap:16px 20px; align-items:start; }
+.wm-mapcol { min-width:0; }
+/* The Work map's rail (#1249): as tall as the map frame plus the legend, beside the frame. */
+.wm-top > .rail { margin-top:30px; height:calc(clamp(460px, 68vh, 640px) + 72px); }
+@media (max-width:900px) { .wm-top { display:flex; flex-direction:column; align-items:stretch; }
+  .wm-top > .rail { order:-1; margin-top:0; height:auto; } }
 .wm-crumb { margin:0 0 6px; height:24px; font:13px/24px var(--mono); white-space:nowrap; overflow:hidden;
   text-overflow:ellipsis; }
 .wm-back { font:inherit; padding:0; border:0; background:none; color:var(--ink); text-decoration:underline;
@@ -349,16 +375,18 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-key .wm-k-needs { box-shadow:inset 0 0 0 3px var(--owner); }
 .wm-key .wm-k-blocked { box-shadow:inset 5px 0 0 0 var(--red); }
 .wm-key .wm-k-sel { outline:2px dashed var(--ink); outline-offset:-2px; }
-/* The Selected panel (#1083): 320px wide, the map frame's height and top, every section a fixed
-   height, so selecting or clearing an issue moves nothing. Below 900px it goes under the map. */
-.wm-selected { flex:0 0 320px; width:320px; box-sizing:border-box; margin-top:30px;
-  height:clamp(460px, 68vh, 640px); overflow:hidden; display:flex; flex-direction:column;
+/* The Selected panel (#1083): every section a fixed height, so selecting or clearing an issue
+   moves nothing. Since #1249 it fills the rail's drawer (340px to 480px wide, the rail's height);
+   on a phone it is the bottom sheet, 460px tall. */
+.wm-selected { width:100%; height:100%; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column;
   justify-content:space-between; background:var(--card); border:1px solid var(--line); padding:12px 14px; }
-@media (max-width:900px) { .wm-selected { flex:1 1 100%; width:100%; margin-top:0; height:460px; } }
+@media (max-width:900px) { .wm-selected { height:460px; } }
 .wm-ss { flex:none; overflow:hidden; margin:0; }
 .wm-ss p { margin:0; }
 .wm-ss-head { height:20px; display:flex; justify-content:space-between; align-items:center; }
+.wm-ss-head { gap:10px; }
 .wm-ss-head .br-kind { margin:0; padding:0; flex:none; }
+.wm-ss-head .wm-back { flex:none; font-size:13px; }
 .wm-ss-head .mono { font-size:13px; flex:1 1 0; min-width:0; text-align:right; }
 .wm-ss-title { height:58px; }
 .wm-st { height:38px; font:600 14px/19px var(--sans); overflow:hidden; display:-webkit-box;
@@ -405,7 +433,7 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-ss-nums { height:96px; display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:32px; gap:0 12px; }
 .wm-num { min-width:0; } .wm-num dt { font-size:11px; line-height:14px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wm-num dd { margin:0; font:13px/18px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wm-brief { width:100%; }
+.wm-brief { width:100%; min-height:100%; }
 /* The Work map's lists (#1084): six of them, each exactly five 50px rows tall, whatever is in it. */
 .wm-lists { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:20px 24px; margin-top:20px; }
 @media (max-width:900px) { .wm-lists { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
@@ -537,7 +565,7 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "", live_
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
          script: tuple[str, str] | None = None, libs: dict[str, bytes] | None = None,
-         live_mast: bool = False) -> str:
+         live_mast: bool = False, rail: bool = False) -> str:
     """One whole page in the shared shell: head (noindex, CSP, CSS), masthead (#402), the nav
     (Map · Crew · Governance, #1113), then the body. `script` is the page's own script as (file
     name, text), e.g. the Work map's (#1082). The page loads it from js/ (write_scripts puts it
@@ -547,7 +575,8 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
     vendored libraries the page loads before its own script, as layout.libs() returns them
     (#1107): each is served from js/ too and allowed by its hash. With `live_mast`, the
     masthead's changing part is a `data-panel="mast"` box for the page's own script to redraw
-    (Governance's, #1140)."""
+    (Governance's, #1140). With `rail`, the page is wider (1440px, not 1100px) for a rail()
+    beside its main column (#1249); only the Work map has one so far."""
     name = NAMES[current]
     js = script[1] if script else None
     libs = libs or {}
@@ -557,7 +586,7 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         '<meta name="robots" content="noindex, nofollow">',  # published publicly; see #33
         f"<title>{esc(name)} · {esc(title)} · {esc(repo)}</title><style>{CSS}</style></head>"
-        + "<body>",
+        + ('<body class="has-rail">' if rail else "<body>"),
         f'<header class="mast">{masthead(current, repo, built, owner, live_box=live_mast)}</header>',
         f'<nav class="top" aria-label="Pages">{nav(current)}</nav>',
         f"<main>{body}</main>",
@@ -565,6 +594,16 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         script_tag(*script) if script else None,
         "</body></html>\n",
     ] if part is not None)
+
+
+def rail(base: str, over: str) -> str:
+    """The right-hand rail (#1249): `base` (HTML) shows by default, and `over` (HTML) is a drawer
+    that slides in over it while the rail has the `rail-open` class, which the page's script
+    sets. Each side is in its own box filling the rail; the base box takes focus (tabindex -1)
+    so a script can hand focus back to it when the drawer closes. Use it with page(rail=True)."""
+    return ('<div class="rail" data-rail>'
+            f'<div class="rail-base" tabindex="-1">{base}</div>'
+            f'<div class="rail-over">{over}</div></div>')
 
 
 def redirect(to: str, title: str, text: str) -> str:
