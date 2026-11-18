@@ -21,15 +21,19 @@ sys.path.insert(0, str(HERE))
 import generate as g  # noqa: E402
 import live  # noqa: E402
 import workmap_page  # noqa: E402
+import crewdraw  # noqa: E402
+import crewpage  # noqa: E402
 import govdraw  # noqa: E402
 import govpage  # noqa: E402
 
 
 def with_governance(m) -> dict:
-    """The pages, with what governance.js draws from Governance's data appended to its page (#1140)."""
+    """The pages, with what governance.js (#1140) and crew.js (#1139) draw from their pages'
+    data appended to Governance and Crew."""
     pages = g.render(m)
     if govdraw.NODE:
         pages["governance.html"] += "".join(govdraw.draw(govdraw.page_data(m)).values())
+        pages["crew.html"] += crewdraw.page(m)
     return pages
 
 REPO = "open-agentos/agentfleetos"
@@ -193,11 +197,14 @@ class PageTest(unittest.TestCase):
         for name, page in pages.items():
             head = page.split("</head>")[0]
             self.assertIn('<meta name="robots" content="noindex, nofollow">', head, name)
-            self.assertIn('<meta http-equiv="refresh" content="300">', head, name)
+            self.assertNotIn('http-equiv="refresh"', head, name)   # none reloads itself (#1135)
             self.assertIn('<meta name="viewport" content="width=device-width, initial-scale=1">', head, name)
-            # Crew and Governance load the live refresh and the Work map its treemap, each from js/
-            # and allowed by hash (#411, #1082, #1106); no page carries an inline one.
-            rest = page.replace(g.layout.script_tag("poll.js", live.script()), "")
+            # Crew and Governance load their own scripts and the Work map its treemap, each from js/
+            # and allowed by hash (#1139, #1140, #1082, #1106); no page carries an inline one.
+            rest = page
+            if name == crewpage.FILE:   # its own script and the data it draws from (#1139)
+                rest = re.sub(r'<script type="application/json" id="crew-data">.*?</script>', "",
+                              rest.replace(g.layout.script_tag("crew.js", crewpage.script()), ""), flags=re.S)
             if name == govpage.FILE:   # its own script and the data it draws from (#1140)
                 rest = re.sub(r'<script type="application/json" id="gov-data">.*?</script>', "",
                               rest.replace(g.layout.script_tag("governance.js", govpage.script()), ""), flags=re.S)
@@ -351,7 +358,7 @@ class EndToEndTest(unittest.TestCase):
                 self.assertEqual((out / "fonts" / f).read_bytes(),
                                  (g.layout.FONTS_SRC / f).read_bytes())
             # Each page's scripts are served from js/ beside it, the very bytes its CSP hashes (#1106).
-            self.assertEqual(sorted(p.name for p in (out / "js").iterdir()), ["governance.js", "poll.js", "workmap.js"])
+            self.assertEqual(sorted(p.name for p in (out / "js").iterdir()), ["crew.js", "governance.js", "workmap.js"])
             for name in ("crew.html", "governance.html", "workmap.html"):
                 page = (out / name).read_text()
                 srcs = re.findall(r'<script src="([^"]+)" integrity="sha256-([^"]+)">', page)
@@ -361,8 +368,10 @@ class EndToEndTest(unittest.TestCase):
                 self.assertEqual(digest, base64.b64encode(hashlib.sha256(body).digest()).decode(), name)
                 self.assertIn(f"script-src 'self' 'sha256-{digest}';", page, name)
             page = (out / "crew.html").read_text()
-            self.assertIn("#4 Dashboard generator", page)
-            self.assertIn("s-active", page)
+            self.assertIn('"issue":4,', page)   # drawn client-side from its data block (#1139)
+            self.assertIn('"issue_title":"Dashboard generator"', page)
+            self.assertIn('"status":"active"', page)
+            self.assertEqual((out / "js" / "crew.js").read_text(), crewpage.script())
             self.assertNotIn("v3 progress", page)   # retired (#1113)
             st = json.loads((d / "out" / "state.json").read_text())   # beside the page (#400)
             self.assertEqual((st["schema"], st["repo"]), (1, REPO))
@@ -375,7 +384,8 @@ class ScriptRulesTest(unittest.TestCase):
     def test_no_desk_script_evals_or_parses_markup(self):
         texts = dict(g.scripts())
         texts |= {p.name + " (source)": p.read_text(encoding="utf-8") for p in Path(g.__file__).parent.glob("*.js")}
-        self.assertIn("poll.js", texts)
+        self.assertIn("crew.js", texts)
+        self.assertIn("governance.js", texts)
         self.assertIn("workmap.js", texts)
         for name, js in texts.items():
             for bad in ("eval(", "new Function", "innerHTML"):
@@ -451,7 +461,7 @@ class VendoredLibrariesTest(unittest.TestCase):
 
     def test_names_are_plain_scripts_and_not_the_desks_own(self):
         self.assertFails({"lib.min.js": self.LIB}, [self.entry("lib.min.js")], "not a script file name")
-        self.assertFails({"poll.js": self.LIB}, [self.entry("poll.js")], "the Desk's own scripts",
+        self.assertFails({"crew.js": self.LIB}, [self.entry("crew.js")], "the Desk's own scripts",
                          reserved=g.scripts())
 
     def test_a_page_loads_a_library_by_hash_before_its_own_script(self):

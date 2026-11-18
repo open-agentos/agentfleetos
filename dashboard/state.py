@@ -1,9 +1,10 @@
 """The data the dashboard page shows, as JSON: `state.json`, written beside `index.html` (#400).
 
 `state(model)` takes what `generate.build()` returns and keeps only what the page renders,
-with no HTML. It carries no cost: no session cost, daily spend, cap or over-cap flag, and no
-spend block (GOV-0014; #397). It's public like the page (#33), so sessions and PRs keep only
-the fields the page shows, by name.
+with no HTML. Its only cost is each session's own: its list-price estimate (`cost`), its role's
+cap (`cap`) and an over-cap flag (`over_cap`), for Crew's Spend column (per #1153's answer,
+GOV-0057). It never sums them: no daily spend, total or spend block (GOV-0033, GOV-0014). It's
+public like the page (#33), so sessions and PRs keep only the fields the page shows, by name.
 
 Timestamps are RFC 3339 strings in UTC (`2026-11-05T07:20:08Z`); dates are `YYYY-MM-DD`.
 Each later #397 panel adds its slice here.
@@ -12,24 +13,25 @@ import datetime as dt
 from pathlib import Path
 
 import activity
+import agents
 import authority
 import committees
 import effort
 import grants
 import floor as floor_mod
 import generate
-import layout
-import live
 import plan
 import precedent
 import report
+import reviewer_runs as reviewer_runs_mod
 import wire
+import workmap_page
 
 SCHEMA = 1
 
-# What the page shows for a session (generate.session_rows), minus its spend column.
+# What Crew's sessions table shows for a session (crew.js, #1139), its spend included (#1153).
 SESSION_FIELDS = ("session_id", "role", "model", "status", "issue", "pr", "gov_question",
-                  "last_event", "last_ts", "started_ts", "tracking_issue")
+                  "last_event", "last_ts", "started_ts", "tracking_issue", "cost", "cap", "over_cap")
 # What the page shows for a PR (render's "Open pull requests" and the needs-you list).
 PR_FIELDS = ("number", "title", "url", "author", "draft", "review", "created_ts", "closes",
              "needs_owner")
@@ -61,8 +63,9 @@ def pick(d: dict, fields: tuple) -> dict:
     return {k: d[k] for k in fields if k in d}
 
 
-def session(s: dict) -> dict:
-    return pick(s, SESSION_FIELDS)
+def session(s: dict, titles: dict | None = None) -> dict:
+    """One session, plus its issue's title for Crew's sessions table (#1139)."""
+    return {**pick(s, SESSION_FIELDS), "issue_title": (titles or {}).get(s.get("issue"))}
 
 
 def needs(m: dict) -> list[dict]:
@@ -77,7 +80,8 @@ def gov_question(q: dict) -> dict:
 
 
 def reviewer_runs(r: dict) -> dict:
-    return {**r, "unreviewed": [p["number"] for p in r.get("unreviewed") or []]}
+    return {**r, "unreviewed": [p["number"] for p in r.get("unreviewed") or []],
+            "max_runs": reviewer_runs_mod.MAX_RUNS}
 
 
 # A floor card (floor.py) minus its unfilled template; it has no tokens or cost to drop.
@@ -100,13 +104,6 @@ def watcher(w: dict | None) -> dict | None:
     return None if w is None else pick(w, WATCHER_FIELDS)
 
 
-def desk(m: dict) -> dict:
-    """The masthead's changing part and Crew's live panels as node trees, which the live
-    refresh draws (#411, #1113). Governance draws itself from plain fields (#1140)."""
-    mast = layout.mast_live(m["now"], generate.owner_line(m))
-    return live.trees({"mast": mast, **generate.live_panels(m)})
-
-
 def state(m: dict) -> dict:
     gov = {k: v for k, v in m["governance"].items() if k != "questions"}
     return plain({
@@ -115,7 +112,7 @@ def state(m: dict) -> dict:
         "repo": m["repo"],
         "idle_minutes": m["idle_minutes"],
         "needs_you": needs(m),
-        "sessions": [session(s) for s in m["sessions"]],
+        "sessions": [session(s, m.get("issue_titles")) for s in m["sessions"]],
         "floor": floor(m.get("floor")),
         "watcher": watcher(m.get("watcher")),   # #459: swarm watch's state, from the [watch] issue
         "prs": [pick(p, PR_FIELDS) for p in m["prs"]],
@@ -137,5 +134,7 @@ def state(m: dict) -> dict:
         "grants": grants.state(m.get("grants")),   # #713: the merger's calls in the last 24 hours
         "effort": effort.state(m.get("effort")),   # #1013: PRs by kind of work per open Goal, and the trend
         "authority": m.get("authority") or authority.build(None, []),   # #410, #1140: Governance's authority map
-        "desk": desk(m),   # #411: what the live refresh draws on Crew
+        "crew_roles": agents.state(m),   # #1139: Crew's role rows
+        # #1135: the Work map's strip, tape, Goals and roles, which map.json doesn't carry
+        "workmap": workmap_page.live_data(m, committees.owner_login()),
     })

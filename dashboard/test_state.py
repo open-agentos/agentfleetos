@@ -1,12 +1,14 @@
 """Tests for dashboard/state.py (#400). Run: python3 -m unittest discover -s dashboard"""
 import datetime as dt
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import crewpage  # noqa: E402
 import generate as g  # noqa: E402
 import state as st  # noqa: E402
 from test_generate import NOW, IDLE, REPO, ev, tracking, comment, issue, ts  # noqa: E402
@@ -45,21 +47,6 @@ def keys(x, path=""):
             yield from keys(v, f"{path}[{i}]")
 
 
-class Recording(dict):
-    """A dict that notes which keys were read."""
-    def __init__(self, d, seen):
-        super().__init__(d)
-        self.seen = seen
-
-    def __getitem__(self, k):
-        self.seen.add(k)
-        return super().__getitem__(k)
-
-    def get(self, k, default=None):
-        self.seen.add(k)
-        return super().get(k, default)
-
-
 class StateTest(unittest.TestCase):
     def setUp(self):
         self.m = model()
@@ -77,19 +64,27 @@ class StateTest(unittest.TestCase):
     def test_is_json(self):
         self.assertEqual(json.loads(json.dumps(self.s)), self.s)
 
-    def test_model_has_cost_but_state_has_none(self):
+    def test_cost_only_per_session_never_summed(self):
+        # Each session's own estimate, cap and over-cap flag, for Crew's Spend column (per
+        # #1153's answer, GOV-0057); nothing else, and no total (GOV-0033).
         self.assertTrue(any(s["over_cap"] for s in self.m["sessions"]))   # the fixture is priced
-        bad = [p for p, k in keys(self.s) if any(w in k.lower() for w in COST_WORDS)]
-        self.assertEqual(bad, [])
+        for mine, theirs in zip(self.s["sessions"], self.m["sessions"]):
+            self.assertEqual([mine[k] for k in ("cost", "cap", "over_cap")],
+                             [theirs[k] for k in ("cost", "cap", "over_cap")])
+        costly = [p for p, k in keys(self.s) if any(w in k.lower() for w in COST_WORDS) or k in ("cap", "over_cap")]
+        self.assertTrue(costly)
+        self.assertEqual([p for p in costly if not re.fullmatch(r"\.sessions\[\d+\]\.(cost|cap|over_cap)", p)], [])
+        self.assertFalse([p for p, k in keys(self.s) if "total" in k.lower() or "sum" in k.lower()])
         self.assertNotIn("over_cap", [i["kind"] for i in self.s["needs_you"]])
-        self.assertNotIn("$", json.dumps(self.s))
+        self.assertNotIn("$", json.dumps(self.s))   # figures, never Crew's text
 
     def test_session_fields_are_ones_the_page_renders(self):
-        seen = set()
-        g.session_rows(self.m, [Recording(s, seen) for s in self.m["sessions"]])
+        # crew.js draws Crew's sessions table from these (#1139): it reads every one.
+        js = crewpage.JS.read_text(encoding="utf-8")
+        seen = set(re.findall(r"\bx\.([a-z_]+)", js[js.index("function sessionRows"):js.index("function sessions(")]))
         for s in self.s["sessions"]:
             self.assertLessEqual(set(s), seen)
-        self.assertEqual(set(self.s["sessions"][0]), set(st.SESSION_FIELDS))
+        self.assertEqual(set(self.s["sessions"][0]), {*st.SESSION_FIELDS, "issue_title"})
 
     def test_no_html(self):
         self.assertNotIn("<", json.dumps(self.s))

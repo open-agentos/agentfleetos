@@ -23,7 +23,8 @@ copies the self-hosted fonts and the pages' scripts (js/, #1106) beside them:
     Briefing, the lists and the tape under it; the live Desk's home;
   - crew.html: one row per role (agents.py, #932), each opening its role view on the Work map
     (#1115), then on the floor (floor.py), the sessions table, the Actions reviewer, grants in
-    use (grants.py, #713) and effort per open Goal (effort.py, #1013);
+    use (grants.py, #713) and effort per open Goal (effort.py, #1013), all drawn client-side
+    from state.json (crewpage.py and crew.js, #1139);
   - governance.html: the full decision log, open and lapsed gov questions, the committees
     (the committee desk and round grids, then past committees' cards and grids), the authority
     map (authority.py, #410), precedent in use, what the numbers say and how the questions went,
@@ -32,7 +33,7 @@ Plus effort.html, the PRs behind each segment of Crew's Effort bars (#1013), and
 each retired page (REDIRECTS: index.html, the old desk, and the Bridge, Commissions, Agents,
 Operations, Decisions and Authority pages). index.html is the --out page, so a host that serves
 it at / (Pages) sends the browser on to the Work map.
-Stdlib only. Crew loads one script, the live refresh (live.py, #411), Governance its own
+Stdlib only. Crew loads its own script (crew.js, #1139), Governance its own
 (governance.js, #1140), and the Work map its treemap (workmap.js, #1082). Each is a same-origin file in
 js/, allowed by its hash in the page's CSP (option 3 of gov question #1102). Vendored libraries
 (static/vendor/, #1107) are checked against their pinned hashes before anything is fetched or
@@ -54,9 +55,9 @@ import sys
 from pathlib import Path
 
 import activity
-import agents
 import authority
 import committees
+import crewpage
 import effort
 import floor
 import ghql
@@ -64,7 +65,6 @@ import governance
 import govpage
 import grants
 import layout
-import live
 import plan
 import precedent
 import questions
@@ -677,43 +677,6 @@ def stamp(t: dt.datetime | None) -> str:
     return t.strftime("%Y-%m-%d %H:%M UTC") if t else ""
 
 
-def issue_link(repo: str, n: int | None, titles: dict, show_title: bool = True) -> str:
-    if not n:
-        return '<span class="muted">—</span>'
-    url = f"https://github.com/{esc(repo)}/issues/{n}"
-    title = titles.get(n)
-    label = f"#{n}" + (f" {esc(title)}" if show_title and title else "")
-    return f'<a href="{url}" title="{esc(title)}">{label}</a>'
-
-
-def session_rows(m: dict, sessions: list[dict]) -> str:
-    repo, now, titles = m["repo"], m["now"], m["issue_titles"]
-    rows = []
-    for s in sessions:
-        status = f'<span class="pill s-{s["status"]}">{s["status"]}</span>'
-        if s["gov_question"]:
-            status += f' on {issue_link(repo, s["gov_question"], titles, show_title=False)}'
-        pr = (f' · PR <a href="https://github.com/{esc(repo)}/pull/{s["pr"]}">#{s["pr"]}</a>'
-              if s["pr"] else "")
-        rows.append(
-            "<tr>"
-            f"<td>{status}</td>"
-            f"<td><b>{esc(s['role'])}</b><br><span class=\"muted\">{esc(s['model'] or '')}</span></td>"
-            f"<td>{issue_link(repo, s['issue'], titles)}{pr}</td>"
-            f"<td title=\"{esc(stamp(s['last_ts']))}\">{esc(ago(s['last_ts'], now))}"
-            f"<br><span class=\"muted\">{esc(s['last_event'] or '')}</span></td>"
-            f"<td><a href=\"https://github.com/{esc(repo)}/issues/{s['tracking_issue']}\">"
-            f"<code>{esc(s['session_id'][:8])}</code></a>"
-            f"<br><span class=\"muted\">started {esc(ago(s['started_ts'], now))}</span></td>"
-            f"<td class=\"num\">{esc(spend.usd(s['cost']))}"
-            + (f"<br><span class=\"pill s-blocked\">over cap {esc(spend.usd(s['cap']))}</span>"
-               if s.get("over_cap") else "") + "</td>"
-            "</tr>")
-    head = ("<tr><th>Status</th><th>Role</th><th>Current issue</th>"
-            "<th>Last activity</th><th>Session</th><th class=\"num\">Spend (est.)</th></tr>")
-    return f'<div class="scroll"><table>{head}{"".join(rows)}</table></div>'
-
-
 TITLE = "Swarm dashboard"
 
 
@@ -726,52 +689,12 @@ def rfc3339(t: dt.datetime) -> str:
     return t.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def crew_panels(m: dict) -> dict[str, str]:
-    """Crew's live panels by name (#1113): on the floor (#403), grants in use (#713) and Effort
-    (#1013). Each is drawn into a `data-panel` box that the live refresh redraws from
-    state.json (#411), so an empty one still gets its box."""
-    return {"floor": floor.render(m.get("floor"), m["repo"], m.get("watcher")),
-            "grants": grants.render(m.get("grants"), m["repo"]),
-            "effort": effort.render(m.get("effort"))}
-
-
-def live_panels(m: dict) -> dict[str, str]:
-    """Every panel poll.js redraws, by name: state.json's `desk` carries them. Only Crew's since
-    Governance draws itself from plain fields (#1140)."""
-    return crew_panels(m)
-
-
-def box(name: str, html: str) -> str:
-    return f'<div data-panel="{name}">{html}</div>'
-
-
-def section(anchor: str, *parts: str) -> str:
-    """One of a page's sections, at `#anchor` (#1113): the brief's links land on it."""
-    return f'<section class="sec" id="{anchor}">' + "\n".join(p for p in parts if p) + "</section>"
-
-
 def render_crew(m: dict) -> str:
-    """crew.html (#1113): one row per role (agents.py), then what each live session is doing,
-    the sessions table, the Actions reviewer's sweeps, grants in use and Effort. The page's live
-    panels refresh in place (#411)."""
-    repo, now = m["repo"], m["now"]
-    live = [s for s in m["sessions"] if s["status"] != "stopped"]
-    stopped = [s for s in m["sessions"] if s["status"] == "stopped"]
-    panels = crew_panels(m)
-    sessions = ["<h2>Sessions</h2>",
-                f'<p class="muted">idle after {m["idle_minutes"]} min without an event</p>',
-                session_rows(m, live) if live else '<p class="muted">No live sessions.</p>']
-    if stopped:
-        sessions += [f"<details><summary>{len(stopped)} stopped</summary>", session_rows(m, stopped),
-                     "</details>"]
-    sessions.append(f'<p class="muted method">Spend (est.) is each session\'s own: {esc(spend.METHOD)}</p>')
-    out = [section("roles", agents.render(agents.build(m))),
-           section("floor", box("floor", panels["floor"])),
-           section("sessions", *sessions),
-           section("reviewer", reviewer_runs.render(m["reviewer_runs"], repo, now, ago, stamp)),
-           section("grants", box("grants", panels["grants"])),
-           section("effort", box("effort", panels["effort"]))]
-    return layout.page(CREW_FILE, TITLE, repo, now, "\n".join(out), owner_line(m), live_refresh=True)
+    """crew.html (#1113): one row per role, what each live session is doing, the sessions
+    table, the Actions reviewer's sweeps, grants in use and Effort, all drawn client-side from
+    state.json's plain fields and redrawn in place (crewpage.py, #1139)."""
+    import state   # here, not at the top: state imports this module
+    return crewpage.page(m, TITLE, owner_line(m), state.state(m))
 
 
 def render_governance(m: dict) -> str:
@@ -790,10 +713,10 @@ def render_workmap(m: dict) -> str:
 def render_effort(m: dict) -> str:
     """effort.html (#1013): the PRs behind each of Crew's Effort bar segments."""
     return layout.page(effort.FILE, TITLE, m["repo"], m["now"], effort.page_body(m.get("effort"), m["repo"]),
-                       owner_line(m))
+                       owner_line(m))   # no script: it shows the build it came with (#1135)
 
 
-CREW_FILE = "crew.html"
+CREW_FILE = crewpage.FILE
 GOVERNANCE_FILE = govpage.FILE
 
 # Retired pages (#1113, and the Bridge #1114): each only sends the browser to its new home.
@@ -947,8 +870,8 @@ def write_map(data: dict, model: dict, now: dt.datetime, out_dir: Path, days: in
 
 def scripts() -> dict[str, str]:
     """Every script a page loads, by its file name in js/: exactly the text each page hashes."""
-    return {live.FILE: live.script(), workmap_page.JS.name: workmap_page.script(),
-            govpage.JS.name: govpage.script()}
+    return {workmap_page.JS.name: workmap_page.script(),
+            govpage.JS.name: govpage.script(), crewpage.JS.name: crewpage.script()}
 
 
 def main(argv: list[str]) -> int:

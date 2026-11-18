@@ -8,7 +8,8 @@ the last 30 minutes. In place of counts (files read or edited, tests run), which
 can't give, it says how many of those slots used each kind of tool. A new captured field, such
 as a per-event tool-call count, is a GOV-0002 `security` question, not something this module adds.
 
-Idle sessions share one quiet line ("idle: docs 40 min, reviewer 2 h"). Stopped ones aren't on
+Idle sessions share one quiet line ("idle: docs 40 min, reviewer 2 h"). crew.js draws the
+cards, that line and the watcher from state.json's plain fields (#1139). Stopped ones aren't on
 the floor, and nor are sessions that never acted (generate.derive()'s `never_acted`, #454). Nothing here carries tokens or cost (GOV-0014; #397).
 
 Under the cards, the watcher's state (#459): what `swarm watch` is running, holding and
@@ -20,7 +21,6 @@ from __future__ import annotations
 
 import datetime as dt
 import functools
-import html
 import json
 import re
 import sys
@@ -117,70 +117,6 @@ def build(sessions: list[tuple[dict, list[dict]]], now: dt.datetime) -> dict:
              "idle_minutes": int((now - s["last_ts"]).total_seconds() // 60) if s["last_ts"] else None}
             for s, _ in sessions if s["status"] == "idle"]
     return {"cards": cards, "idle": idle}
-
-
-def span(minutes: int | None) -> str:
-    """40 min, 2 h, 2 h 5 min, 3 d."""
-    if minutes is None:
-        return "no events"
-    if minutes < 60:
-        return f"{minutes} min"
-    if minutes < 24 * 60:
-        h, m = divmod(minutes, 60)
-        return f"{h} h {m} min" if m else f"{h} h"
-    return f"{minutes // (24 * 60)} d"
-
-
-def idle_line(idle: list[dict]) -> str:
-    return "idle: " + ", ".join(f"{i['role']} {span(i['idle_minutes'])}" for i in idle)
-
-
-def sparkline(counts: list[int]) -> str:
-    """Events per 5-minute slot as inline SVG bars, oldest left. Plain SVG, no script."""
-    w, gap, h = 10, 3, 22
-    top = max(counts) or 1
-    bars = []
-    for i, n in enumerate(counts):
-        bh = max(1, round(h * n / top)) if n else 1
-        cls = "bar" if n else "bar zero"
-        bars.append(f'<rect class="{cls}" x="{i * (w + gap)}" y="{h - bh}" width="{w}" height="{bh}"/>')
-    label = ("events per 5 minutes, last 30 minutes, oldest first: "
-             + ", ".join(str(n) for n in counts))
-    width = len(counts) * (w + gap) - gap
-    return (f'<svg class="spark" role="img" aria-label="{label}" width="{width}" height="{h}" '
-            f'viewBox="0 0 {width} {h}">{"".join(bars)}</svg>')
-
-
-def render(floor: dict | None, repo: str, watch: dict | None = None) -> str:
-    esc = lambda x: html.escape("" if x is None else str(x))  # noqa: E731
-
-    def ref(kind: str, n: int) -> str:
-        path = "pull" if kind == "pr" else "issues"
-        return f'<a href="https://github.com/{esc(repo)}/{path}/{n}">#{n}</a>'
-
-    floor = floor or {"cards": [], "idle": []}
-    out = ["<h2>On the floor</h2>"]
-    if floor["cards"]:
-        out.append('<div class="floor">')
-        for c in floor["cards"]:
-            used = " · ".join(f"{k} in {n} of {SLOTS}" for k, n in c["slots_used"].items())
-            ran = f'running {span(c["run_minutes"])}' if c["run_minutes"] is not None else ""
-            out.append(
-                f'<div class="card s-{esc(c["status"])}">'
-                f'<div class="who"><span class="role">{esc(c["role"])}</span> '
-                f'<span class="mono muted">{esc(c["model"])}</span></div>'
-                f'<div class="what">{words(c, ref)}</div>'
-                f'<div class="muted">{esc(ran)}</div>'
-                f'{sparkline(c["events_per_slot"])}'
-                f'<div class="muted used">last 30 min, 5-min slots: {esc(used)}</div>'
-                "</div>")
-        out.append("</div>")
-    else:
-        out.append('<p class="muted">No session is working.</p>')
-    if floor["idle"]:
-        out.append(f'<p class="muted idle">{esc(idle_line(floor["idle"]))}</p>')
-    out.append(render_watcher(watch, repo))
-    return "\n".join(out)
 
 
 # ---------------------------------------------------------------- the watcher (#459)
@@ -292,57 +228,3 @@ def watcher(issues: list[dict], owner: str | None, now: dt.datetime,
     age = int((now - got["checked"]).total_seconds() // 60)
     return {"status": "ok", "issue": mine[0]["number"], **got, "age_minutes": max(age, 0),
             "stale": interval is not None and age > STALE_CHECKS * interval}
-
-
-def watcher_lines(w: dict, ref=lambda r: r) -> list[str]:
-    """One plain line per item: "builder on #405 since 11:09", "held: #407, 2 of 2 running",
-    "skipped: #439, the role isn't in swarm.toml", "failed: #51 build, at its cap, 10:02".
-    `ref(r)` formats a ref ("#405" or "PR #405"); the default is plain text."""
-    hm = lambda t: t.strftime("%H:%M")  # noqa: E731
-    out = [f"{r['role']} on {ref(r['ref'])} since {hm(r['started'])}" for r in w.get("running", [])]
-    for name in ("held", "skipped"):
-        for h in w.get(name, []):
-            why = (h["reason"] or "").split(": ", 1)[-1] if h["reason"] else h["code"]
-            out.append(f"{name}: {ref(h['ref'])}, {why}" if why != name else f"{name}: {ref(h['ref'])}")
-    out += [f"failed: {ref(f['ref'])} {f['kind']}, {ENDING_WORDS[f['ending']]}, {hm(f['ended'])}"
-            for f in w.get("failed", [])]
-    return out
-
-
-WATCHER_NOTES = {
-    "missing": "No [watch] issue: swarm watch's state isn't published (launcher/README.md).",
-    "not_owner": "The [watch] issue wasn't opened by the owner, so the floor doesn't show it (GOV-0025).",
-    "several": "The owner has more than one open [watch] issue; close all but one.",
-    "malformed": "Can't read swarm watch's state from the [watch] issue.",
-}
-
-
-def render_watcher(w: dict | None, repo: str) -> str:
-    esc = lambda x: html.escape("" if x is None else str(x))  # noqa: E731
-    w = w or {"status": "missing"}
-    out = ['<div class="watcher"><h3>The watcher</h3>']
-    if w["status"] != "ok":
-        out.append(f'<p class="muted">{esc(WATCHER_NOTES[w["status"]])}</p></div>')
-        return "\n".join(out)
-
-    def ref(r: str) -> str:
-        n = r.rsplit("#", 1)[1]
-        path = "pull" if r.startswith("PR ") else "issues"
-        return (f'{"PR " if path == "pull" else ""}'
-                f'<a href="https://github.com/{esc(repo)}/{path}/{n}">#{n}</a>')
-
-    when = f'{span(w["age_minutes"])} ago, at {w["checked"].strftime("%H:%M")} UTC'
-    if w["stale"]:
-        # The watcher publishes only when its state changes (#458), so an old time can mean a
-        # quiet loop or a stopped one: the lists are shown as of then, not as current.
-        out.append(f'<p class="stale">watcher last published {esc(when)}: these lists are as '
-                   f'of then, and it may have stopped (it publishes only when they change)</p>')
-    else:
-        out.append(f'<p class="muted">as of {esc(when)}</p>')
-    lines = watcher_lines(w, ref)
-    if lines:
-        out.append("<ul>" + "".join(f"<li>{line}</li>" for line in lines) + "</ul>")
-    else:
-        out.append('<p class="muted">Nothing running, held, skipped or failed.</p>')
-    out.append("</div>")
-    return "\n".join(out)

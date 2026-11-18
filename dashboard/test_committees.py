@@ -18,7 +18,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import committees as c  # noqa: E402
 import generate as g    # noqa: E402
-import live  # noqa: E402
+import crewpage  # noqa: E402
 import workmap_page  # noqa: E402
 import govdraw  # noqa: E402
 import govpage  # noqa: E402
@@ -378,9 +378,10 @@ class CommitteeTest(Fixture):
         self.assertIn("<h2>Past committees</h2>", gov)   # it ended
         # The Work map shows cost per issue by design (GOV-0049); test_workmap_page checks it.
         page = "".join(v for k, v in pages.items() if k != workmap_page.FILE) + gov
-        for allowed in (g.layout.script_tag(live.FILE, live.script()),
-                        g.layout.script_tag(govpage.JS.name, govpage.script()),
-                        f'<script type="application/json" id="{govpage.DATA_ID}">'):
+        for allowed in (g.layout.script_tag(govpage.JS.name, govpage.script()),
+                        g.layout.script_tag(crewpage.JS.name, crewpage.script()),
+                        f'<script type="application/json" id="{govpage.DATA_ID}">',
+                        f'<script type="application/json" id="{crewpage.DATA_ID}">'):
             page = page.replace(allowed, "")
         self.assertNotIn("<script", page.lower())
         for text in (repr(model), page):

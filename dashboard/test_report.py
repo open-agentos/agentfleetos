@@ -6,7 +6,6 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import live  # noqa: E402
 import report  # noqa: E402
 
 REPO = "open-agentos/agentfleetos"
@@ -80,7 +79,6 @@ class StatesTest(unittest.TestCase):
         self.assertIn(f"https://github.com/{REPO}/issues/655", html)
         self.assertIn("Monday check-in: ", html)
         self.assertIn("<code>governance/</code>", report.inline("`governance/`"))
-        live.tree(html)   # the live refresh can draw it
 
     def test_other_authors_and_non_reports_dont_count(self):
         r = build([comment(REPORT, dt.datetime(2026, 11, 9, 8, 34), login="mattmcalister"),
@@ -136,7 +134,6 @@ class StatesTest(unittest.TestCase):
         html = report.render(build([comment(body, dt.datetime(2026, 11, 9, 8, 34))]), REPO)
         self.assertNotIn("<script>", html)
         self.assertIn("&lt;script&gt;", html)
-        live.tree(html)
 
     def test_state_is_plain(self):
         s = report.state(build([comment(REPORT, dt.datetime(2026, 11, 9, 8, 34))]))

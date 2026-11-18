@@ -1,8 +1,9 @@
 """The crew: one row per role (#932, under M3; on Crew since #1113), read-only.
 
 Crew (`crew.html`) opens with one row per role (the files in roles/, plus the merger App),
-each linking to that role's view in the Work map's Selected panel (#1115), which shows what
-the Agents page's focus drawer did; `agents.html` sends the browser to Crew. build() is the
+drawn by crew.js from state()'s plain fields (#1139). Each links to that role's view in the
+Work map's Selected panel (#1115), which shows what the Agents page's focus drawer did;
+`agents.html` sends the browser to Crew. build() is the
 source of both, and costs no API calls of its own:
 
   - sessions (tracking issues and their heartbeat events): who is working, on what, and how
@@ -23,7 +24,6 @@ from __future__ import annotations
 import datetime as dt
 
 import strip
-from layout import esc
 
 # Where a role's row goes: its role view in the Work map's Selected panel (#1115). workmap.html,
 # not /, so the query survives on Pages, where / is index.html's redirect.
@@ -81,33 +81,21 @@ def build(m: dict) -> dict:
             "report_issue": report_issue}
 
 
-# ---------------------------------------------------------------- drawing
-
-def _badge(role: str, group: str) -> str:
-    cls = " lead" if role == strip.LEAD else " idle" if group == "idle" else ""
-    return f'<span class="br-av{cls}" aria-hidden="true">{esc(strip.BADGE.get(role, role[:2].upper()))}</span>'
-
+# ---------------------------------------------------------------- Crew's rows (#1139)
 
 def _line(r: dict, now: dt.datetime) -> str:
-    """The row's second line, as escaped text: no links, since the whole row is one."""
+    """The row's second line, as plain text: no links, since the whole row is one."""
     if r["on"]:
         x = r["on"][0]
         verb = "Blocked on" if x["status"] == "blocked" else "On"
         more = f' and {len(r["on"]) - 1} more' if len(r["on"]) > 1 else ""
-        return esc(f'{verb} {x["ref"]} {x["title"]}{more}')
+        return f'{verb} {x["ref"]}' + (f' {x["title"]}' if x["title"] else "") + more
     if r["role"] == "merger" and r["authority"]:
-        return esc(f'{len(r["authority"])} call{"s" if len(r["authority"]) != 1 else ""} in the last 24 hours')
+        return f'{len(r["authority"])} call{"s" if len(r["authority"]) != 1 else ""} in the last 24 hours'
     if r["merged"]:
         p = r["merged"][0]
-        return esc(f'Last: {p.get("title") or ""}, merged {strip.when(strip._ts(p.get("merged_at")), now)}')
+        return f'Last: {p.get("title") or ""}, merged {strip.when(strip._ts(p.get("merged_at")), now)}'
     return "Nothing merged in the window."
-
-
-def row_html(r: dict, b: dict) -> str:
-    return (f'<a class="cm-row" href="{esc(MAP_ROLE.format(role=r["role"]))}">{_badge(r["role"], r["group"])}'
-            f'<span class="cm-name"><span class="br-title">{esc(r["role"].capitalize())}</span>'
-            f'<span class="muted">{esc(r["does"])}</span><span class="muted">{_line(r, b["now"])}</span></span>'
-            f'<span class="mono ag-n">{_count(r)}</span></a>')
 
 
 def _count(r: dict) -> str:
@@ -117,17 +105,11 @@ def _count(r: dict) -> str:
     return f'{len(r["merged"])} merged'
 
 
-def render(b: dict) -> str:
-    """Crew's roles (#1113): one row per role, working first, each opening its role view on the
-    Work map (MAP_ROLE), the view the Agents drawer became (#1115)."""
-    rows = b["rows"]
-    working = sum(r["group"] == "working" for r in rows)
-    out = [f'<div class="br-titlebar"><h1>Crew</h1><span class="mono muted">{working} working · '
-           f'{len(rows) - working} idle · {esc(b["now"].strftime("%a %d %b, %H:%M UTC"))}</span></div>',
-           '<p class="muted">The team that runs the plan for you. Pick one to see its record, what it\'s '
-           'working on, the authority it used and how to ask it something.</p>']
-    for g, name in (("working", "Working"), ("idle", "Idle")):
-        rs = [r for r in rows if r["group"] == g]
-        if rs:
-            out.append(f'<p class="cm-grp">{name.upper()} · {len(rs)}</p>' + "".join(row_html(r, b) for r in rs))
-    return "".join(out)
+def state(m: dict) -> list[dict]:
+    """state.json's `crew_roles` (#1139): Crew's rows as plain fields, working first, for
+    crew.js to draw. Each opens its role view on the Work map (MAP_ROLE), the view the Agents
+    drawer became (#1115)."""
+    b = build(m)
+    return [{"role": r["role"], "does": r["does"], "group": r["group"], "lead": r["role"] == strip.LEAD,
+             "badge": strip.BADGE.get(r["role"], r["role"][:2].upper()), "line": _line(r, b["now"]),
+             "count": _count(r), "href": MAP_ROLE.format(role=r["role"])} for r in b["rows"]]

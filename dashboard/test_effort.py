@@ -15,7 +15,7 @@ sys.path.insert(0, str(HERE))
 import effort  # noqa: E402
 import generate as g  # noqa: E402
 import layout  # noqa: E402
-import live  # noqa: E402
+import crewdraw  # noqa: E402
 import state  # noqa: E402
 import test_strip  # noqa: E402
 
@@ -100,10 +100,16 @@ class ModelTest(unittest.TestCase):
         self.assertTrue(effort.daily_text(model({"prs": {}})["effort"]).endswith("  none"))
 
 
+def render(e) -> str:
+    """Crew's Effort panel as crew.js draws it from state.json's `effort` (#1139)."""
+    return crewdraw.draw(crewdraw.base(repo=REPO, effort=effort.state(e)))["effort"]
+
+
+@unittest.skipUnless(crewdraw.NODE, "node isn't installed")
 class DeskTest(unittest.TestCase):
     def setUp(self):
         self.m = model(effort.load(FIXTURE))
-        self.html = effort.render(self.m["effort"])
+        self.html = render(self.m["effort"])
 
     def test_bars_trend_and_links(self):
         self.assertIn("<h2>Effort</h2>", self.html)
@@ -112,21 +118,18 @@ class DeskTest(unittest.TestCase):
         self.assertIn('href="effort.html#e-o-r-987-last-upkeep"', self.html)
         self.assertIn('class="ef-fix" style="width:50%"', self.html)   # 1 of 987's 2 capability PRs
         # The widest bar is 5 PRs: one of 987's two capability PRs is 20% of it.
-        self.assertIn('class="ef-seg ef-capability" style="width:40%"', self.html)
+        self.assertRegex(self.html, r'class="ef-seg ef-capability" href="[^"]*" style="width:40%"')
         self.assertIn("<polyline", self.html)
         self.assertIn("This week 38% of 8 merged PRs were capability", self.html)
         self.assertIn("the paths baseline", self.html)
         self.assertIn("3 cache entries left out as unreadable", self.html)
-
-    def test_panel_converts_for_the_live_refresh(self):
-        live.tree(self.html)   # raises on a tag, attribute or link the live refresh refuses
-        live.tree(effort.render(model(None)["effort"]))
+        self.assertIn('<span class="mono">M7</span> <a href="https://github.com/o/r/issues/987">', self.html)
 
     def test_empty_state_when_the_cache_is_missing(self):
-        html = effort.render(model(None)["effort"])
+        html = render(model(None)["effort"])
         self.assertIn("isn't there", html)
         self.assertNotIn("ef-row", html)
-        self.assertIn("couldn't be read", effort.render(model({"error": "bad"})["effort"]))
+        self.assertIn("couldn't be read", render(model({"error": "bad"})["effort"]))
 
     def test_no_new_colours(self):
         css = layout.CSS[layout.CSS.index("/* Effort (#1013)"):layout.CSS.index("/* The Work map (#1082)")]
@@ -162,15 +165,16 @@ class GenerateTest(unittest.TestCase):
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": [], "trouble": trouble,
                      "effort": effort.load(FIXTURE)}, NOW, dt.timedelta(minutes=15))
         pages = g.render(m)
-        self.assertIn("ef-row", pages["crew.html"])
-        self.assertIn('data-panel="effort"', pages["crew.html"])
         self.assertIn('id="e-o-r-987-this-capability"', pages["effort.html"])
-        self.assertIsNotNone(state.state(m)["desk"]["effort"])   # the live refresh can draw it
+        if crewdraw.NODE:
+            self.assertIn("ef-row", crewdraw.page(m))
         self.assertEqual(state.state(m)["effort"]["goals"][0]["this"]["total"], 5)
 
     def test_build_without_a_cache_shows_the_empty_state(self):
         m = g.build({"repo": REPO, "issues": [], "comments": {}, "prs": []}, NOW, dt.timedelta(minutes=15))
-        self.assertIn("isn't there", g.render(m)["crew.html"])
+        self.assertIn("isn't there", g.render(m)["effort.html"])
+        if crewdraw.NODE:
+            self.assertIn("isn't there", crewdraw.page(m))
 
     def test_state_json_carries_counts_not_html(self):
         s = effort.state(model(effort.load(FIXTURE))["effort"])

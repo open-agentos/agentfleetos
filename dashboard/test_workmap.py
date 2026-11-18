@@ -272,7 +272,10 @@ class NoTotalTest(unittest.TestCase):
         self.assertEqual(set(desk["windows"]), set(wm.DESK_WINDOWS))
 
     def test_state_json_carries_no_map_or_cost(self):
-        st = json.dumps(state.state(self.gd()["model"]))
+        s = state.state(self.gd()["model"])
+        for x in s["sessions"]:   # each session's own estimate is the only cost (GOV-0057)
+            x.pop("cost", None)
+        st = json.dumps(s)
         self.assertNotIn("cost", st)
         self.assertNotIn("unattributed", st)
 
