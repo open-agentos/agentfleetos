@@ -215,7 +215,7 @@ class DrawTest(unittest.TestCase):
 
     def test_needs_you_card_and_empty_lanes(self):
         html = page(model([row(1, "review")], prs=[pr(10, [1], needs_owner="x")]))
-        self.assertIn('<div class="cw-card cw-ask">', html)
+        self.assertIn('<div class="cw-card wm-needs">', html)   # the Map's mark (#1273)
         self.assertIn('<span class="cw-needs">needs you</span>', html)
         self.assertEqual(html.count('<p class="cw-none">none</p>'), 4)
 
@@ -227,6 +227,14 @@ class DrawTest(unittest.TestCase):
         self.assertIn('<a href="governance.html">+2 more on Governance</a>', html)
         self.assertIn('<span class="cw-fail">NO RESULT</span>', html)
         self.assertIn('<span class="cw-ring" aria-hidden="true"></span>', html)
+
+    def test_a_blocked_session_card_takes_the_maps_red_edge(self):
+        work = st.plain(lanes.state(model([row(1, "building")], sessions=[sess("s1", 1)])))
+        work = json.loads(json.dumps(work))
+        card = next(c for ln in work["lanes"] for c in ln["cards"])
+        card["session"]["status"], card["working"] = "blocked", False
+        html = crewdraw.draw(crewdraw.base(built_at="2026-11-18T12:00:00Z", repo=REPO, crew_work=work))["floor"]
+        self.assertIn('<div class="cw-card wm-blocked">', html)
 
     def test_repo_text_stays_text(self):
         html = page(model([row(1, "queued", title="<script>x</script>")]))
