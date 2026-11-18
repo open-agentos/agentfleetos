@@ -1063,7 +1063,7 @@ It prints one line per open PR: `#N <head sha> merge (standing grant)`, `merge (
 
 **Standing grant** (GOV-0027, keeping GOV-0022's other conditions), checked in this order:
 
-- the author is `productswarm-builder[bot]` and the base is `main`;
+- the author is `productswarm-builder[bot]`, or `productswarm-librarian[bot]` when every path the PR touches (a rename's old name too) is under `memory/` (GOV-0056, #1274), and the base is `main`. A librarian PR that touches anything else misses, naming the path. `memory/owner.md` stays protected, so a PR touching it is an approved ask. The librarian's PR must still close one go issue: the nightly `memory: night of <date>` PR, which says `Refs #N`, misses with `it closes 0 issues` until #1280 is answered;
 - it closes exactly one issue in this repo, and that issue is go under GOV-0031 (GOV-0034, #702): `swarm.go_refusals()`, the check `swarm launch` and `swarm watch` use, so the merger and the watcher agree on what is go. That is the owner's most recent `ready`, or a Task, Bug, Feature or untyped issue under an open Goal or Area the owner opened, with no open blocked-by issue and no veto (and, until `swarm.MILESTONE_UNTIL`, a `**Milestone:**` line as above). A miss names the check that failed, e.g. `not go under GOV-0031: #N isn't a sub-issue of anything`. A `gov:question` never counts;
 - the reviewer approved at the current head (a dismissed approval doesn't count), and no one's latest review requests changes;
 - no line starting `Overstep:` in any PR comment, review or review comment;

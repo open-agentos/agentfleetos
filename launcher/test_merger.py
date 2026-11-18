@@ -98,6 +98,42 @@ class StandingGrant(unittest.TestCase):
         self.w.pr["user"]["login"] = "productswarm-docs[bot]"
         self.miss("not opened by productswarm-builder[bot]")
 
+    def librarian(self, *paths):
+        self.w.pr["user"]["login"] = merger.LIBRARIAN
+        self.w.files = [{"filename": p} for p in paths]
+        self.w.pr["changed_files"] = len(paths)
+
+    def test_librarian_memory_only(self):
+        """GOV-0056: a librarian PR that touches only memory/ is judged as a standing grant."""
+        self.librarian("memory/lessons/L-0001.md", "memory/dream.json")
+        self.assertEqual(self.w.decide(), merger.GRANT)
+
+    def test_librarian_keeps_every_other_condition(self):
+        self.librarian("memory/lessons/L-0001.md")
+        self.w.closes = []          # the nightly PR's `Refs #N` closes nothing (#1274)
+        self.miss("closes 0 issues")
+        self.w.closes = [(REPO, 9)]
+        self.w.reviews = []
+        self.miss("hasn't approved at head")
+
+    def test_librarian_outside_memory(self):
+        self.librarian("memory/lessons/L-0001.md", "launcher/dream.py")
+        self.miss("opened by productswarm-librarian[bot]", "`launcher/dream.py`", "GOV-0056")
+        self.librarian("memoryx/a.md")
+        self.miss("`memoryx/a.md`")
+
+    def test_librarian_rename_out_of_memory(self):
+        self.librarian("memory/a.md")
+        self.w.files[0]["previous_filename"] = "docs/a.md"
+        self.miss("`docs/a.md`")
+
+    def test_librarian_owner_model_is_an_ask(self):
+        """memory/owner.md stays protected: an approved ask, never the standing grant."""
+        self.librarian("memory/owner.md")
+        self.assertIn("approved ask", self.w.decide())
+        self.w.reviews = [{"user": {"login": OWNER}, "state": "APPROVED", "commit_id": HEAD}]
+        self.assertEqual(self.w.decide(agents=AGENTS | {merger.LIBRARIAN}), merger.ASK)
+
     def test_base_not_main(self):
         self.w.pr["base"]["ref"] = "other"
         self.miss("base isn't main")

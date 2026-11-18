@@ -37,7 +37,8 @@ touches a protected path; then it is judged as an approved ask.
 
 Standing grant (GOV-0027, GOV-0022), in the order checked:
 
-- the author is productswarm-builder[bot], and the base is main;
+- the author is productswarm-builder[bot], or productswarm-librarian[bot] when every path
+  the PR touches is under memory/ (GOV-0056, #1274); and the base is main;
 - it closes exactly one issue in this repo, and that issue is go under GOV-0031 (GOV-0034):
   the owner added its most recent `ready`, or it sits under an open Goal or Area the owner
   opened with no open blocked-by issue and no veto (swarm.go_refusals, the watcher's own
@@ -105,6 +106,8 @@ import swarm  # noqa: E402  (go_refusals(), GOV-0031)
 import watch  # noqa: E402
 
 BUILDER = "productswarm-builder[bot]"
+LIBRARIAN = "productswarm-librarian[bot]"   # GOV-0056: a standing-grant author for memory/ only
+MEMORY_DIR = "memory/"
 REVIEWER = watch.REVIEWER
 BASE = "main"
 TESTS = "tests"                  # .github/workflows/tests.yml's job (#521)
@@ -333,7 +336,13 @@ def decide(pr: dict, ctx: Context, r: Reader) -> str:
             return "miss: approved ask: not opened by a swarm App"
         why = common(n, head, ctx.owner, r)
         return f"miss: approved ask: touches {show(protected[0])}, and {why}" if why else ASK
-    if author != BUILDER:
+    if author == LIBRARIAN:
+        outside = [p for p in paths if not p.startswith(MEMORY_DIR)]
+        if outside or not paths:
+            what = f"touches {show(outside[0])}" if outside else "touches no file"
+            return (f"miss: opened by {LIBRARIAN}, which the standing grant covers only for "
+                    f"PRs that touch only {MEMORY_DIR} (GOV-0056), and it {what}")
+    elif author != BUILDER:
         return f"miss: not opened by {BUILDER}"
     why = grant_issue(n, ctx, r) or common(n, head, REVIEWER, r)
     if why:
