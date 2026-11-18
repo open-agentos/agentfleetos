@@ -907,6 +907,31 @@ A case for another org repo replays from the launcher's clone of it (`~/.product
 
 **`memory/INDEX.md`** is generated: one row per active or dormant lesson, like `governance/INDEX.md`. Don't edit it by hand; a test fails if it's stale.
 
+## swarm dream: the librarian's dream (#1186)
+
+```bash
+launcher/swarm dream [--since YYYY-MM-DD] [--dry-run | --apply] [--issue N] [--json]
+launcher/swarm dream --dry-run --memory launcher/testdata/dream   # the fixture: every phase
+```
+
+One librarian run over the episodes since the last run (FEAT-16). `dream.py` works out each phase with no model call, as a plan:
+
+1. **Replay:** the episodes at or after the last run (`memory/dream.json`), or `--since`.
+2. **Consolidate:** cluster episodes by word overlap. A cluster with a new episode that passes GOV-0055's source rules (the validator's `source_errors`) becomes a proposed lesson with the next free id. If it matches a lesson already there, that lesson is reconfirmed (+0.1 confidence) instead. Near-duplicate lessons merge into the stronger one: the other is retired and the kept one supersedes it.
+3. **Reconcile:** flag lessons that contradict each other, name a ruling that isn't in force, or rest on a PR since closed unmerged or reverted, and take 0.2 off their confidence.
+4. **Forget:** active lessons unused since the last run lose 10% confidence. Lessons unused for 21 days go dormant, and dormant ones past `review_by` are retired. Episodes in `memory/episodes/` older than 30 days are deleted unless a lesson cites them. Each role keeps at most 25 active lessons (a lesson for all roles counts for every role), and the lowest-ranked go dormant.
+5. **Rehearse:** list proposed lessons with no eval case.
+6. **Promote:** list patterns for the owner: the owner taking the default 3 times in one domain, 3 acts tagged repeat answer, a lesson on paths no role edits.
+
+The thresholds are the defaults on the Goal (#1179), which the owner confirms after the first run. They are constants in `dream.py`, because `swarm.toml` has no `[memory]` table yet.
+
+- **No new episodes:** it prints so and stops. There's no model call and no PR.
+- **`--dry-run`:** prints the plan and the run it would start.
+- **No flag:** starts one headless librarian run on `--issue` (default: `[watch] report_issue`), capped at the librarian's `spend_cap_usd` ($3) and `[watch] max_turns` (GOV-0053). It refuses if either is missing, or if the librarian is on the planner's model (GOV-0059).
+- **The run:** applies the plan with `swarm dream --apply`, writes the proposed lessons it agrees with, runs `swarm memory check` and `index`, and opens one `memory: night of <date>` PR touching only `memory/`. The dream report is the PR body and one comment on the issue.
+
+`--apply` writes only under `memory/`: confidence, status, merges, expired episodes, `memory/dream.json` and `memory/INDEX.md`. It doesn't touch the engine's outbox; its expired episodes stay there until #1199's record merges. `--memory DIR` reads another memory directory, such as the fixture, and not the outbox.
+
 ## Tests
 
 ```bash

@@ -30,6 +30,9 @@
     launcher/swarm memory record [--since D]
                                     record the signals since D (default: yesterday) as
                                     episodes by hand; swarm watch does it hourly
+    launcher/swarm dream [--since D] [--dry-run|--apply] [--issue N] [--memory DIR]
+                                    the librarian's dream over new episodes: one run under
+                                    its $3 cap, or none if nothing is new (#1186; dream.py)
     launcher/swarm memory lessons|show|check|index
     launcher/swarm memory rehearse [L-NNNN ...]   replay due lessons' eval cases without and
                                     with them; promote those that pass the gate (#1189,
@@ -172,7 +175,7 @@ def opener(role: str, issue: int | None = None, pr: int | None = None,
            ask_comment: int | None = None, research: str | None = None,
            research_comment: int | None = None, ruling: str | None = None,
            ruling_comment: int | None = None, conflict: bool = False,
-           repo: str | None = None, home: str | None = None) -> str:
+           repo: str | None = None, home: str | None = None, dream: str | None = None) -> str:
     """The prompt ops/swarm-session uses when given no args (it passes args on unchanged).
 
     With an issue, it names it: the heartbeat's `working_on` detection matches
@@ -191,8 +194,25 @@ def opener(role: str, issue: int | None = None, pr: int | None = None,
     applies the owner's comment ruling_comment on an overstep on the PR (#738). With conflict
     and a PR, a [conflict] run (#893): the PR's author role brings the base into its branch.
     With repo, the session works in that other org repo (#912): other_repo_opener(), with
-    home, this repo's owner/name, for where governance is."""
-    if issue and research:
+    home, this repo's owner/name, for where governance is. With dream, a dream run (#1186): the
+    librarian runs the dream over the episodes since `dream` and reports on the issue."""
+    if issue and dream:
+        # With no last run there is no stamp to pass: leave --since out, and the command reads
+        # every episode, as it did here.
+        since = "" if dream == DREAM_FROM_START else f" --since {dream}"
+        then = (f"run the dream over the episodes since {dream}, as roles/{role}.md says, and report on "
+                f"issue #{issue}. swarm dream started this run (#1186). Run launcher/swarm dream "
+                f"--dry-run{since} for each phase's plan (it makes no model call), then "
+                f"launcher/swarm dream --apply{since} to make its decays, status changes, "
+                f"merges and episode deletions in memory/. Write each proposed lesson you agree with "
+                f"as memory/lessons/<id>-<slug>.md with status proposed, using the ids, sources and "
+                f"review_by the plan gives; drop any you don't, and say why in the report. Run "
+                f"launcher/swarm memory check and launcher/swarm memory index, then open one PR "
+                f"titled 'memory: night of <today>' that touches only memory/, with the dream report "
+                f"(learned, forgot, proposing) as its body. It closes #{issue}, but if #{issue} is the "
+                f"pinned report issue it says Refs #{issue} instead. Post the same report as one comment on "
+                f"#{issue}, and stop")
+    elif issue and research:
         # As for an ask: "issue #M" in the question would give the heartbeat two issues.
         safe = ISSUE_WORD_RE.sub(r"#\1", research)
         where = f" (comment {research_comment})" if research_comment else ""
@@ -376,6 +396,7 @@ class Started:
     ruling_comment: int | None = None     # and that comment's id
     conflict: bool = False            # a [conflict] run (#893): bring the base into the PR's branch
     repo: str | None = None           # owner/name of the issue's repo; None: this repo (#829)
+    dream: str | None = None          # a dream run (#1186): the episodes since this stamp
 
     @classmethod
     def from_dict(cls, d: dict) -> "Started":
@@ -386,7 +407,7 @@ class Started:
                    daily=d.get("daily"), ask=d.get("ask"), ask_comment=d.get("ask_comment"),
                    research=d.get("research"), research_comment=d.get("research_comment"),
                    ruling=d.get("ruling"), ruling_comment=d.get("ruling_comment"),
-                   conflict=bool(d.get("conflict")), repo=d.get("repo"))
+                   conflict=bool(d.get("conflict")), repo=d.get("repo"), dream=d.get("dream"))
 
 
 # The product's name in an opener: AgentFleetOS, or productswarm in one written before GOV-0047.
@@ -887,7 +908,7 @@ class Launcher:
         prompt = shlex.quote(opener(s.role, s.issue, s.pr, s.called_by, s.call_why, s.daily,
                                     s.ask, s.ask_comment, s.research, s.research_comment,
                                     s.ruling, s.ruling_comment, s.conflict, s.repo,
-                                    self.home_repo() if s.repo else None))
+                                    self.home_repo() if s.repo else None, dream=s.dream))
         if s.repo:   # #912, GOV-0039: our CLAUDE.md and role prompt, read when the window runs
             prompt += (" --append-system-prompt \"$(cat "
                        + shlex.quote(str(self.instructions_file(s.session_id))) + ')"')
@@ -2364,6 +2385,80 @@ def classify_eval():
     return evalrun
 
 
+# ---------------------------------------------------------------- the dream (#1186)
+
+DREAM_FROM_START = "the start"    # Started.dream when memory/dream.json has no last run yet
+
+def since_stamp(s: str) -> str:
+    """`swarm dream --since`: a date, or the UTC stamp a dream run is handed, as a UTC stamp."""
+    try:
+        t = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a date or UTC time: {s!r}") from None
+    t = t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+    return t.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def dream(launcher: Launcher, args, repo: str) -> int:
+    """`swarm dream`: plan the dream over the episodes since the last run (dream.py, no model
+    call). With no new episodes, stop there. --dry-run prints the plan and the run it would
+    start; --apply makes the plan's mechanical changes in memory/ (the librarian's run does
+    this); otherwise start one headless librarian run under its spend_cap_usd and [watch]
+    max_turns (GOV-0053)."""
+    import dream as D
+    import episodes
+    import lessons as L
+    say = launcher.out
+    memory = Path(args.memory) if args.memory else launcher.root / "memory"
+    dirs = [memory / "episodes"] + ([] if args.memory else [episodes.outbox(launcher.home)])
+    since = args.since or D.last_run(memory)
+    all_lessons = L.load_all(memory / "lessons")
+    try:
+        eps = episodes.load(dirs)
+        in_repo = {e["id"] for e in episodes.load([memory / "episodes"])}
+        ctx = L.Context(trusted=L.trusted_logins(), episodes={e["id"]: e for e in eps},
+                        rulings=L.in_force_rulings(), repo=repo or "",
+                        today=None)
+    except (OSError, RuntimeError, ValueError) as e:
+        say(f"swarm dream: {e}")
+        return 1
+    plan = D.plan(all_lessons, eps, ctx, since=since, in_repo_ids=in_repo)
+    say(json.dumps(plan.as_json(), indent=2) if args.as_json else D.report(plan))
+    if not plan.new:
+        return 0
+    if args.apply:
+        for line in D.apply(plan, all_lessons, memory, dt.datetime.now(dt.timezone.utc)):
+            say(f"  {line}")
+        say(f"swarm dream: applied to {memory}; write the proposed lessons, then run "
+            f"launcher/swarm memory check and launcher/swarm memory index")
+        return 0
+    try:
+        sessions, limits, _ = manifest.load_all(args.manifest)
+    except manifest.ManifestError as e:
+        say(f"swarm dream: {e}")
+        return 1
+    roles = {x.role: x for x in sessions}
+    lib, planner = roles.get("librarian"), roles.get("planner")
+    if lib is None or lib.spend_cap_usd is None:
+        say("swarm dream: refused: swarm.toml gives the librarian no spend_cap_usd (GOV-0053)")
+        return 1
+    if limits is None or limits.max_turns is None:
+        say("swarm dream: refused: swarm.toml's [watch] table has no max_turns (GOV-0012, GOV-0053)")
+        return 1
+    if planner is not None and planner.model == lib.model:
+        say(f"swarm dream: refused: the librarian runs on the planner's model ({lib.model}); "
+            f"GOV-0059 puts it on a different one")
+        return 1
+    issue = args.issue or limits.report_issue
+    if not issue:
+        say("swarm dream: pass --issue N: the issue the run reports on (no report_issue in [watch])")
+        return 2
+    entry = Started(name="librarian-dream", role="librarian", model=lib.model,
+                    session_id=str(uuid.uuid4()), started=launcher.clock(), issue=issue, by="watch",
+                    budget_usd=lib.spend_cap_usd, max_turns=limits.max_turns, dream=since or DREAM_FROM_START)
+    return 0 if launcher.start(entry, launcher.live(), args.dry_run) else 1
+
+
 # ---------------------------------------------------------------- memory (#1185)
 
 LESSON_CMDS = ("lessons", "show", "index", "check")
@@ -2645,6 +2740,20 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     p_mreh.add_argument("--store", help="a lessons directory other than memory/lessons/ "
                                         "(the drill's planted lesson, evals/drills.md)")
     p_mreh.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
+    p_dream = sub.add_parser("dream", help="the librarian's dream over new episodes (#1186): plan, "
+                                           "apply, or start one capped run")
+    p_dream.add_argument("--since", type=since_stamp,
+                         help="YYYY-MM-DD or a UTC stamp (default: the last run, from memory/dream.json)")
+    dmode = p_dream.add_mutually_exclusive_group()
+    dmode.add_argument("--dry-run", action="store_true", help="print the plan and the run it would start")
+    dmode.add_argument("--apply", action="store_true",
+                       help="make the plan's decays, status changes, merges and deletions in memory/")
+    p_dream.add_argument("--issue", type=int, help="the issue the run reports on (default: [watch] report_issue)")
+    p_dream.add_argument("--memory", help="a memory/ directory to read instead, e.g. a fixture; the "
+                                          "engine's outbox isn't read then")
+    p_dream.add_argument("--json", action="store_true", dest="as_json", help="the plan as JSON")
+    p_dream.add_argument("--repo", help="owner/name (default: this checkout's origin)")
+    p_dream.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
     p_backup = sub.add_parser("backup", help="copy swarm.db consistently, for the nightly timer")
     p_backup.add_argument("--out", help=f"default: backups/swarm-<UTC time>.db, keeping the newest "
                                         f"{statedb.KEEP_BACKUPS}")
@@ -2653,6 +2762,8 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     launcher = launcher or Launcher(home())
     if args.cmd == "classify":
         return classify_eval().eval_main(args, say=launcher.out)
+    if args.cmd == "dream":
+        return dream(launcher, args, args.repo or dashboard().default_repo() or "")
     if args.cmd == "memory" and args.memory_cmd in LESSON_CMDS:
         repo = getattr(args, "repo", None) or dashboard().default_repo() or ""
         return memory_lessons(launcher, args, repo)
