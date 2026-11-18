@@ -35,6 +35,7 @@ ROLES = (("planner", "Runs the plan and writes your daily report"),
          ("analyst", "Research and briefs"),
          ("designer", "Specs, and how the product reads to you"),
          ("docs", "Records, rulings and docs"),
+         ("librarian", "Turns episodes into lessons in memory/"),
          ("merger", "Merges under your standing grant (GOV-0027)"))
 CHANGES = "CHANGES_REQUESTED"
 

@@ -97,7 +97,7 @@ REVIEWER = "productswarm-reviewer[bot]"
 # The roles whose own PRs GOV-0011's [respond] (and #739's [ruling]) restart: the PR's author
 # role, not only the builder (#738, Option 1 of the owner's answer on #777). The reviewer
 # opens no PRs. A PR by the owner or any other login has no role, so it stays the owner's.
-RESPONDERS = ("builder", "planner", "docs", "designer", "analyst")
+RESPONDERS = ("builder", "planner", "docs", "designer", "analyst", "librarian")
 BUILDER = "productswarm-builder"   # the builder App; `gh` shows it as app/<slug>
 CHANGES = "CHANGES_REQUESTED"
 ROUNDS = 2         # author rounds per PR before the owner steps in (GOV-0011)

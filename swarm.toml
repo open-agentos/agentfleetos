@@ -124,5 +124,13 @@ count = 1
 model = "claude-sonnet-5-5"
 spend_cap_usd = 5
 
+# The librarian (GOV-0032, #1148) runs on a different model from the planner. Its $3 cap is
+# the per-run cap for the nightly dream (GOV-0053).
+[[session]]
+role = "librarian"
+count = 1
+model = "claude-sonnet-5-5"
+spend_cap_usd = 3
+
 [org]
 repos = ["open-agentos/productswarm-scratch"]
