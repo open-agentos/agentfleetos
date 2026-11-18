@@ -46,6 +46,14 @@
                                     score a classifier on a labelled set and write a
                                     Markdown report; --replay (default) makes no model calls
                                     (#1010; classify/evalrun.py, GOV-0044, GOV-0045)
+    launcher/swarm classify compare <labelset> [--split test|dev]
+                                    majority, paths and the model (replayed) side by side
+                                    in classify/reports/<labelset>.md (#1012)
+    launcher/swarm classify run effort --since <YYYY-MM-DD>
+                                    label PRs merged since then into classify/cache/effort.json:
+                                    the model if it passes its pass mark, else the paths
+                                    baseline; kind:<label> on a PR is the owner's correction
+                                    (#1012; classify/effortrun.py, GOV-0045, GOV-0046)
 
 Each session runs `ops/swarm-session <role> --model <model> --session-id <uuid> <opener>`,
 unchanged, in a new Terminal window: the owner's answer on #43.
@@ -2314,6 +2322,13 @@ def classify_eval():
     return evalrun
 
 
+def classify_effort():
+    """classify/effortrun.py: `swarm classify run` and `swarm classify compare` (#1012)."""
+    sys.path.insert(0, str(ROOT / "classify"))
+    import effortrun
+    return effortrun
+
+
 def main(argv: list[str], launcher: Launcher | None = None) -> int:
     ap = argparse.ArgumentParser(prog="swarm", description="Start, list and stop the swarm in swarm.toml.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -2432,6 +2447,10 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     classify_sub = p_classify.add_subparsers(dest="classify_cmd", required=True)
     classify_eval().add_eval_args(classify_sub.add_parser(
         "eval", help="score a classifier on a labelled set and write a Markdown report"))
+    classify_effort().add_compare_args(classify_sub.add_parser(
+        "compare", help="majority, paths and the model side by side in reports/<name>.md (#1012)"))
+    classify_effort().add_run_args(classify_sub.add_parser(
+        "run", help="label newly merged PRs into classify/cache/effort.json (#1012)"))
     p_backup = sub.add_parser("backup", help="copy swarm.db consistently, for the nightly timer")
     p_backup.add_argument("--out", help=f"default: backups/swarm-<UTC time>.db, keeping the newest "
                                         f"{statedb.KEEP_BACKUPS}")
@@ -2439,6 +2458,10 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
 
     launcher = launcher or Launcher(home())
     if args.cmd == "classify":
+        if args.classify_cmd == "run":
+            return classify_effort().run_main(args, say=launcher.out)
+        if args.classify_cmd == "compare":
+            return classify_effort().compare_main(args, say=launcher.out)
         return classify_eval().eval_main(args, say=launcher.out)
     if args.cmd == "backup":
         try:

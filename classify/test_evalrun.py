@@ -116,7 +116,7 @@ class EvalTest(unittest.TestCase):
 
     def test_unknown_baseline_and_baseline_with_live_are_refused(self):
         self.assertEqual(self.eval("--baseline", "nope"), 2)
-        self.assertIn("unknown baseline 'nope' (known: majority)", self.said[-1])
+        self.assertIn("unknown baseline 'nope' (known: majority, paths)", self.said[-1])
         self.assertEqual(self.eval("--baseline", "majority", "--live"), 2)
 
     def test_live_run_stops_at_max_calls_with_a_clear_message(self):

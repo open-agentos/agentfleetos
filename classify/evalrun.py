@@ -24,6 +24,7 @@ import argparse
 import subprocess
 import sys
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -156,12 +157,36 @@ def render(ls: lsmod.LabelSet, data_sha: str, split: str, who: str, mode: str,
 
 # ---------------------------------------------------------------- the run
 
-def run(name: str, root: Path, split: str = "dev", baseline: Optional[str] = None,
-        live: bool = False, runs: Optional[int] = None, model: Optional[str] = None,
-        manifest: Path = MANIFEST, out: Optional[Path] = None,
-        runner: Callable = classifier.claude_runner,
-        uncommitted: Callable = uncommitted, say: Callable = print) -> bool:
-    """Score one classifier and write its report. True if it passed. Raises CantRun."""
+@dataclass
+class Scored:
+    """One classifier's predictions and metrics on one split, before the report is written."""
+    ls: lsmod.LabelSet
+    data_sha: str
+    split: str
+    who: str
+    mode: str
+    slug: str
+    items: list
+    preds: dict
+    m: metrics.Metrics
+    checks: list
+    drafts: int = 0
+    prior: Optional[str] = None
+
+    @property
+    def passed(self) -> bool:
+        return all(c.ok for c in self.checks)
+
+    def render(self) -> str:
+        return render(self.ls, self.data_sha, self.split, self.who, self.mode, self.items,
+                      self.preds, self.m, self.checks, self.drafts, self.prior)
+
+
+def score(name: str, root: Path, split: str = "dev", baseline: Optional[str] = None,
+          live: bool = False, runs: Optional[int] = None, model: Optional[str] = None,
+          manifest: Path = MANIFEST, runner: Callable = classifier.claude_runner,
+          uncommitted: Callable = uncommitted) -> Scored:
+    """Classify one split with one classifier and score it. Raises CantRun."""
     if "/" in name or name.startswith("."):
         raise CantRun(f"'{name}' isn't a label set name")
     ls_path, data_path = root / "labelsets" / f"{name}.yml", root / "data" / f"{name}.jsonl"
@@ -232,22 +257,110 @@ def run(name: str, root: Path, split: str = "dev", baseline: Optional[str] = Non
         raise CantRun(f"{e}; no report written") from None
 
     m = metrics.compute(ls, items, preds)
-    checks = metrics.check(ls, m)
-    report = render(ls, lsmod.sha256(data_path), split, who, mode, items, preds, m, checks,
-                    drafts, prior_note)
-    out = out or root / "reports" / f"{name}-{split}-{slug}.md"
+    return Scored(ls, lsmod.sha256(data_path), split, who, mode, slug, items, preds, m,
+                  metrics.check(ls, m), drafts, prior_note)
+
+
+def run(name: str, root: Path, split: str = "dev", baseline: Optional[str] = None,
+        live: bool = False, runs: Optional[int] = None, model: Optional[str] = None,
+        manifest: Path = MANIFEST, out: Optional[Path] = None,
+        runner: Callable = classifier.claude_runner,
+        uncommitted: Callable = uncommitted, say: Callable = print) -> bool:
+    """Score one classifier and write its report. True if it passed. Raises CantRun."""
+    sc = score(name, root, split, baseline, live, runs, model, manifest, runner, uncommitted)
+    report = sc.render()
+    out = out or root / "reports" / f"{name}-{split}-{sc.slug}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report, encoding="utf-8")
     say(report.rstrip("\n"))
     say(f"\nswarm classify eval: wrote {out}")
-    return all(c.ok for c in checks)
+    return sc.passed
+
+
+# ---------------------------------------------------------------- the comparison (#1012)
+
+COMPARED = ("majority", "paths")   # the baselines a comparison scores beside the model
+
+
+def model_choice(name: str, root: Path, model: Optional[str] = None,
+                 manifest: Path = MANIFEST) -> tuple[str, str]:
+    """("model" or "paths", why): the model when its recorded replies pass the label set's
+    pass mark on the test split, else the paths baseline (#1012). Makes no model calls."""
+    try:
+        sc = score(name, root, "test", model=model, manifest=manifest, runner=no_calls)
+    except CantRun as e:
+        return "paths", f"the model has no complete test-split eval: {short(e, root)}"
+    if sc.passed:
+        return "model", f"the model ({sc.slug}) passes the pass mark on the test split"
+    return "paths", f"the model ({sc.slug}) fails the pass mark on the test split"
+
+
+def short(e: Exception, root: Path) -> str:
+    """A CantRun's message for a report: paths relative to the classify directory."""
+    return str(e).replace(f"{root}/", "").removesuffix("; no report written")
+
+
+def no_calls(*a, **k):
+    raise classifier.ModelError("a replay made a model call")
+
+
+def demote(report: str) -> str:
+    """A report's headings one level down, to sit under a comparison's section."""
+    return "\n".join("#" + line if line.startswith("#") else line
+                     for line in report.splitlines())
+
+
+def compare(name: str, root: Path, split: str = "test", model: Optional[str] = None,
+            manifest: Path = MANIFEST, out: Optional[Path] = None, say: Callable = print) -> str:
+    """Score majority, paths and the model (replay only) on one split, and write them side by
+    side to reports/<name>.md with which one the cache uses. Returns the classifier the cache
+    uses. Raises CantRun if a baseline can't run; a model with no recordings is reported as
+    not run."""
+    scored = {b: score(name, root, split, baseline=b, manifest=manifest) for b in COMPARED}
+    try:
+        scored["model"] = score(name, root, split, model=model, manifest=manifest,
+                                runner=no_calls)
+        missing = None
+    except CantRun as e:
+        missing = short(e, root)
+    use, why = model_choice(name, root, model, manifest) if split == "test" else \
+        ("paths", "only a test-split comparison decides")
+    any_sc = scored["majority"]
+    out_lines = [f"# Classify comparison: {name}, {split} split", "",
+                 f"- **Label set:** `labelsets/{name}.yml` sha256 `{any_sc.ls.sha}`",
+                 f"- **Labelled set:** `data/{name}.jsonl` sha256 `{any_sc.data_sha}`",
+                 f"- **Items:** {any_sc.m.n}",
+                 f"- **The cache uses:** `{use}`: {why}", "",
+                 "| Classifier | Accuracy | Coverage | Pass mark |", "|---|---|---|---|"]
+    for key in ("majority", "paths", "model"):
+        sc = scored.get(key)
+        if sc is None:
+            out_lines.append(f"| model | not run | not run | – |")
+            continue
+        out_lines.append(f"| {cell(sc.who)} | {pct(sc.m.accuracy)} | {pct(sc.m.coverage)} | "
+                         f"{'pass' if sc.passed else 'FAIL'} |")
+    for key, title in (("majority", "Baseline: majority"), ("paths", "Baseline: paths"),
+                       ("model", "The model")):
+        out_lines += ["", f"## {title}", ""]
+        if key in scored:
+            body = scored[key].render().split("\n", 2)[2]   # drop its title line
+            out_lines.append(demote(body).rstrip("\n"))
+        else:
+            out_lines.append(f"Not run: {missing}. A `swarm classify eval {name} --split "
+                             f"{split} --live` records its replies (GOV-0045).")
+    text = "\n".join(out_lines) + "\n"
+    out = out or root / "reports" / f"{name}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    say(f"swarm classify compare: wrote {out}; the cache uses {use} ({why})")
+    return use
 
 
 def add_eval_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("labelset", help="the label set's name: classify/labelsets/<name>.yml")
     p.add_argument("--split", choices=lsmod.SPLITS, default="dev", help="default: dev")
     p.add_argument("--baseline", metavar="NAME",
-                   help=f"score this baseline instead of the model (built in: majority)")
+                   help="score this baseline instead of the model (built in: majority, paths)")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--replay", action="store_true",
                       help="use only recorded replies; no model calls (the default)")

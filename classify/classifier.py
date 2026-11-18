@@ -52,6 +52,44 @@ def majority(labelset: LabelSet, dev: list[Item], item: Item) -> Prediction:
     return Prediction(best)
 
 
+PATHS_RE = re.compile(r"^Paths touched \(\d+\): (.*?)(?:, and \d+ more)?$", re.M)
+FIX_RE = re.compile(r"(?i)\b(?:fix(?:es|ed)?|follow-up to)\s+#(\d+)\b")
+
+
+def touched(text: str) -> list[str]:
+    """The paths an item's `Paths touched (N): a, b, and K more` line lists (#1011's format)."""
+    m = PATHS_RE.search(text)
+    if not m or m.group(1) == "none":
+        return []
+    return [p.strip() for p in m.group(1).split(", ") if p.strip()]
+
+
+def paths_label(paths: list[str]) -> str:
+    """#1012's rule, first match wins: governance/ or roles/ is governance; research/, or
+    only Markdown, is knowledge; dashboard/ is capability; anything else is upkeep."""
+    if any(p.startswith(("governance/", "roles/")) for p in paths):
+        return "governance"
+    if paths and (any(p.startswith("research/") for p in paths)
+                  or all(p.endswith(".md") for p in paths)):
+        return "knowledge"
+    if any(p.startswith("dashboard/") for p in paths):
+        return "capability"
+    return "upkeep"
+
+
+@baseline("paths")
+def paths(labelset: LabelSet, dev: list[Item], item: Item) -> Prediction:
+    """By the paths the PR touches (paths_label); the fix flag from a `Fixes #N` or
+    `follow-up to #N` in its text. Evidence is the reference, if there is one."""
+    m = FIX_RE.search(item.text)
+    flags = {f: False for f in labelset.flag_names}
+    if "fix" in flags:
+        flags["fix"] = m is not None
+    label = paths_label(touched(item.text))
+    return Prediction(label if label in labelset.label_names else None, 1.0,
+                      m.group(0) if m else "", flags)
+
+
 # ---------------------------------------------------------------- prompts and replies
 
 def system_prompt(ls: LabelSet) -> str:
@@ -219,11 +257,13 @@ class ModelClassifier:
 
     def __init__(self, ls: LabelSet, model: str, recordings: Recordings, runs: int,
                  live: bool = False, cap: Optional[Cap] = None,
-                 runner: Callable = claude_runner):
+                 runner: Callable = claude_runner, reuse: bool = False):
+        """reuse: a live run takes a recorded reply where there is one and calls the model
+        only for the rest (`swarm classify run`, #1012)."""
         if live and cap is None:
             raise ValueError("a live run needs a Cap")
         self.ls, self.model, self.rec, self.runs = ls, model, recordings, runs
-        self.live, self.cap, self.runner = live, cap, runner
+        self.live, self.cap, self.runner, self.reuse = live, cap, runner, reuse
         self.system = system_prompt(ls)
 
     def __call__(self, item: Item) -> Prediction:
@@ -231,7 +271,10 @@ class ModelClassifier:
         key = prompt_hash(self.system, user)
         replies = []
         for k in range(self.runs):
-            if self.live:
+            reply = self.rec.get(item.id, key, k) if self.reuse else None
+            if reply is not None:
+                pass
+            elif self.live:
                 budget = self.cap.take()
                 reply, cost = self.runner(self.model, self.system, user, budget)
                 self.cap.spent += cost
