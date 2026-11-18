@@ -914,10 +914,11 @@ def main(argv: list[str]) -> int:
     model = build(data, now, dt.timedelta(minutes=args.idle_minutes), caps=load_caps(),
                   window=args.days, watch_interval=load_watch_interval())
     import state   # here, not at the top: state imports this module
+    # The Work map's data first: Crew's lanes in state.json read its stages (#1261).
+    model["workmap"] = map_data(data, model, now, args.days)   # the Work map page carries it (#1082)
     data_json = json.dumps(state.state(model), indent=1) + "\n"
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    model["workmap"] = map_data(data, model, now, args.days)   # the Work map page carries it (#1082)
     pages = {**render(model), **redirects()}   # retired pages send old links on (#1113, #1114)
     layout.copy_fonts(out.parent)   # before the pages, so a published page never lacks them
     # likewise the scripts the pages load (#1106) and the vendored libraries, checked above (#1107)

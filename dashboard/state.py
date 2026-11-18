@@ -18,6 +18,7 @@ import authority
 import committees
 import effort
 import grants
+import lanes
 import floor as floor_mod
 import generate
 import plan
@@ -106,6 +107,7 @@ def watcher(w: dict | None) -> dict | None:
 
 def state(m: dict) -> dict:
     gov = {k: v for k, v in m["governance"].items() if k != "questions"}
+    live = workmap_page.live_data(m, committees.owner_login())
     return plain({
         "schema": SCHEMA,
         "built_at": m["now"],
@@ -136,5 +138,7 @@ def state(m: dict) -> dict:
         "authority": m.get("authority") or authority.build(None, []),   # #410, #1140: Governance's authority map
         "crew_roles": agents.state(m),   # #1139: Crew's role rows
         # #1135: the Work map's strip, tape, Goals and roles, which map.json doesn't carry
-        "workmap": workmap_page.live_data(m, committees.owner_login()),
+        "workmap": live,
+        # #1261: Crew's top, each card's lane decided here (lanes.py); after map_data() when built
+        "crew_work": lanes.state(m, live["tape"]),
     })

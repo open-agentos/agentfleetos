@@ -35,7 +35,8 @@ def floor_of(m) -> str:
 
 def watcher_lines(m) -> list[str]:
     """The watcher's lines as crew.js draws them, as plain text."""
-    return [html.unescape(re.sub(r"<[^>]+>", "", li)) for li in re.findall(r"<li>(.*?)</li>", floor_of(m))]
+    return [html.unescape(re.sub(r"<[^>]+>", "", li.replace("<br>", " "))).strip()
+            for li in re.findall(r"<li(?: [^>]*)?>(.*?)</li>", floor_of(m))]
 
 
 needs_node = unittest.skipUnless(crewdraw.NODE, "node isn't installed")
@@ -159,46 +160,36 @@ class NeverActedTest(unittest.TestCase):
 
 
 @needs_node
-class IdleLineTest(unittest.TestCase):
-    def test_line(self):
-        m = model({"a": [ev("a", "working_on", 40, issue=1, role="builder")],
-                   "b": [ev("b", "working_on", 125, issue=1, role="builder")]})
-        self.assertIn('<p class="muted idle">idle: builder 40 min, builder 2 h 5 min</p>', floor_of(m))
-
-    def test_spans(self):
-        idle = [{"session_id": str(n), "role": "r", "idle_minutes": n} for n in (0, 40, 120, 125, 3000, None)]
-        out = crewdraw.draw(crewdraw.base(floor={"cards": [], "idle": idle}))["floor"]
-        self.assertIn("idle: r 0 min, r 40 min, r 2 h, r 2 h 5 min, r 2 d, r no events", out)
+class FloorTest(unittest.TestCase):
+    """#floor is now the work in progress (#1261): the cards come from state.json's crew_work."""
 
     def test_on_the_desk(self):
         m = model({"a": [ev("a", "working_on", 40, issue=1)],
                    "b": [ev("b", "heartbeat", 2, issue=392, tools=["Edit"])]})
         desk = crew(m)
-        self.assertIn("<h2>On the floor</h2>", desk)
-        self.assertIn("idle: builder 40 min", desk)
-        self.assertIn(f'Editing files on <a href="https://github.com/{REPO}/issues/392">#392</a>', desk)
-        self.assertIn("<svg", desk)
-        self.assertIn('<div class="muted used">last 30 min, 5-min slots: editing in 1 of 6 · reading in 0 of 6 · '
-                      'commands in 0 of 6</div>', desk)
-        self.assertNotIn("On the floor", g.render(m)["governance.html"])
+        self.assertIn("<h2>In progress</h2>", desk)
+        self.assertIn(f'<a class="mono" href="https://github.com/{REPO}/issues/392">#392</a>'
+                      '<span class="cw-live" title="running" aria-label="running"></span>', desk)
+        self.assertIn('<span class="cw-run" title="Editing files on #392">running 2m</span>', desk)
+        self.assertIn('<span class="muted">idle 40m</span>', desk)
+        self.assertIn('aria-label="events per 5 minutes, last 30 minutes, oldest first: 0, 0, 0, 0, 0, 1"', desk)
+        self.assertNotIn("<h2>In progress</h2>", g.render(m)["governance.html"])
 
-    def test_pr_opened_links_the_pr(self):
-        m = model({"b": [ev("b", "pr_opened", 2, issue=392, pr=394)]})
-        self.assertIn(f'Opened PR <a href="https://github.com/{REPO}/pull/394">#394</a>', floor_of(m))
+    def test_idle_session_has_no_live_dot_or_sparkline(self):
+        out = floor_of(model({"a": [ev("a", "working_on", 125, issue=1, role="builder")]}))
+        self.assertIn("idle 2h 5m", out)
+        self.assertNotIn("cw-live", out)
+        self.assertNotIn("<svg", out)
 
     def test_repo_text_stays_text(self):
-        c = {"session_id": "s", "role": "<b>r</b>", "model": "m", "status": "active", "run_minutes": 5,
-             "activity": "Working on #1 <script>", "events_per_slot": [0, 1, 0, 0, 0, 2],
-             "slots_used": {"editing": 0, "reading": 1, "commands": 0}}
-        out = crewdraw.draw(crewdraw.base(floor={"cards": [c], "idle": []}))["floor"]
-        self.assertIn("&lt;b&gt;r&lt;/b&gt;", out)
-        self.assertIn('<a href="https://github.com/o/r/issues/1">#1</a> &lt;script&gt;', out)
-        self.assertIn('aria-label="events per 5 minutes, last 30 minutes, oldest first: 0, 1, 0, 0, 0, 2"', out)
+        m = model({"b": [ev("b", "heartbeat", 2, issue=392, tools=["Edit"])]},
+                  extra_issues=[issue(392, "<img src=x> & <b>")])
+        self.assertIn('<div class="cw-title">&lt;img src=x&gt; &amp; &lt;b&gt;</div>', floor_of(m))
 
     def test_nobody_working(self):
         desk = crew(model({}))
-        self.assertIn("No session is working.", desk)
-        self.assertNotIn("idle:", desk)
+        self.assertEqual(desk.count('<p class="cw-none">none</p>'), 5)
+        self.assertIn('<span class="cw-big">0</span><span class="cw-label">working now</span>', desk)
 
 
 class StateTest(unittest.TestCase):
@@ -258,30 +249,32 @@ class WatcherTest(unittest.TestCase):
         w = m["watcher"]
         self.assertEqual((w["status"], w["issue"], w["stale"]), ("ok", 70, False))
         self.assertEqual(watcher_lines(m), [
-            "builder on #405 since 11:09",
-            "held: #407, 2 of 2 running",
-            "skipped: #439, the role has no spend_cap_usd in swarm.toml",
-            "failed: #51 build, at its cap, 10:02"])
+            "#407 held: 2 of 2 running",
+            "#439 skipped: the role has no spend_cap_usd in swarm.toml",
+            "AT CAP #51 build 1h ago"])
 
     def test_on_the_desk(self):
         desk = crew(watched(watch_issue(FULL)))
-        self.assertIn("<h3>The watcher</h3>", desk)
-        self.assertIn(f'builder on <a href="https://github.com/{REPO}/issues/405">#405</a> since 11:09', desk)
-        self.assertIn("as of 1 min ago, at 11:59 UTC", desk)
+        self.assertIn("<h3>Blocked and held</h3>", desk)
+        self.assertIn("<h3>Failed runs</h3>", desk)
+        self.assertIn(f'<a class="mono" href="https://github.com/{REPO}/issues/407">#407</a>', desk)
+        self.assertIn('<span class="cw-fail">AT CAP</span>', desk)
+        self.assertIn("watcher as of 1 min ago, at 11:59 UTC", desk)
         self.assertNotIn('class="stale"', desk)
 
     def test_pr_ref_links_to_the_pr(self):
         s = pub(held=[{"ref": "PR #30", "kind": "review", "code": "live",
                        "reason": "held: a session is live on it", "since": "2026-11-02T11:00:00+00:00"}])
         desk = crew(watched(watch_issue(s)))
-        self.assertIn(f'held: PR <a href="https://github.com/{REPO}/pull/30">#30</a>, a session is live on it', desk)
+        self.assertIn(f'<a class="mono" href="https://github.com/{REPO}/pull/30">PR #30</a><br>'
+                      '<span class="cw-why">held: a session is live on it</span>', desk)
 
     def test_stale(self):
         w = watched(watch_issue(pub(checked_ago=40, **{k: FULL[k] for k in floor.LISTS})))["watcher"]
         self.assertTrue(w["stale"])
         self.assertEqual(w["age_minutes"], 40)
         desk = crew(watched(watch_issue(pub(checked_ago=40))))
-        self.assertIn('<p class="stale">watcher last published 40 min ago, at 11:20 UTC', desk)
+        self.assertIn('<p class="stale">watcher last published 40 min ago, at 11:20 UTC', desk)   # still as before
 
     def test_ten_minutes_is_not_stale_but_eleven_is(self):
         self.assertFalse(watched(watch_issue(pub(checked_ago=10)))["watcher"]["stale"])
@@ -292,7 +285,8 @@ class WatcherTest(unittest.TestCase):
 
     def test_empty_lists(self):
         desk = crew(watched(watch_issue(pub())))
-        self.assertIn("Nothing running, held, skipped or failed.", desk)
+        self.assertIn("Nothing blocked or held.", desk)
+        self.assertIn("No failed runs.", desk)
 
     def test_missing(self):
         m = watched(issue(4, "Dashboard"))
@@ -306,7 +300,7 @@ class WatcherTest(unittest.TestCase):
         m = watched(watch_issue(FULL, login="someone-else"))
         self.assertEqual(m["watcher"], {"status": "not_owner"})
         desk = crew(m)
-        self.assertIn("opened by the owner, so the floor", desk)
+        self.assertIn("opened by the owner, so it isn't shown", desk)
         self.assertNotIn("#405", desk)
 
     def test_wrong_author_beside_the_owners_is_ignored(self):
@@ -338,7 +332,7 @@ class WatcherTest(unittest.TestCase):
         self.assertEqual(w["running"], [{"ref": "#405", "kind": "build", "role": "builder",
                                          "started": floor._ts(FULL["running"][0]["started"])}])
         self.assertEqual([(h["ref"], h["reason"]) for h in w["held"]], [("#407", None)])
-        self.assertEqual(watcher_lines(watched(watch_issue(s))), ["builder on #405 since 11:09", "held: #407, limit"])
+        self.assertEqual(watcher_lines(watched(watch_issue(s))), ["#407 held: limit"])
         self.assertEqual(w["failed"], [])
         self.assertNotIn("extra", w)
 
@@ -353,7 +347,7 @@ class WatcherTest(unittest.TestCase):
                "waiting": [{"ref": "#407", "kind": "build", "code": "limit", "args": {"live": 2, "max": 2},
                             "since": "2026-11-02T11:30:00+00:00"}], "runs": {}}
         p = watch.public_state(st_, [], NOW)
-        self.assertEqual(watcher_lines(watched(watch_issue(p))), ["held: #407, 2 of 2 running"])
+        self.assertEqual(watcher_lines(watched(watch_issue(p))), ["#407 held: 2 of 2 running"])
 
     def test_state_carries_it(self):
         s = st.state(watched(watch_issue(FULL)))
