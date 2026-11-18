@@ -57,7 +57,7 @@
     h = (h || "").replace(/^#/, "");
     var m = /^issue-(\d+)$/.exec(h);
     if (m) return "#" + m[1];
-    if (/^(goal-\d+|role-[a-z]+|unattributed)$/.test(h)) return h;
+    if (/^(goal-\d+|role-[a-z]+|lesson-L-\d{4}|unattributed)$/.test(h)) return h;
     return null;
   }
   function readUrl() {
@@ -485,7 +485,9 @@
     if (kind === "goal" || kind === "role") {
       if ((kind === "goal" ? goalPanel : rolePanel)(box, st.selected.slice(5))) return;
     }
-    var found = st.selected === null || kind === "goal" || kind === "role" ? null : findRow(st.selected);
+    if (kind === "lesson" && lessonPanel(box, st.selected.slice(7))) return;
+    var found = st.selected === null || kind === "goal" || kind === "role" || kind === "lesson"
+      ? null : findRow(st.selected);
     if (!found) { if (st.selected !== null) { st.selected = null; writeUrl(false); } emptyPanel(box); return; }
     box.classList.remove("wm-sel-other");
     setText("wm-sel-kind", "SELECTED");
@@ -514,6 +516,7 @@
 
     stagePanel(r);
     depsPanel(r);
+    memPanel(r);
     daysPanel(r.ref);
     peersPanel(r, here);
     var y = here ? yieldOf(r) : null;
@@ -713,6 +716,9 @@
       var share = sh[x.ref || "#" + x.number];
       if (share !== undefined) li.appendChild(el("span", "mono muted", " · " + pct(share)));
     });
+    var nums = [n].concat(g.subs.map(function (x) { return x.number; }));
+    (rowsNow() || []).forEach(function (r) { if (r.goal && r.goal.number === n && r.issue) nums.push(r.issue); });
+    memList(alt, memUse(function (e) { return nums.some(function (k) { return onIssue(e, k); }); }));
     var p = el("p", "wm-sh"); p.appendChild(link(g.url, "Open it on GitHub")); alt.appendChild(p);
     return true;
   }
@@ -755,6 +761,7 @@
       li.appendChild(link(c.url, "PR #" + c.number));
       li.appendChild(document.createTextNode(" " + c.group + (c.reason ? ": " + c.reason : "")));
     });
+    memList(alt, memUse(function (e) { return e.role === name; }));
     if (r.ask) {
       head(alt, "Ask it something");
       var a = el("p");
@@ -776,6 +783,7 @@
     setText("wm-sel-kind", "SELECTED");
     setText("wm-sel-ref", "–");
     setText("wm-sel-by", "–"); setText("wm-sel-blocks", "–");
+    setText("wm-sel-given", "–"); setText("wm-sel-cited", "–");
     clear($("wm-sel-alt"));
     var t = $("wm-sel-title"); clear(t); t.title = "";
     t.appendChild(document.createTextNode("Click a box, or an item in a list below, to see it here."));
@@ -795,6 +803,116 @@
     var spans = $("wm-sel-pax").children;
     spans[0].textContent = "0"; spans[1].textContent = "–"; spans[2].textContent = "–";
     numbers(null);
+  }
+
+  // ------------------------------------------------------------ memory (#1192)
+
+  // `swarm memory desk --json` as the build read it (memdesk.py): lessons this repo can see,
+  // by id, and the given and cite episodes. Every lesson id the page shows is one of these.
+  function mem() { var m = data && data.memory; return m && !m.error && m.lessons ? m : null; }
+  // A given or cite episode about issue n: its issue, the PR or comment it is on, or an issue
+  // its merged PR closes.
+  function onIssue(e, n) {
+    return e.issue === n || e.number === n || e.pr === n || (e.closes || []).indexOf(n) >= 0;
+  }
+  // The lessons given to and cited in the episodes `pred` keeps, each id once, in order.
+  function memUse(pred) {
+    var m = mem(), out = { given: [], cited: [] };
+    if (!m) return null;
+    (m.used || []).forEach(function (e) {
+      if (!pred(e)) return;
+      var into = e.type === "cite" ? out.cited : out.given;
+      (e.lessons || []).forEach(function (id) { if (m.lessons[id] && into.indexOf(id) < 0) into.push(id); });
+    });
+    return out;
+  }
+  function lessonPick(id) {
+    var l = (mem() || { lessons: {} }).lessons[id];
+    var b = pick("lesson-" + id, id);
+    if (l && l.title) b.title = l.title;
+    return b;
+  }
+  function memPanel(r) {
+    var u = r.issue ? memUse(function (e) { return onIssue(e, r.issue); }) : null;
+    [["wm-sel-given", u && u.given], ["wm-sel-cited", u && u.cited]].forEach(function (x) {
+      var e = $(x[0]); clear(e); e.title = "";
+      if (!x[1]) { e.appendChild(document.createTextNode(mem() ? "–" : "memory not read")); return; }
+      if (!x[1].length) { e.appendChild(document.createTextNode("no lessons")); return; }
+      x[1].forEach(function (id) { e.appendChild(lessonPick(id)); });
+      e.title = x[1].join(" ");
+    });
+  }
+  function memList(alt, u) {
+    head(alt, "Lessons", "given · cited");
+    if (!u) { alt.appendChild(el("p", "muted", "This build didn't read memory.")); return; }
+    [["Given", u.given], ["Cited", u.cited]].forEach(function (x) {
+      var p = el("p", "wm-dl");
+      p.appendChild(el("span", "", x[0]));
+      var v = el("span");
+      if (!x[1].length) v.appendChild(document.createTextNode("no lessons"));
+      x[1].forEach(function (id) { v.appendChild(lessonPick(id)); v.appendChild(document.createTextNode(" ")); });
+      p.appendChild(v);
+      alt.appendChild(p);
+    });
+  }
+
+  // A lesson's provenance (`swarm memory show --json`): its sources, confidence, uses,
+  // rehearsal result, review date and where it was given and cited. False if the Desk
+  // doesn't have it, as for a repo-scoped lesson of another repo.
+  function lessonPanel(box, id) {
+    var m = mem(), l = m && m.lessons[id];
+    if (!l) return false;
+    var ctx = (l.status || "no status") + " · " + (l.scope || "no scope") + " · " +
+      ((l.roles || []).length ? l.roles.join(", ") : "all roles");
+    var alt = other(box, "LESSON", id, l.title || id,
+                    "https://github.com/" + (data.repo || "") + "/blob/main/" + (l.file || ""), ctx);
+    var tiles = el("dl", "wm-tiles");
+    [["Confidence", l.confidence === null || l.confidence === undefined ? "–" : String(l.confidence)],
+     ["Uses", l.uses === null || l.uses === undefined ? "0" : String(l.uses)],
+     ["Last used", l.last_used || "never"], ["Review by", l.review_by || "–"]].forEach(function (t) {
+      var d = el("div", "wm-num"); d.appendChild(el("dt", "", t[0])); d.appendChild(el("dd", "", t[1]));
+      tiles.appendChild(d);
+    });
+    alt.appendChild(tiles);
+    head(alt, "Rehearsal", (l.eval && l.eval.result) || "");
+    alt.appendChild(el("p", "", (l.eval && l.eval.note) || "no eval case yet"));
+    head(alt, "Sources", String((l.sources || []).length));
+    list(alt, l.sources || [], "No sources.", function (li, x) {
+      li.appendChild(el("span", "mono", x.id));
+      if (!x.found) { li.appendChild(document.createTextNode(" missing from the episodes")); return; }
+      li.appendChild(document.createTextNode(" " + (x.type || "") + " (" +
+        (x.engine_recorded ? "engine signal" : "session note") + ") by " + (x.author || "unknown") +
+        ", " + (x.at || "undated") + " "));
+      if (x.source) li.appendChild(link(x.source, "source"));
+    });
+    // Where: the issue a session was given it on, or the PR (or the issue or PR commented on)
+    // that cited it, each once.
+    var refs = { given: [], cited: [] }, seen = {};
+    (m.used || []).forEach(function (e) {
+      if ((e.lessons || []).indexOf(id) < 0) return;
+      var pr = e.type === "cite" ? e.pr : (e.issue ? null : e.pr), n = pr || e.issue || e.number;
+      var key = e.type + (pr ? "pr" : "") + n;
+      if (!n || seen[key]) return;
+      seen[key] = true;
+      (e.type === "cite" ? refs.cited : refs.given).push({ n: n, pr: !!pr, url: e.source });
+    });
+    [["Given on", refs.given], ["Cited on", refs.cited]].forEach(function (x) {
+      head(alt, x[0], String(x[1].length));
+      if (!x[1].length) { alt.appendChild(el("p", "muted", "Nowhere yet.")); return; }
+      var p = el("p");
+      x[1].forEach(function (r) {
+        p.appendChild(r.pr ? link(r.url, "PR #" + r.n) : issueRef(r.n));
+        p.appendChild(document.createTextNode(" "));
+      });
+      alt.appendChild(p);
+    });
+    head(alt, "The lesson");
+    alt.appendChild(el("p", "wm-body", l.body || ""));
+    if ((l.errors || []).length) {
+      head(alt, "Invalid", String(l.errors.length));
+      list(alt, l.errors, "", function (li, x) { li.appendChild(el("span", "wm-bad", x)); });
+    }
+    return true;
   }
 
   // Any element with data-wm-ref (the Work map's lists) selects that issue.
@@ -1016,6 +1134,13 @@
       plural(s.waiting, "decision") + " waiting" + (s.oldest ? ", oldest " + s.oldest : "")));
     sec.appendChild(el("span", "sp-i", s.working + " agents working of " + s.agents + " live"));
     sec.appendChild(el("span", "sp-i", s.authority + " uses of your authority, last " + s.authority_hours + "h"));
+    var mm = s.memory;
+    if (mm && mm.error) sec.appendChild(el("span", "sp-i sp-red", "memory not read"));
+    else if (mm) {
+      sec.appendChild(el("span", "sp-i", "memory " + mm.used + " of " + mm.budget + " lessons" +
+        (mm.role && mm.used ? ", fullest role " + mm.role : "")));
+      sec.appendChild(el("span", "sp-i", plural(mm.dormant, "lesson") + " dormant"));
+    }
     if (s.error) sec.appendChild(el("span", "sp-i sp-red", "trouble report not read: counts may be low"));
     return sec;
   }
@@ -1057,6 +1182,69 @@
     var body = el("div", "br-briefbody");
     (br.paras || []).forEach(function (x) { body.appendChild(inline(el("p"), x)); });
     sec.appendChild(body);
+    return sec;
+  }
+
+  // Memory under the Briefing (#1192), as workmap_page.memory_html() draws it.
+  function idsNode(p, ids, word) {
+    p.appendChild(document.createTextNode(ids.length + " " + word));
+    if (!ids.length) return;
+    var known = (mem() || { lessons: {} }).lessons;
+    p.appendChild(document.createTextNode(" ("));
+    ids.forEach(function (id, k) {
+      if (k) p.appendChild(document.createTextNode(", "));
+      p.appendChild(known[id] ? lessonPick(id) : el("span", "mono", id));
+    });
+    p.appendChild(document.createTextNode(")"));
+  }
+  function memoryNode(m) {
+    var sec = el("section", "wm-mem");
+    sec.setAttribute("aria-label", "Memory");
+    if (m && m.error) {
+      colHead(sec, "Memory");
+      sec.appendChild(el("p", "muted", "Memory not read: " + m.error));
+      return sec;
+    }
+    var dr = m.dream;
+    colHead(sec, "Memory", dr ? el("span", "muted", "the dream of " + String(dr.last_run).slice(0, 10)) : null);
+    if (!dr) sec.appendChild(el("p", "muted", "No dream has run yet."));
+    else {
+      var ln = dr.learned || {}, fg = dr.forgot || {}, pr = dr.proposing || {};
+      var a = el("p"); a.appendChild(el("b", "", "Learned:")); a.appendChild(document.createTextNode(" "));
+      idsNode(a, ln.proposed || [], "proposed"); a.appendChild(document.createTextNode(", "));
+      idsNode(a, ln.reconfirmed || [], "reconfirmed"); a.appendChild(document.createTextNode("."));
+      var b = el("p"); b.appendChild(el("b", "", "Forgot:")); b.appendChild(document.createTextNode(" "));
+      idsNode(b, fg.dormant || [], "to dormant"); b.appendChild(document.createTextNode(", "));
+      idsNode(b, fg.retired || [], "retired");
+      b.appendChild(document.createTextNode(", " + plural(fg.episodes || 0, "episode") + " deleted."));
+      var pats = pr.patterns || [], own = pr.owner || [];
+      var c = el("p"); c.appendChild(el("b", "", "Proposing:"));
+      c.appendChild(document.createTextNode(" " + plural(pats.length, "pattern") + " for you" +
+        (pats.length ? " (" + pats.join("; ") + ")" : "") + ", " + own.length + " owner-model entr" +
+        (own.length === 1 ? "y" : "ies") + (own.length ? " (" + own.join(", ") + ")" : "") + "."));
+      [a, b, c].forEach(function (p) { sec.appendChild(p); });
+    }
+    sec.appendChild(el("h3", "wm-mh", "Owner model"));
+    var es = m.owner || [];
+    if (!es.length) { sec.appendChild(el("p", "muted", "No entries yet.")); return sec; }
+    var ul = el("ul", "wm-own");
+    es.forEach(function (e) {
+      var li = el("li");
+      li.appendChild(el("span", "mono", e.id));
+      li.appendChild(document.createTextNode(" " + (e.title || "") + " "));
+      li.appendChild(el("span", "muted", "· " + (e.kind || "") + " · " +
+        ((e.roles || []).length ? e.roles.join(", ") : "planner only") + " · sources: "));
+      var srcs = e.sources || [];
+      if (!srcs.length) li.appendChild(document.createTextNode("none"));
+      srcs.forEach(function (x, k) {
+        if (k) li.appendChild(document.createTextNode(", "));
+        var mt = /^(?:([\w.-]+\/[\w.-]+))?#(\d+)$/.exec(x);
+        li.appendChild(mt ? link("https://github.com/" + (mt[1] || data.repo || "") + "/issues/" + mt[2], x)
+                          : x.indexOf("https://github.com/") === 0 ? link(x, x) : el("span", "mono", x));
+      });
+      ul.appendChild(li);
+    });
+    sec.appendChild(ul);
     return sec;
   }
 
@@ -1150,6 +1338,7 @@
     var w = s.workmap;
     swap("section.sp", function () { return stripNode(w.strip); });
     swap("section.wm-brief", function () { return briefingNode(w.briefing); });
+    if (w.memory) swap("section.wm-mem", function () { return memoryNode(w.memory); });
     swap("section.tp", function () { return tapeNode(w.tape || []); });
     var box = document.querySelector('header.mast [data-panel="mast"]');
     if (box) {
@@ -1235,7 +1424,7 @@
     if (redraw(MAP_FIELDS, next)) mapAt = next.built_at;
   }
 
-  var STATE_FIELDS = ["strip", "needs_extra", "scopes", "roles"];
+  var STATE_FIELDS = ["strip", "needs_extra", "scopes", "roles", "memory"];
   function applyState(s) {
     var w = s && s.workmap;
     if (!s || s.schema !== 1 || typeof s.built_at !== "string" || !w || typeof w !== "object" ||

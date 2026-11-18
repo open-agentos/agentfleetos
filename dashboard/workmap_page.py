@@ -20,6 +20,10 @@ it retired the Bridge (#1114). Top to bottom:
     workmap.js from the selected box or from any element with `data-wm-ref` in the page;
     since #1115 also a Goal, Area or role (the `scopes` and `roles` in the JSON block, from the
     Commissions and Agents drawers' builds), and the URL keeps the view and the selection;
+  - under the Briefing, Memory (#1192): the last dream's three lines and the owner model with
+    each entry's sources, from `swarm memory desk --json` (launcher/memdesk.py). The Selected
+    panel lists the lessons given to and cited in the selected issue, Goal or role, and a
+    lesson id opens its provenance there;
   - six lists (#1084), two rows of three: Needs you, Blocked, Spend no outcome, Running hot,
     Gone quiet and Best yield. workmap.py's lists() picks and orders each window's matches for
     each size; workmap.js keeps those in the zoomed group, shows five and counts them all.
@@ -227,6 +231,8 @@ def selected_html() -> str:
             f'<div class="wm-sgs" id="wm-sel-sgs">{seg}</div></div>'
             '<div class="wm-ss wm-ss-i wm-ss-deps"><p class="wm-dl"><span>Waits on</span><span id="wm-sel-by">–</span></p>'
             '<p class="wm-dl"><span>Holds up</span><span id="wm-sel-blocks">–</span></p></div>'
+            '<div class="wm-ss wm-ss-i wm-ss-mem"><p class="wm-dl"><span>Given</span><span id="wm-sel-given">–</span></p>'
+            '<p class="wm-dl"><span>Cited</span><span id="wm-sel-cited">–</span></p></div>'
             '<div class="wm-ss wm-ss-i wm-ss-days"><p class="wm-sh"><span>Cost, last 14 days</span><span class="mono" id="wm-sel-dsum">–</span></p>'
             f'<div class="wm-bars" id="wm-sel-bars">{bars}</div>'
             '<p class="wm-ax mono"><span>14d ago</span><span id="wm-sel-peak">–</span><span>today</span></p></div>'
@@ -280,6 +286,82 @@ def briefing_html(briefing: dict | None, now) -> str:
             f'{old}<div class="br-briefbody">{body}</div></section>')
 
 
+def memory_data(m: dict) -> dict | None:
+    """`swarm memory desk --json` (launcher/memdesk.py) as the build read it, or {"error": why},
+    or None when this build didn't read memory. The page shows only what is in it (#1192)."""
+    mem = m.get("memory")
+    return mem if isinstance(mem, dict) else None
+
+
+def _ids(xs) -> list[str]:
+    return [str(x) for x in xs or []]
+
+
+def _lesson_pick(lid: str, lessons: dict) -> str:
+    """A lesson id: a button that opens its provenance in the Selected panel if the Desk has
+    the lesson, else the id as text (a proposed lesson the librarian hasn't written yet)."""
+    if lid in lessons:
+        return (f'<button type="button" class="wm-pick" data-wm-sel="lesson-{esc(lid)}" '
+                f'aria-controls="wm-sel">{esc(lid)}</button>')
+    return f'<span class="mono">{esc(lid)}</span>'
+
+
+def _some(n: int, word: str, ids: list[str], lessons: dict) -> str:
+    out = f"{n} {word}"
+    return out + (" (" + ", ".join(_lesson_pick(i, lessons) for i in ids) + ")" if ids else "")
+
+
+def dream_lines(mem: dict) -> list[str]:
+    """The last dream's three lines (dream.lines), as HTML: learned, forgot, proposing."""
+    dr, les = mem.get("dream"), mem.get("lessons") or {}
+    if not dr:
+        return []
+    ln, fg, pr = dr.get("learned") or {}, dr.get("forgot") or {}, dr.get("proposing") or {}
+    prop, rec = _ids(ln.get("proposed")), _ids(ln.get("reconfirmed"))
+    dorm, ret = _ids(fg.get("dormant")), _ids(fg.get("retired"))
+    pats, own = [str(x) for x in pr.get("patterns") or []], _ids(pr.get("owner"))
+    eps = fg.get("episodes") or 0
+    return [f'<b>Learned:</b> {_some(len(prop), "proposed", prop, les)}, {_some(len(rec), "reconfirmed", rec, les)}.',
+            f'<b>Forgot:</b> {_some(len(dorm), "to dormant", dorm, les)}, {_some(len(ret), "retired", ret, les)}, '
+            f'{eps} episode{"" if eps == 1 else "s"} deleted.',
+            f'<b>Proposing:</b> {len(pats)} pattern{"" if len(pats) == 1 else "s"} for you'
+            + (" (" + "; ".join(esc(x) for x in pats) + ")" if pats else "")
+            + f', {len(own)} owner-model entr{"y" if len(own) == 1 else "ies"}'
+            + (" (" + ", ".join(esc(x) for x in own) + ")" if own else "") + "."]
+
+
+def _source(s: str, repo: str) -> str:
+    """An owner-model source: #N or owner/name#N or a github.com link as a link, else text."""
+    m = re.fullmatch(r"(?:([\w.-]+/[\w.-]+))?#(\d+)", s)
+    if m:
+        return strip.a(f"https://github.com/{m.group(1) or repo}/issues/{m.group(2)}", esc(s))
+    if strip.GH_RE.fullmatch(s):
+        return strip.a(s, esc(s))
+    return f'<span class="mono">{esc(s)}</span>'
+
+
+def memory_html(mem: dict | None, repo: str) -> str:
+    """Memory, under the Briefing in the rail (#1192): the last dream's three lines and the
+    owner model, each entry with its sources. workmap.js draws the same from memory_data()."""
+    if mem is None:
+        return ""
+    head = '<section class="wm-mem" aria-label="Memory"><div class="br-colh"><h2 class="br-h">Memory</h2>'
+    if mem.get("error"):
+        return head + f'</div><p class="muted">Memory not read: {esc(mem["error"])}</p></section>'
+    dr = mem.get("dream")
+    when = f'<span class="muted">the dream of {esc(str(dr.get("last_run"))[:10])}</span>' if dr else ""
+    lines = "".join(f"<p>{x}</p>" for x in dream_lines(mem)) or '<p class="muted">No dream has run yet.</p>'
+    rows = []
+    for e in mem.get("owner") or []:
+        src = ", ".join(_source(str(x), repo) for x in e.get("sources") or []) or "none"
+        rows.append(f'<li><span class="mono">{esc(e.get("id"))}</span> {esc(e.get("title"))} '
+                    f'<span class="muted">· {esc(e.get("kind") or "")} · '
+                    f'{esc(", ".join(e.get("roles") or []) or "planner only")} · sources: </span>{src}</li>')
+    owner = (f'<ul class="wm-own">{"".join(rows)}</ul>' if rows
+             else '<p class="muted">No entries yet.</p>')
+    return (head + f'{when}</div>{lines}<h3 class="wm-mh">Owner model</h3>{owner}</section>')
+
+
 def strip_data(sp: dict) -> dict:
     """The counts strip as the page's block and state.json carry it: `flagged` (Goal and Area
     numbers) and `decisions` (the map refs they are about) for the map's outline, and the counts
@@ -287,7 +369,8 @@ def strip_data(sp: dict) -> dict:
     return {"flagged": sp["flagged"], "decisions": sp["decision_refs"], "scopes": sp["scopes"],
             "waiting": sp["decisions"], "oldest": sp["oldest"], "working": sp["working"],
             "agents": sp["agents"], "authority": sp["authority"],
-            "authority_hours": sp["authority_hours"], "error": bool(sp.get("error"))}
+            "authority_hours": sp["authority_hours"], "error": bool(sp.get("error")),
+            "memory": sp.get("memory")}
 
 
 def tape_data(items: list[dict], now) -> list[dict]:
@@ -309,6 +392,7 @@ def live_data(m: dict, owner: str | None = None) -> dict:
     return {"strip": strip_data(strip.strip(m)), "needs_extra": strip.needs_extra(m),
             "scopes": scope_data(m), "roles": role_data(m),
             "briefing": briefing_data((m.get("report") or {}).get("briefing"), m["now"]),
+            "memory": memory_data(m),
             "tape": tape_data(strip.tape(m, owner), m["now"])}
 
 
@@ -331,7 +415,7 @@ def render(m: dict, owner: str | None = None) -> str:
             'The Work map is drawn by a script in the page; with JavaScript off it can\'t show.</p></div>'
             '<div class="wm-tip" id="wm-tip" role="tooltip" hidden></div></div>'
             '<div class="wm-legend" id="wm-legend"></div></section>'
-            f'{layout.rail(briefing_html((m.get("report") or {}).get("briefing"), m["now"]), selected_html())}</div>'
+            f'{layout.rail(briefing_html((m.get("report") or {}).get("briefing"), m["now"]) + memory_html(memory_data(m), m["repo"]), selected_html())}</div>'
             f'{lists_html()}'
             f'{strip.tape_html(strip.tape(m, owner), m["now"], on_map)}'
             f'{method}{data_block(d)}</div>')

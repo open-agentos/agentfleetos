@@ -433,6 +433,31 @@ def given_not_used(episodes: list[dict], ids: set[str]) -> dict[str, dict]:
     return dict(sorted(out.items()))
 
 
+# ---------------------------------------------------------------- the three lines (#1192)
+
+def lines(p: Plan) -> dict:
+    """The run's three lines for the Desk's Briefing (FEAT-22), ids and counts only:
+    learned (lessons proposed and reconfirmed), forgot (lessons to dormant and retired, and
+    episodes deleted) and proposing (patterns for the owner, and owner-model entries).
+    `swarm dream --apply` keeps them in memory/dream.json beside last_run."""
+    return {"learned": {"proposed": [c["id"] for c in p.proposed],
+                        "reconfirmed": [r["id"] for r in p.reconfirmed]},
+            "forgot": {"dormant": [d["id"] for d in p.dormant], "retired": [r["id"] for r in p.retired],
+                       "episodes": len(p.expired)},
+            "proposing": {"patterns": [q["why"] for q in p.promote], "owner": [c["id"] for c in p.owner]}}
+
+
+def last_lines(memory: Path) -> dict | None:
+    """The last applied run's three lines and when it ran, or None before the first."""
+    try:
+        v = json.loads((memory / STATE).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(v, dict) or not isinstance(v.get("last_run"), str) or not isinstance(v.get("lines"), dict):
+        return None
+    return {"last_run": v["last_run"], **v["lines"]}
+
+
 # ---------------------------------------------------------------- applying it
 
 def set_fields(text: str, values: dict[str, str]) -> str:
@@ -497,7 +522,7 @@ def apply(p: Plan, lessons: list[L.Lesson], memory: Path, now: dt.datetime) -> l
             else:
                 f.unlink()
             done.append(f"episodes/{f.name}: deleted {dropped} past {RETENTION_DAYS} days")
-    (memory / STATE).write_text(json.dumps({"last_run": stamp(now)}, indent=2) + "\n")
+    (memory / STATE).write_text(json.dumps({"last_run": stamp(now), "lines": lines(p)}, indent=2) + "\n")
     (memory / "INDEX.md").write_text(L.index_text(L.load_all(memory / "lessons")))
     return done
 

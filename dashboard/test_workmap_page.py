@@ -77,10 +77,10 @@ class PageTest(unittest.TestCase):
         self.assertNotRegex(wp.render(model()).lower(), r"\btotal")
         d = json_block(page)
         self.assertEqual(set(d), {"built_at", "method", "windows", "days", "lists", "repo", "scopes", "roles",
-                                  "strip", "needs_extra", "live"})
+                                  "strip", "needs_extra", "live", "memory"})
         self.assertEqual(set(d["live"]), {"every", "stale"})   # timings, no figure
         self.assertEqual(set(d["strip"]), {"flagged", "decisions", "scopes", "waiting", "oldest", "working",
-                                           "agents", "authority", "authority_hours", "error"})   # counts and refs, no amount
+                                           "agents", "authority", "authority_hours", "error", "memory"})   # counts and refs, no amount
         for x in d["needs_extra"]:
             self.assertFalse({"cost", "tokens", "total"} & set(x))
         for sc in d["scopes"].values():   # a Goal's view: no amount of its own, only its issues' rows
@@ -156,12 +156,13 @@ class SelectedTest(unittest.TestCase):
         self.assertIn("minmax(340px, 1fr)", re.search(r"\.wm-top \{([^}]*)\}", css).group(1))
         self.assertIn("overflow:hidden", sel)
         heights = {}
-        for cls in ("head", "title", "stage", "deps", "days", "peers", "nums"):
+        for cls in ("head", "title", "stage", "deps", "mem", "days", "peers", "nums"):
             rule = re.search(rf"\.wm-ss-{cls} \{{([^}}]*)\}}", css).group(1)
             heights[cls] = int(re.search(r"(?<![-\w])height:(\d+)px", rule).group(1))
-        # the sections, the padding and the border fit the smallest map height
-        self.assertLessEqual(sum(heights.values()) + 24 + 2, 460)
-        self.assertRegex(css, r"@media \(max-width:900px\) \{ \.wm-selected \{[^}]*height:460px")
+        # the sections, the padding and the border fit the rail at the smallest map height (the
+        # map's 460px plus the legend's 72px), and the phone's bottom sheet (#1192)
+        self.assertLessEqual(sum(heights.values()) + 24 + 2, 500)
+        self.assertRegex(css, r"@media \(max-width:900px\) \{ \.wm-selected \{[^}]*height:500px")
 
     def test_in_the_rail_over_the_briefing(self):
         """#1249: the Briefing is the rail's base and the Selected panel its drawer, with "← Brief"."""
@@ -271,7 +272,7 @@ class GoalsRolesLinksTest(unittest.TestCase):
 
     def test_panel_swaps_views_inside_the_same_fixed_box(self):
         p = re.search(r'<aside class="wm-selected.*?</aside>', wp.render(model()), re.S).group(0)
-        self.assertEqual(p.count("wm-ss-i "), 5)   # stage, deps, days, peers, numbers
+        self.assertEqual(p.count("wm-ss-i "), 6)   # stage, deps, lessons (#1192), days, peers, numbers
         self.assertIn('id="wm-sel-alt"', p)
         self.assertIn('id="wm-sel-by"', p)
         self.assertIn('id="wm-sel-blocks"', p)
@@ -447,6 +448,8 @@ function el(tag) {
     out.push({ name: c.name, every, staleAtLoad, stale: live.classes.has("stale"), fetched, urls,
       boxes: map.children.filter((b) => b.attrs["data-ref"]).map((b) => b.attrs["data-ref"]).sort(),
       crumb: text(ids["wm-crumb"]), selected: text(ids["wm-sel-ref"]),
+      kind: text(byId("wm-sel-kind")), given: text(byId("wm-sel-given")), cited: text(byId("wm-sel-cited")),
+      alt: text(byId("wm-sel-alt")), title: text(byId("wm-sel-title")),
       stamp: stampEl.attrs.datetime, stampText: text(stampEl),
       parts: Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, text(v)])) });
   }
@@ -539,6 +542,108 @@ class RefreshBehaviourTest(unittest.TestCase):
         # An older state.json changes nothing, and the masthead shows the older of the two builds.
         self.assertEqual(set(got["state_older"]["parts"].values()), {""})
         self.assertEqual(got["state_older"]["stamp"], "2026-11-05T10:00:00Z")
+
+
+def memory_fixture(d: Path) -> dict:
+    """`swarm memory desk --json` over launcher/test_memdesk.py's fixture (#1192)."""
+    sys.path.insert(0, str(HERE.parent / "launcher"))
+    import memdesk
+    from test_memdesk import fixture
+    return memdesk.build(HERE.parent, REPO, memory=fixture(d, REPO))
+
+
+@unittest.skipUnless(NODE, "node isn't installed")
+class MemoryBehaviourTest(unittest.TestCase):
+    """#1192: the Selected panel shows the lessons given to and cited in the selected work."""
+
+    def test_selecting_an_issue_whose_pr_cited_a_lesson_shows_it(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            mem = memory_fixture(Path(d))
+        desk = RefreshBehaviourTest.desk(self, "2026-11-05T10:00:00Z", [row(10), row(31)])
+        builder = {"role": "builder", "does": "builds", "working": False, "blocked": False, "on": [], "merged": [],
+                   "open": [], "changes": [], "sessions": [], "calls": [], "last_ts": None, "ask": False}
+        page = {**wp.page_data({"desk": desk}), "repo": REPO, "live": None, "memory": mem,
+                "roles": {"days": 1, "report_issue": None, "of": {"builder": builder}}}
+        base = {"page": page, "page_built_at": "2026-11-05T10:00:00Z", "clock": "2026-11-05T10:01:00Z",
+                "advance_ms": 0, "search": "", "served": None}
+        got = RefreshBehaviourTest.run_cases(self, [
+            {**base, "name": "issue", "hash": "#issue-10"},
+            {**base, "name": "other_repo_cite", "hash": "#issue-31"},
+            {**base, "name": "lesson", "hash": "#lesson-L-0001"},
+            {**base, "name": "elsewhere", "hash": "#lesson-L-0003"},
+            {**base, "name": "role", "hash": "#role-builder"},
+            {**base, "name": "unread", "hash": "#issue-10", "page": {**page, "memory": {"error": "no"}}},
+        ])
+        # Issue #10: a builder session on it was given L-0001, and PR #20, which closes it, cited it.
+        self.assertEqual((got["issue"]["given"], got["issue"]["cited"]), ("L-0001", "L-0001"))
+        # #31's PR cited only L-0003, scoped to another repo: it isn't on this Desk.
+        self.assertEqual(got["other_repo_cite"]["cited"], "no lessons")
+        # A lesson id opens its provenance: sources, confidence, uses, rehearsal and review date.
+        les = got["lesson"]
+        self.assertEqual((les["kind"], les["selected"]), ("LESSON", "L-0001"))
+        for want in ("Confidence0.7", "Review by2027-02-10", "promoted on 2026-11-12", "ep-note-a",
+                     "session note", "Given on1#10", "Cited on1PR #20"):
+            self.assertIn(want, les["alt"])
+        self.assertEqual(got["elsewhere"]["selected"], "–")      # another repo's lesson: nothing
+        self.assertIn("GivenL-0001 CitedL-0001", got["role"]["alt"])
+        self.assertEqual(got["unread"]["given"], "memory not read")
+
+
+class MemoryPageTest(unittest.TestCase):
+    """#1192: memory under the Briefing, in the counts strip and in Needs you."""
+
+    def setUp(self):
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.mem = memory_fixture(Path(tmp.name))
+
+    def test_dream_lines_and_owner_model_under_the_briefing(self):
+        html = wp.render(model(memory=self.mem))
+        base = re.search(r'<div class="rail-base" tabindex="-1">(.*?)</div><div class="rail-over">', html, re.S).group(1)
+        sec = re.search(r'<section class="wm-mem".*?</section>', base, re.S).group(0)
+        text = re.sub(r"<[^>]+>", "", sec)
+        self.assertIn("the dream of 2026-11-18", text)
+        self.assertIn("Learned: 1 proposed (L-0004), 1 reconfirmed (L-0001).", text)
+        self.assertIn("Forgot: 1 to dormant (L-0002), 0 retired, 3 episodes deleted.", text)
+        self.assertIn("Proposing: 1 pattern for you (the owner took the default 3 times in spend), "
+                      "1 owner-model entry (O-0004).", text)
+        self.assertIn('data-wm-sel="lesson-L-0001"', sec)       # a known lesson opens its provenance
+        self.assertNotIn('data-wm-sel="lesson-L-0004"', sec)    # not written yet: text only
+        self.assertIn("O-0002 Short PR bodies", text)
+        self.assertIn("sources: act:k1, review:9", text)
+        self.assertIn(f'href="https://github.com/{REPO}/issues/1150"', sec)
+        self.assertNotIn("L-0003", html)                         # scoped to another repo
+
+    def test_counts_strip(self):
+        html = wp.render(model(memory=self.mem))
+        sp = re.search(r'<section class="sp".*?</section>', html, re.S).group(0)
+        self.assertIn("memory 1 of 25 lessons, fullest role builder", sp)
+        self.assertIn("1 lesson dormant", sp)
+        self.assertNotIn("$", sp)
+        self.assertIn("memory not read", wp.render(model(memory={"error": "x"})))
+        self.assertNotIn("memory", re.search(r'<section class="sp".*?</section>', wp.render(model()), re.S).group(0))
+
+    def test_no_meaning_by_colour_and_nothing_moves(self):
+        """The Work map's design rules: memory adds no colour of its own (the words carry it), and
+        the issue view's lessons sit in a fixed-height section like the rest of the panel."""
+        css = layout.CSS
+        for cls in ("wm-ss-mem", "wm-body", "wm-mem", "wm-mh", "wm-own"):
+            for rule in re.findall(rf"\.{cls}\b[^{{]*\{{([^}}]*)\}}", css):
+                self.assertNotRegex(rule, r"(?<![-\w])(color|background)\s*:", cls)
+        self.assertRegex(css, r"\.wm-ss-mem \{ height:40px; \}")
+        p = re.search(r'<aside class="wm-selected.*?</aside>', wp.render(model(memory=self.mem)), re.S).group(0)
+        self.assertIn('<div class="wm-ss wm-ss-i wm-ss-mem">', p)
+
+    def test_drafts_waiting_in_needs_you(self):
+        import strip
+        gov = [{"number": 50, "title": "Grant x", "url": f"https://github.com/{REPO}/issues/50", "labels": [],
+                "created_ts": NOW}]
+        rows = strip.needs_extra(model(memory=self.mem, gov=gov))
+        d = next(x for x in rows if x["ref"] == "#50")
+        self.assertEqual(d["why"], "drafted by the dream: standing grant")
+        self.assertEqual(next(x for x in strip.needs_extra(model(gov=gov)) if x["ref"] == "#50")["why"], "")
 
 
 if __name__ == "__main__":
