@@ -32,6 +32,7 @@ ROLES = {
     "designer": {"contents": "read", "issues": "write", "pull_requests": "write"},
     "analyst": {"contents": "write", "issues": "write", "pull_requests": "write"},
     "merger": {"contents": "write", "pull_requests": "write", "checks": "read", "issues": "read"},
+    "librarian": {"contents": "write", "issues": "write", "pull_requests": "write"},
 }
 
 
