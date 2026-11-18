@@ -46,8 +46,9 @@ REQUIRED = ("id", "title", "status", "scope", "applies_to", "sources", "confiden
 # Episode types the engine records with no model call (FEAT-14's signals). GOV-0055 needs at
 # least one source of these: "an owner act, a review outcome, a revert, a failed run".
 # Anything else, including a type this list doesn't know, is not an engine-recorded signal.
-# These are episodes.TYPES less "note", listed here so a type episodes.py adds later doesn't
-# count until someone adds it.
+# These are episodes.TYPES less "note", "given" and "cite" (#1187: what a session was given
+# and cited, not an outcome), listed here so a type episodes.py adds later doesn't count until
+# someone adds it.
 ENGINE_TYPES = frozenset({"act", "retag", "review", "revert", "closed-unmerged", "run", "answer"})
 OWNER_TYPES = frozenset({"act", "retag", "answer"})   # recorded only for the owner's own acts
 ENGINE = "the engine"   # a run's author: the runs ledger, written by swarm watch itself

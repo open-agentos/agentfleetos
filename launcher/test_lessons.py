@@ -200,9 +200,10 @@ class SourceRulesTest(Fixture):
         self.assertEqual(self.errors(sources="\n  - ep-note-a\n  - ep-run-1"), [])
         self.assertEqual(self.errors(sources="\n  - ep-run-1\n  - ep-run-2"), [])
 
-    def test_engine_types_are_episodes_types_less_note(self):
+    def test_engine_types_are_episodes_types_less_note_given_and_cite(self):
+        # given and cite (#1187) record what a session was given and cited, not an outcome.
         import episodes
-        self.assertEqual(L.ENGINE_TYPES, set(episodes.TYPES) - {"note"})
+        self.assertEqual(L.ENGINE_TYPES, set(episodes.TYPES) - {"note", "given", "cite"})
 
     def test_missing_source(self):
         self.assertRejected(self.errors(sources="\n  - ep-act\n  - ep-gone"), "isn't an episode")

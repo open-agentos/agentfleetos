@@ -257,10 +257,13 @@ class SignalTest(unittest.TestCase):
             if "/issues/9/comments" in path:
                 return [{"id": 5, "user": {"login": OWNER}, "created_at": "2026-11-17T13:00:00Z",
                          "body": "Option 1.", "html_url": "https://github.com/o/r/issues/9#issuecomment-5"}]
+            if "/issues/comments?since=" in path:
+                return []
             raise AssertionError(path)
         since = dt.datetime(2026, 11, 17, tzinfo=UTC)
-        self.assertEqual(episodes.sweep(out, state, REPO, OWNER, since, gh_json, gh_items), 4)
-        self.assertEqual(episodes.sweep(out, state, REPO, OWNER, since, gh_json, gh_items), 0)
+        apps = {"productswarm-builder[bot]"}
+        self.assertEqual(episodes.sweep(out, state, REPO, OWNER, since, gh_json, gh_items, apps), 4)
+        self.assertEqual(episodes.sweep(out, state, REPO, OWNER, since, gh_json, gh_items, apps), 0)
         eps = episodes.load([out])
         self.assertEqual(sorted(e["type"] for e in eps), ["act", "answer", "revert", "run"])
         self.assertTrue(all(e["source"] for e in eps))
