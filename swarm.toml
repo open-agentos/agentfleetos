@@ -160,3 +160,6 @@ spend_cap_usd = 3
 
 [org]
 repos = ["open-agentos/productswarm-scratch"]
+# Paused for the M4 drill (#894, events 6 and 8; #892): swarm watch starts nothing in
+# scratch and the merger merges nothing there. Remove the entry to unpause.
+paused = ["open-agentos/productswarm-scratch"]
