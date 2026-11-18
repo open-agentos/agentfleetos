@@ -167,7 +167,7 @@ class CrewScriptTest(unittest.TestCase):
         self.assertNotIn("javascript:", html)
 
     def test_a_section_that_fails_keeps_what_it_showed(self):
-        got = crewdraw.draw(crewdraw.base(floor={"cards": None, "idle": []}))
+        got = crewdraw.draw(crewdraw.base(crew_work={"counts": {}, "lanes": None}))
         self.assertEqual(got["floor"], "static")   # the rest still draw
         self.assertIn("<h2>Sessions</h2>", got["sessions"])
 

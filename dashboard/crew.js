@@ -12,7 +12,7 @@
   var SAFE_URL = /^(https:\/\/|[A-Za-z0-9_-]+\.html(\?[A-Za-z0-9=&_-]*)?(#[A-Za-z0-9_-]*)?$|#[A-Za-z0-9_-]*$)/;
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  var SECTIONS = ["roles", "floor", "sessions", "reviewer", "grants", "effort"];
+  var SECTIONS = ["floor", "roles", "sessions", "reviewer", "grants", "effort"];
   var builtAt = null, page = {};
 
   // ------------------------------------------------------------ building nodes
@@ -118,48 +118,12 @@
       owner];
   }
 
-  // ------------------------------------------------------------ #roles (#932, #1113)
-
-  function roleRow(r) {
-    var cls = r.lead ? " lead" : r.group === "idle" ? " idle" : "";
-    return link([h("span", {"class": "br-av" + cls, "aria-hidden": "true"}, r.badge),
-      h("span", {"class": "cm-name"}, h("span", {"class": "br-title"}, r.role.charAt(0).toUpperCase() + r.role.slice(1)),
-        h("span", {"class": "muted"}, r.does), h("span", {"class": "muted"}, r.line)),
-      h("span", {"class": "mono ag-n"}, r.count)], r.href, {"class": "cm-row"});
-  }
-
-  function roles(d) {
-    var rows = d.crew_roles || [];
-    var working = rows.filter(function (r) { return r.group === "working"; }).length;
-    var out = [h("div", {"class": "br-titlebar"}, h("h1", null, "Crew"),
-        h("span", {"class": "mono muted"}, working + " working · " + (rows.length - working) + " idle · " +
-          longStamp(d.built_at))),
-      h("p", {"class": "muted"}, "The team that runs the plan for you. Pick one to see its record, what it's " +
-        "working on, the authority it used and how to ask it something.")];
-    [["working", "Working"], ["idle", "Idle"]].forEach(function (g) {
-      var rs = rows.filter(function (r) { return r.group === g[0]; });
-      if (rs.length) { out.push(h("p", {"class": "cm-grp"}, g[1].toUpperCase() + " · " + rs.length), rs.map(roleRow)); }
-    });
-    return out;
-  }
-
-  // ------------------------------------------------------------ #floor (#403, #459)
-
-  // "#392" and "PR #394" in a card's plain words, as links.
-  function refs(text, repo) {
-    var out = [], re = /(PR )?#(\d+)/g, at = 0, m;
-    while ((m = re.exec(text)) !== null) {
-      out.push(text.slice(at, m.index));
-      if (m[1]) { out.push("PR "); }
-      out.push(link("#" + m[2], gh(repo, m[1] ? "pull" : "issues", m[2])));
-      at = re.lastIndex;
-    }
-    out.push(text.slice(at));
-    return out;
-  }
+  // ------------------------------------------------------------ #floor: the work in progress (#1261)
+  // state.json's crew_work (lanes.py) decides each card's lane, what's blocked and held, and the
+  // counts; this only draws them. Labels are the dashboard's words: Needs you, running, merged.
 
   function sparkline(counts) {
-    var w = 10, gap = 3, ht = 22, top = Math.max.apply(null, counts.concat([0])) || 1;
+    var w = 6, gap = 2, ht = 16, top = Math.max.apply(null, counts.concat([0])) || 1;
     var width = counts.length * (w + gap) - gap;
     return s("svg", {"class": "spark", role: "img", "aria-label": "events per 5 minutes, last 30 minutes, oldest first: " +
         counts.join(", "), width: width, height: ht, viewBox: "0 0 " + width + " " + ht},
@@ -169,72 +133,148 @@
       }));
   }
 
-  function card(c, repo) {
-    var used = Object.keys(c.slots_used || {}).map(function (k) {
-      return k + " in " + c.slots_used[k] + " of " + c.events_per_slot.length;
-    }).join(" · ");
-    return h("div", {"class": "card s-" + c.status},
-      h("div", {"class": "who"}, h("span", {"class": "role"}, c.role), " ", h("span", {"class": "mono muted"}, c.model)),
-      h("div", {"class": "what"}, refs(c.activity || "", repo)),
-      h("div", {"class": "muted"}, c.run_minutes !== null && c.run_minutes !== undefined ? "running " + span(c.run_minutes) : ""),
-      sparkline(c.events_per_slot || []),
-      h("div", {"class": "muted used"}, "last 30 min, 5-min slots: " + used));
+  // 18m, 2h 5m, 3d: a card's run or idle time.
+  function short(minutes) {
+    if (minutes === null || minutes === undefined) { return "?"; }
+    if (minutes < 60) { return minutes + "m"; }
+    if (minutes < 24 * 60) {
+      var hr = Math.floor(minutes / 60), mi = minutes % 60;
+      return mi ? hr + "h " + mi + "m" : hr + "h";
+    }
+    return Math.floor(minutes / (24 * 60)) + "d";
+  }
+
+  function sessionCost(d, id) {
+    var all = d.sessions || [], i;
+    for (i = 0; i < all.length; i++) { if (all[i].session_id === id) { return all[i].cost; } }
+    return null;
+  }
+
+  function roleBadge(c, on) {
+    return c.badge ? h("span", {"class": "cw-badge" + (on ? " on" : ""), title: c.role || ""}, c.badge) : null;
+  }
+
+  function workCard(c, d) {
+    var ss = c.session, meta = [], cost;
+    if (c.pr) {
+      meta.push(h("span", null, link("PR #" + c.pr.number, gh(d.repo, "pull", c.pr.number)),
+        c.pr.draft ? h("span", {"class": "muted"}, " draft") : null));
+    }
+    if (ss) {
+      cost = sessionCost(d, ss.session_id);
+      if (typeof cost === "number") { meta.push(h("span", {"class": "mono", title: "this session's own spend (est.)"}, usd(cost))); }
+      meta.push(ss.status === "active" ? h("span", {"class": "cw-run", title: ss.activity || null}, "running " + short(ss.run_minutes))
+        : ss.status === "idle" ? muted("idle " + short(ss.idle_minutes)) : muted(ss.status));
+    }
+    if (c.needs_you) { meta.push(h("span", {"class": "cw-needs"}, "needs you")); }
+    return h("div", {"class": "cw-card" + (c.working ? " working" : "") + (c.needs_you ? " cw-ask" : "")},
+      h("div", {"class": "cw-top"}, roleBadge(c, c.working), link(c.ref, c.url, {"class": "mono"}),
+        c.lead ? h("span", {"class": "mono muted"}, c.lead) : null,
+        c.working ? h("span", {"class": "cw-live", title: "running", "aria-label": "running"}) : null),
+      h("div", {"class": "cw-title"}, c.title),
+      meta.length ? h("div", {"class": "cw-meta"}, join(meta, " · ")) : null,
+      ss && ss.events_per_slot ? sparkline(ss.events_per_slot) : null);
+  }
+
+  function mergedCard(c, d) {
+    return h("div", {"class": "cw-card merged"},
+      h("div", {"class": "cw-top"}, roleBadge(c, false), link("PR #" + c.pr, c.url || gh(d.repo, "pull", c.pr), {"class": "mono"})),
+      h("div", {"class": "cw-title"}, c.title),
+      h("div", {"class": "cw-meta muted"}, h("span", {title: stamp(c.time)}, "merged " + ago(c.time, d.built_at))));
+  }
+
+  function lane(l, d) {
+    var total = l.cards.length + (l.more || 0);
+    return h("div", {"class": "cw-lane l-" + l.key},
+      h("h3", null, l.name, " ", h("span", {"class": "mono"}, String(total))),
+      l.cards.length ? l.cards.map(function (c) { return l.key === "merged" ? mergedCard(c, d) : workCard(c, d); })
+        : h("p", {"class": "cw-none"}, "none"),
+      l.more ? h("p", {"class": "cw-more"}, "+" + l.more + " more") : null);
+  }
+
+  var COUNTS = [["working", "working now", "agent"], ["in_progress", "in progress", ""],
+    ["blocked", "blocked or held", ""], ["needs_you", "need you", "owner"], ["merged", "merged · 24h", ""]];
+
+  function panel(cls, title, kids) {
+    return h("div", {"class": "cw-panel " + cls}, h("h3", null, title), kids);
   }
 
   var WATCHER_NOTES = {
     missing: "No [watch] issue: swarm watch's state isn't published (launcher/README.md).",
-    not_owner: "The [watch] issue wasn't opened by the owner, so the floor doesn't show it (GOV-0025).",
+    not_owner: "The [watch] issue wasn't opened by the owner, so it isn't shown (GOV-0025).",
     several: "The owner has more than one open [watch] issue; close all but one.",
     malformed: "Can't read swarm watch's state from the [watch] issue."
   };
-  var ENDING = {at_cap: "at its cap", error: "error", limited: "usage limit", no_result: "no result"};
 
-  function watcher(w, repo) {
+  // What the watcher's lists are as of: they're published only when they change (#458).
+  function watcherNote(w) {
     w = w || {status: "missing"};
-    var out = [h("h3", null, "The watcher")], lines = [], when;
-    if (w.status !== "ok") {
-      out.push(h("p", {"class": "muted"}, WATCHER_NOTES[w.status] || WATCHER_NOTES.malformed));
-      return h("div", {"class": "watcher"}, out);
-    }
-    function ref(r) {
-      var n = r.slice(r.lastIndexOf("#") + 1), pr = r.indexOf("PR ") === 0;
-      return [pr ? "PR " : "", link("#" + n, gh(repo, pr ? "pull" : "issues", n))];
-    }
-    when = span(w.age_minutes) + " ago, at " + hm(w.checked) + " UTC";
-    // The watcher publishes only when its state changes (#458), so an old time can mean a
-    // quiet loop or a stopped one: the lists are shown as of then, not as current.
-    out.push(w.stale
-      ? h("p", {"class": "stale"}, "watcher last published " + when + ": these lists are as of then, and it may " +
-        "have stopped (it publishes only when they change)")
-      : h("p", {"class": "muted"}, "as of " + when));
-    (w.running || []).forEach(function (r) { lines.push([r.role + " on ", ref(r.ref), " since " + hm(r.started)]); });
-    ["held", "skipped"].forEach(function (name) {
-      (w[name] || []).forEach(function (x) {
-        var cut = x.reason ? x.reason.indexOf(": ") : -1;
-        var why = !x.reason ? x.code : cut < 0 ? x.reason : x.reason.slice(cut + 2);
-        lines.push(why !== name ? [name + ": ", ref(x.ref), ", " + why] : [name + ": ", ref(x.ref)]);
-      });
-    });
-    (w.failed || []).forEach(function (f) {
-      lines.push(["failed: ", ref(f.ref), " " + f.kind + ", " + ENDING[f.ending] + ", " + hm(f.ended)]);
-    });
-    out.push(lines.length ? h("ul", null, lines.map(function (l) { return h("li", null, l); }))
-      : h("p", {"class": "muted"}, "Nothing running, held, skipped or failed."));
-    return h("div", {"class": "watcher"}, out);
+    if (w.status !== "ok") { return h("p", {"class": "muted"}, WATCHER_NOTES[w.status] || WATCHER_NOTES.malformed); }
+    var when = span(w.age_minutes) + " ago, at " + hm(w.checked) + " UTC";
+    return w.stale ? h("p", {"class": "stale"}, "watcher last published " + when + ": its lists are as of then, and it " +
+        "may have stopped (it publishes only when they change)")
+      : h("p", {"class": "muted"}, "watcher as of " + when);
+  }
+
+  function refLink(ref, url) { return url ? link(ref, url, {"class": "mono"}) : h("span", {"class": "mono"}, ref); }
+
+  function panels(w, d) {
+    var needs = w.needs || [], stuck = w.blocked || [], failed = w.failed || [], act = w.activity || [];
+    return h("div", {"class": "cw-panels"},
+      panel("owner", "Needs you", [
+        needs.length ? h("ol", {"class": "cw-list"}, needs.map(function (x) {
+          return h("li", null, link("#" + x.number, gh(d.repo, "pull", x.number), {"class": "mono"}),
+            x.title ? " " + x.title : null, h("br"), h("span", {"class": "cw-why"}, link(x.reason || "left for you", x.link)),
+            " ", h("span", {"class": "muted", title: stamp(x.time)}, ago(x.time, d.built_at)));
+        })) : h("p", {"class": "muted"}, "Nothing left for you by the merger."),
+        w.needs_more ? h("p", {"class": "cw-more"}, link("+" + w.needs_more + " more on Governance", "governance.html")) : null]),
+      panel("held", "Blocked and held", [
+        stuck.length ? h("ul", {"class": "cw-list"}, stuck.map(function (x) {
+          return h("li", null, h("span", {"class": "cw-ring" + (x.kind === "blocked" ? " red" : ""), "aria-hidden": "true"}),
+            refLink(x.ref, x.url), x.title ? " " + x.title : null, h("br"),
+            h("span", {"class": "cw-why" + (x.kind === "blocked" ? " br-red" : "")}, x.kind + ": " + x.why.join("; ")));
+        })) : h("p", {"class": "muted"}, "Nothing blocked or held."),
+        watcherNote(d.watcher)]),
+      panel("failed", "Failed runs", failed.length ? h("ul", {"class": "cw-list"}, failed.map(function (f) {
+        var n = (f.ref || "").slice((f.ref || "").lastIndexOf("#") + 1), pr = (f.ref || "").indexOf("PR ") === 0;
+        return h("li", null, h("span", {"class": "cw-fail"}, f.word), " ",
+          refLink(f.ref, /^\d+$/.test(n) ? gh(d.repo, pr ? "pull" : "issues", n) : null), " " + (f.kind || ""), " ",
+          h("span", {"class": "muted", title: stamp(f.ended)}, ago(f.ended, d.built_at)));
+      })) : h("p", {"class": "muted"}, "No failed runs.")),
+      panel("activity", "Recent activity", act.length ? h("ul", {"class": "cw-list"}, act.map(function (x) {
+        var cls = x.who === "owner" ? "owner" : x.kind === "SHIPPED" ? "agent" : "";
+        return h("li", {"class": cls}, h("span", {"class": "mono muted"}, x.when || ""), " ",
+          h("span", {"class": "cw-kind " + cls}, x.kind), " ", link(x.text, x.url));
+      })) : h("p", {"class": "muted"}, "Nothing on the tape yet.")));
   }
 
   function floor(d) {
-    var f = d.floor || {cards: [], idle: []};
-    var out = [h("h2", null, "On the floor")];
-    out.push(f.cards.length ? h("div", {"class": "floor"}, f.cards.map(function (c) { return card(c, d.repo); }))
-      : h("p", {"class": "muted"}, "No session is working."));
-    if (f.idle.length) {
-      out.push(h("p", {"class": "muted idle"}, "idle: " + f.idle.map(function (i) {
-        return i.role + " " + span(i.idle_minutes);
-      }).join(", ")));
-    }
-    out.push(watcher(d.watcher, d.repo));
-    return out;
+    var w = d.crew_work || {counts: {}, lanes: []}, c = w.counts || {};
+    var rows = d.crew_roles || [], working = rows.filter(function (r) { return r.group === "working"; }).length;
+    return [h("div", {"class": "br-titlebar"}, h("h1", null, "Crew"),
+        h("span", {"class": "mono muted"}, working + " working · " + (rows.length - working) + " idle · " +
+          longStamp(d.built_at))),
+      h("div", {"class": "cw-counts"}, COUNTS.map(function (k) {
+        return h("div", {"class": "cw-count" + (k[2] ? " " + k[2] : "")}, h("span", {"class": "cw-big"}, String(c[k[0]] || 0)),
+          h("span", {"class": "cw-label"}, k[1]));
+      })),
+      h("div", {"class": "cw-band"}, h("h2", null, "In progress"),
+        h("div", {"class": "cw-lanes"}, w.lanes.map(function (l) { return lane(l, d); }))),
+      panels(w, d)];
+  }
+
+  // ------------------------------------------------------------ #roles (#932, #1113): one chip each
+
+  function roles(d) {
+    var rows = d.crew_roles || [];
+    return [h("h2", null, "Roles"),
+      h("div", {"class": "cw-chips"}, rows.map(function (r) {
+        var on = r.group === "working";
+        return link([h("span", {"class": "cw-badge" + (on ? " on" : ""), "aria-hidden": "true"}, r.badge),
+          h("span", {"class": "cw-chip-name"}, r.role.charAt(0).toUpperCase() + r.role.slice(1)),
+          h("span", {"class": "mono muted"}, r.count)], r.href,
+          {"class": "cw-chip" + (on ? " on" : ""), title: r.does + (r.line ? ". " + r.line : "")});
+      }))];
   }
 
   // ------------------------------------------------------------ #sessions

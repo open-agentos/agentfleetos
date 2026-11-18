@@ -27,12 +27,12 @@ JS = Path(__file__).resolve().parent / "crew.js"
 DATA_ID = "crew-data"
 
 # The sections, in page order: each the brief's links land on (#1113).
-SECTIONS = ("roles", "floor", "sessions", "reviewer", "grants", "effort")
+SECTIONS = ("floor", "roles", "sessions", "reviewer", "grants", "effort")
 
 # What the page draws from: state.json's keys, read the same way from the page's block and
 # from each newer state.json.
 KEYS = ("schema", "built_at", "repo", "owner_last_acted", "idle_minutes", "sessions", "crew_roles",
-        "floor", "watcher", "reviewer_runs", "grants", "effort")
+        "floor", "watcher", "reviewer_runs", "grants", "effort", "crew_work")
 
 
 def data(state: dict) -> dict:

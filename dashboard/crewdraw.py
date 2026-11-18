@@ -47,6 +47,6 @@ def base(**over) -> dict:
     d = {"schema": 1, "built_at": "2026-11-05T10:00:00Z", "repo": "o/r",
          "owner_last_acted": {"status": "unknown"}, "idle_minutes": 15, "sessions": [], "crew_roles": [],
          "floor": None, "watcher": None, "reviewer_runs": {"window_days": 7, "unreviewed": [], "error": "x"},
-         "grants": None, "effort": None, "spend_method": "M."}
+         "grants": None, "effort": None, "crew_work": None, "spend_method": "M."}
     d.update(over)
     return json.loads(json.dumps(d, default=str))

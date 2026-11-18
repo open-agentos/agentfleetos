@@ -84,20 +84,19 @@ class StateTest(unittest.TestCase):
 
 @unittest.skipUnless(crewdraw.NODE, "node isn't installed")
 class RenderTest(unittest.TestCase):
-    def test_rows_open_the_work_maps_role_view(self):
-        # #1113: the drawer became the Work map's role view (#1115); each row links there.
+    def test_chips_open_the_work_maps_role_view(self):
+        # #1113: the drawer became the Work map's role view (#1115); #1261: each role is a chip.
         html = drawn(amodel())
-        roles = re.findall(r'class="cm-row" href="workmap.html\?group=role#role-([a-z]+)"', html)
+        roles = re.findall(r'class="cw-chip(?: on)?" href="workmap.html\?group=role#role-([a-z]+)"', html)
         self.assertEqual(sorted(roles), sorted(r for r, _ in agents.ROLES))
         self.assertNotIn("cm-drawer", html)
-        self.assertIn("WORKING · 3", html)
-        self.assertIn("IDLE · 5", html)
-        self.assertIn("3 working · 5 idle · Thu 05 Nov, 12:00 UTC", html)
-        self.assertIn('<span class="br-av lead" aria-hidden="true">PL</span>', html)
+        self.assertEqual(html.count('class="cw-chip on"'), 3)   # working, a solid badge
+        self.assertEqual(html.count('<span class="cw-badge on" aria-hidden="true">'), 3)
+        self.assertIn('<span class="cw-chip-name">Builder</span><span class="mono muted">1 merged</span>', html)
 
-    def test_rows_hold_no_link_inside_their_link(self):
+    def test_chips_hold_no_link_inside_their_link(self):
         html = drawn(amodel())
-        for row in re.findall(r'<a class="cm-row".*?</a>', html):
+        for row in re.findall(r'<a class="cw-chip.*?</a>', html):
             self.assertEqual(row.count("<a "), 1)
 
     def test_repo_text_stays_text(self):
@@ -110,7 +109,7 @@ class RenderTest(unittest.TestCase):
                  "report": None, "trouble": None, "plan": None}
         html = drawn(empty)
         self.assertIn("Nothing merged in the window.", html)
-        self.assertIn("IDLE · 8", html)
+        self.assertEqual(html.count('class="cw-chip"'), 8)
 
 
 if __name__ == "__main__":
