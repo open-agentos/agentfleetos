@@ -16,11 +16,20 @@
                                     --last for the week before
     launcher/swarm daily            the last 10 working days' daily reports and who started
                                     each, and the latest one [daily] started (#707, GOV-0040)
-    launcher/swarm acts [--day D] [--json]
+    launcher/swarm acts [--day D | --since D] [--json]
                                     the owner's acts on each working day of the last two
-                                    weeks, or on day D, with count and kind, or "not counted"
-                                    for a day not yet read back from GitHub; counted, with no
-                                    limit (#771, #844, GOV-0040; acts.py)
+                                    weeks, on day D, or on every day since D, with count and
+                                    kind, or "not counted" for a day not yet read back from
+                                    GitHub; counted, with no limit (#771, #844, GOV-0040;
+                                    acts.py); each act's tag, and how many of each tag
+                                    (approval, correction, repeat answer, genuine call) over
+                                    the window (#1184)
+    launcher/swarm memory episodes [--since D] [--role R] [--kind K] [--json]
+                                    the learning loop's episodes: session notes and the
+                                    engine's signals (#1184, FEAT-14; episodes.py)
+    launcher/swarm memory record [--since D]
+                                    record the signals since D (default: yesterday) as
+                                    episodes by hand; swarm watch does it hourly
     launcher/swarm watch [--dry-run] [--serve] [--container IMAGE]
                                     the v2 wake-up loop: start sessions on triggers, within
                                     the [watch] limits in swarm.toml (#90, GOV-0010; watch.py)
@@ -1639,7 +1648,7 @@ ACTS_DAYS = 10                 # `swarm acts`' default window, two weeks of work
 def owner_acts(launcher: Launcher, repo: str, manifest_path: Path | str = manifest.DEFAULT_PATH,
                day: dt.date | None = None, as_json: bool = False, now: dt.datetime | None = None,
                tz: dt.tzinfo | None = None, owner: str | None = None, gh_json: Callable | None = None,
-               gh_items: Callable | None = None) -> int:
+               gh_items: Callable | None = None, since: dt.date | None = None) -> int:
     """`swarm acts`: read the owner's acts back from GitHub (the webhook leads, and a backfill of
     each finished day not yet counted, acts.refresh), then print them for each working day in
     the last ACTS_DAYS, or for `day`, from swarm.db. A day not backfilled reads `not counted`
@@ -1655,12 +1664,18 @@ def owner_acts(launcher: Launcher, repo: str, manifest_path: Path | str = manife
     owner = owner or owner_login()
     g = None if gh_json and gh_items else dashboard()
     now = now or dt.datetime.now(dt.timezone.utc)
-    days = [day] if day else working_days((now.astimezone(tz) if tz else now.astimezone()).date(),
-                                            ACTS_DAYS)
+    today = (now.astimezone(tz) if tz else now.astimezone()).date()
+    if day:
+        days = [day]
+    elif since:     # every day of the window, newest first, as working_days lists them (#1184)
+        days = [today - dt.timedelta(days=i) for i in range(max((today - since).days + 1, 1))]
+    else:
+        days = working_days(today, ACTS_DAYS)
     rows, errors = acts.refresh(launcher.dir, owner, report, repo, gh_json or g.gh_json,
                                 gh_items or g.gh_items, merger.is_protected, days, now, tz)
     if as_json:
-        launcher.out(json.dumps({"owner": owner, "days": rows, "unread_errors": errors}, indent=2))
+        launcher.out(json.dumps({"owner": owner, "days": rows, "by_kind": acts.by_tag(rows),
+                                 "unread_errors": errors}, indent=2))
     else:
         launcher.out(acts.text(rows, owner, repo))
         for e in errors:
@@ -1668,6 +1683,35 @@ def owner_acts(launcher: Launcher, repo: str, manifest_path: Path | str = manife
         if not report:
             launcher.out(f"swarm acts: {manifest_path} has no [watch] report_issue, so no act "
                          f"is counted as 'report'")
+    return 0
+
+
+# ---------------------------------------------------------------- memory (#1184)
+
+def memory_episodes(launcher: Launcher, since: dt.date | None = None, role: str | None = None,
+                    kind: str | None = None, as_json: bool = False) -> int:
+    """`swarm memory episodes`: the episodes in memory/episodes/ and the engine's outbox (#1199's
+    default until it is ruled), oldest first. Only reads local files."""
+    import episodes
+    eps = episodes.load([episodes.in_repo(launcher.root), episodes.outbox(launcher.home)],
+                        since, role, kind)
+    launcher.out(json.dumps(eps, indent=2) if as_json else episodes.text(eps))
+    return 0
+
+
+def memory_record(launcher: Launcher, repo: str, since: dt.date | None = None,
+                  now: dt.datetime | None = None, owner: str | None = None,
+                  gh_json: Callable | None = None, gh_items: Callable | None = None) -> int:
+    """`swarm memory record`: what `swarm watch` does hourly, by hand: record the signals since
+    `since` (default: yesterday) as episodes in the outbox. No model call."""
+    import episodes
+    now = now or dt.datetime.now(dt.timezone.utc)
+    start = (dt.datetime.combine(since, dt.time(), dt.timezone.utc) if since
+             else now - dt.timedelta(days=1))
+    g = None if gh_json and gh_items else dashboard()
+    n = episodes.sweep(episodes.outbox(launcher.home), launcher.dir, repo, owner or owner_login(), start,
+                       gh_json or g.gh_json, gh_items or g.gh_items)
+    launcher.out(f"swarm memory: {n} new episode{'' if n == 1 else 's'} in {episodes.outbox(launcher.home)}")
     return 0
 
 
@@ -2396,9 +2440,21 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     p_daily.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
     p_acts = sub.add_parser("acts", help="the owner's acts per working day, with count and kind (no limit)")
     p_acts.add_argument("--day", type=dt.date.fromisoformat, help="YYYY-MM-DD (default: the last two weeks' working days)")
+    p_acts.add_argument("--since", type=dt.date.fromisoformat,
+                        help="YYYY-MM-DD: every day from then to today (#1184)")
     p_acts.add_argument("--json", action="store_true", dest="as_json", help="the same per-day list as JSON")
     p_acts.add_argument("--repo", help="owner/name (default: this checkout's origin)")
     p_acts.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
+    p_memory = sub.add_parser("memory", help="the learning loop's episodes (#1184)")
+    mem = p_memory.add_subparsers(dest="memory_cmd", required=True)
+    p_eps = mem.add_parser("episodes", help="session notes and the engine's signals, oldest first")
+    p_eps.add_argument("--since", type=dt.date.fromisoformat, help="YYYY-MM-DD")
+    p_eps.add_argument("--role", help="only notes by this role")
+    p_eps.add_argument("--kind", help="an episode type (note, act, review, run, ...) or an act's tag")
+    p_eps.add_argument("--json", action="store_true", dest="as_json")
+    p_rec = mem.add_parser("record", help="record the signals as episodes by hand (swarm watch does it hourly)")
+    p_rec.add_argument("--since", type=dt.date.fromisoformat, help="YYYY-MM-DD (default: the last 24 hours)")
+    p_rec.add_argument("--repo", help="owner/name (default: this checkout's origin)")
     p_trouble = sub.add_parser("trouble", help="per Goal and Area: progress, stuck work, what waits on "
                                                 "the owner, authority used (#803)")
     p_trouble.add_argument("--json", action="store_true", dest="as_json", help="the report as JSON")
@@ -2547,7 +2603,8 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
             launcher.out(f"swarm watch: {e}")
             return 2
     repo = None
-    if args.cmd in ("ls", "launch", "inbox", "watch", "cost", "merges", "daily", "acts", "trouble", "specs", "map"):
+    if args.cmd in ("ls", "launch", "inbox", "watch", "cost", "merges", "daily", "acts", "trouble", "specs",
+                    "map") or (args.cmd == "memory" and args.memory_cmd == "record"):
         repo = args.repo or dashboard().default_repo()
         if not repo:
             launcher.out(f"swarm {args.cmd}: can't tell the repo; pass --repo owner/name")
@@ -2599,12 +2656,20 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
         if args.cmd == "daily":
             return daily(launcher, repo, args.manifest)
         if args.cmd == "acts":
-            return owner_acts(launcher, repo, args.manifest, args.day, args.as_json)
+            if args.day and args.since:
+                launcher.out("swarm acts: pass --day or --since, not both")
+                return 2
+            return owner_acts(launcher, repo, args.manifest, args.day, args.as_json, since=args.since)
+        if args.cmd == "memory" and args.memory_cmd == "episodes":
+            return memory_episodes(launcher, args.since, args.role, args.kind, args.as_json)
+        if args.cmd == "memory":
+            return memory_record(launcher, repo, args.since)
         if args.cmd == "map":
             return work_map(launcher, repo, args.window, args.as_json, args.idle_minutes)
         if args.cmd == "trouble":
             return trouble(launcher, repo, args.manifest, args.hours, args.as_json)
         if args.cmd == "watch":
+            import episodes
             import watch
             try:
                 limits = manifest.load_watch(args.manifest)
@@ -2622,7 +2687,8 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
             w = watch.Watch(launcher, repo, owner_login(), watch.roles_in(launcher.root),
                             idle_minutes=args.idle_minutes, dry_run=args.dry_run,
                             manifest_path=Path(args.manifest), roles_from=launcher.root,
-                            list_issues=watch.owner_issues, edit_issue=watch.edit_body, serve=args.serve)
+                            list_issues=watch.owner_issues, edit_issue=watch.edit_body, serve=args.serve,
+                            sweep=episodes.sweep)
             interval = args.interval or (limits.interval_minutes if limits else watch.DEFAULT_INTERVAL)
             return w.run(interval)
         return launcher.stop(args.session)

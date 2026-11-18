@@ -8,7 +8,11 @@ Each agent role acts on GitHub as its own GitHub App, so GitHub, not a signature
 | builder | `productswarm-builder[bot]` | contents, issues, pull requests: write |
 | reviewer | `productswarm-reviewer[bot]` | issues, pull requests: write · contents: read |
 | docs | `productswarm-docs[bot]` | contents, issues, pull requests: write |
-
+| designer | `productswarm-designer[bot]` | contents, issues, pull requests: write |
+| analyst | `productswarm-analyst[bot]` | contents, issues, pull requests: write |
+| librarian | `productswarm-librarian[bot]` | contents, issues, pull requests: write |
+| merger | `productswarm-merger[bot]` | contents: write, pull requests: write, checks: read, issues: read |
+    
 No App gets `workflows` or `administration`, so agents can't change `.github/workflows/` or repo settings.
 
 ## One-time setup (owner)

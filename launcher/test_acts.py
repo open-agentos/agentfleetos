@@ -150,7 +150,7 @@ def payload(action, sender=OWNER, number=None, issue_key="issue", **extra) -> di
 # Deliveries as the receiver gets them. Two Apps deliver the same act, so some come twice.
 DELIVERIES = [
     ("issues", payload("opened", number=686)),                                  # a Goal: not counted
-    ("issues", payload("edited", number=686)),                                  # editing it: no lead
+    ("issues", payload("edited", number=686)),                                  # editing a Goal: no act
     ("issues", payload("labeled", number=686, label={"name": "priority"})),    # editing it: not counted
     ("issue_comment", payload("created", number=686, comment={"id": 13, "body": SECRET_BODY})),
     ("issues", payload("opened", number=800)),                                  # a Task: other
@@ -207,14 +207,16 @@ class Leads(Base):
     def test_only_possible_acts_leave_a_lead(self):
         self.deliver()
         leads = self.store.leads()
-        self.assertEqual(len(leads), len(DELIVERIES) - 1)       # the Goal edit has none
+        self.assertEqual(len(leads), len(DELIVERIES))   # the Goal edit leaves one; it reads back as none (#1184)
         self.assertIn(("d-0", "issues", "opened", REPO, 686, None, OWNER), leads)
         self.assertIn(("d-2", "issues", "labeled", REPO, 686, "priority", OWNER), leads)
         self.assertIn(("d-13", "pull_request", "merged", REPO, 900, None, OWNER), leads)
 
-    def test_unmerged_close_and_odd_payloads_leave_none(self):
-        self.assertIsNone(acts.lead("pull_request", payload("closed", number=5, issue_key="pull_request")))
-        self.assertIsNone(acts.lead("issues", payload("closed", number=5)))
+    def test_unmerged_close_leaves_a_lead_and_odd_payloads_none(self):
+        # An unmerged close may be a veto (#1184): read back, it counts only on an agent's work.
+        self.assertEqual(acts.lead("pull_request", payload("closed", number=5, issue_key="pull_request")),
+                         ("closed", REPO, 5, None, OWNER))
+        self.assertEqual(acts.lead("issues", payload("closed", number=5)), ("closed", REPO, 5, None, OWNER))
         self.assertIsNone(acts.lead("issue_comment", payload("created", number=5)))   # no comment id
         self.assertIsNone(acts.lead("issues", {"action": "opened"}))
         self.assertIsNone(acts.lead("issues", ["not", "a", "dict"]))
@@ -312,7 +314,9 @@ class Command(Base):
         self.deliver()
         out = self.run_acts(dt.date(2026, 11, 10), False)
         self.assertIn("Tue 2026-11-10  1 act  (1 not C-team)", out)
-        self.assertIn("16:00  other            commented on #802", out)
+        self.assertIn("16:00  other            genuine call                commented on #802", out)
+        self.assertIn("[o/r:comment:14]", out)
+        self.assertIn("By kind over these days: approval 0, correction 0, repeat answer 0, genuine call 1", out)
         self.assertNotIn("2026-11-11", out)
 
     def test_no_limit_however_many_acts(self):
@@ -328,7 +332,7 @@ class Command(Base):
         launcher = swarm.Launcher(self.home, out=lines.append)
         orig = swarm.owner_acts
         seen = {}
-        swarm.owner_acts = lambda l, repo, m, day, as_json: seen.update(day=day, as_json=as_json) or 0
+        swarm.owner_acts = lambda l, repo, m, day, as_json, since=None: seen.update(day=day, as_json=as_json) or 0
         try:
             self.assertEqual(swarm.main(["acts", "--day", "2026-11-10", "--json", "--repo", REPO], launcher), 0)
         finally:

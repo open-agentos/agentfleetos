@@ -273,7 +273,7 @@ class NoTotalTest(unittest.TestCase):
 
     def test_state_json_carries_no_map_or_cost(self):
         s = state.state(self.gd()["model"])
-        for x in s["sessions"]:   # each session's own estimate is the only cost (GOV-0055)
+        for x in s["sessions"]:   # each session's own estimate is the only cost (GOV-0057)
             x.pop("cost", None)
         st = json.dumps(s)
         self.assertNotIn("cost", st)

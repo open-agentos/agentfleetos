@@ -5,8 +5,8 @@ in a `<script type="application/json">` block (`<`, `>` and `&` escaped). `gover
 served as `js/governance.js` and allowed by its hash, draws every section from that block's
 plain fields with `createElement` and text nodes (no `innerHTML`, no `eval`, no HTML from repo
 text), then fetches same-origin `state.json` every 15 seconds while the tab is visible and
-redraws in place when its `built_at` is newer. It doesn't read `state.json["desk"]` or load
-`poll.js`. With JavaScript off the page shows a notice and a GitHub link (per GOV-0051).
+redraws in place when its `built_at` is newer; the page has no meta refresh (#1135). With
+JavaScript off the page shows a notice and a GitHub link (per GOV-0051).
 """
 from __future__ import annotations
 
