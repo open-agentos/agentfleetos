@@ -148,7 +148,8 @@ def decisions(m: dict) -> list[dict]:
         for x in s.get("waiting") or []:
             if not isinstance(x, dict):
                 continue
-            n = _num(x.get("ref"))
+            # Another repo's PR (owner/name#N, #1292) isn't this repo's #N: no number, so no title
+            n = None if "/" in str(x.get("ref") or "") else _num(x.get("ref"))
             title = titles.get(n) if n is not None else None
             add(n, {"scope": lead(s.get("title")) or _short(s.get("ref")) or "no Goal",
                     "ref": x.get("ref") or "", "url": x.get("url"),

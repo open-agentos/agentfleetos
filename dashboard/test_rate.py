@@ -300,9 +300,11 @@ class CallCountTest(unittest.TestCase):
         # The whole rebuild: 50 calls (30 before #406 added 4, #408 added 2, #402 added 1,
         # #712 added 2, #713 added 1, #903's trouble panel 9: three `pr list`s, open issues,
         # recent comments, the report issue's comments and one scope query per 25 issues, and
-        # #1081's Work map 1), and 48 since #1113 retired v3 progress and its 2 reads. On main
-        # before #392 the same data took 100.
-        self.assertLessEqual(len(calls), 48, "\n".join(map(str, calls)))
+        # #1081's Work map 1), and 48 since #1113 retired v3 progress and its 2 reads; 49 since
+        # #1292's trouble reads each [org] repo's open PRs (one `pr list` per repo, plus a scope
+        # query only when they close issues; swarm.toml lists one). On main before #392 the
+        # same data took 100.
+        self.assertLessEqual(len(calls), 49, "\n".join(map(str, calls)))
         self.assertLess(len(rest), g.PAGE_NEEDS["core"])
         self.assertLess(len(graphql), g.PAGE_NEEDS["graphql"])
 

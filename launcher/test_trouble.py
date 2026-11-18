@@ -486,6 +486,33 @@ class Waiting(unittest.TestCase):
         p["comments"].append(said(OWNER, f"Left for the owner at {HEAD}: fake.", 0.2))
         self.assertEqual(scope(trouble.report(data(**d)))["waiting"], [])      # not the merger
 
+    def test_approved_pr_waiting_on_the_owner_in_another_org_repo_1292(self):
+        # productswarm-scratch#21's shape (closes scratch#9, under M4's drill): approved by the
+        # reviewer at head, left for the owner as an approved ask on requirements.txt. One
+        # in a second [org] repo is filed under the Goal above its issue there (scratch#2).
+        other, why = "o/scratch", "touches requirements.txt, and the owner hasn't approved at head"
+        ask = pr(21, 9, files=("requirements.txt",), reviews=[review("APPROVED", 2)], comments=[left(why, 1.5)])
+        ask["url"] = f"https://github.com/{other}/pull/21"
+        there = pr(22, 3, reviews=[review("APPROVED", 2)], comments=[left("the `tests` check failed at head", 1)])
+        same_number = pr(21, 5, reviews=[review("APPROVED", 2)])     # this repo's #21: not left
+        m4 = {**goal(2, "- [ ] the drill passes"), "html_url": f"https://github.com/{other}/issues/2"}
+        on_9 = under(1)
+        on_3 = {**under(None), "parents": [{"repo": other, "number": 2, "state": "open", "type": "Goal",
+                                             "author": OWNER}]}
+        d = data(issues=[M1, issue(5)], scopes={5: under(1)}, prs=[same_number],
+                 other_scopes={f"{other}#2": m4},
+                 other_prs={other: [ask, there]}, other_pr_scopes={other: {9: on_9, 3: on_3}})
+        r = trouble.report(d)
+        self.assertEqual([(x["ref"], x["url"], x["reason"], x["age_hours"]) for x in scope(r)["waiting"]], [
+            (f"{other}#21", f"https://github.com/{other}/pull/21",
+             f"approved at head; the merger left it for the owner: {why}", 1.5)])
+        m4_waiting = next(s for s in r["scopes"] if s["ref"] == f"{other}#2")["waiting"]
+        self.assertEqual([x["ref"] for x in m4_waiting], [f"{other}#22"])
+        self.assertIn(f"{other}#21  approved at head; the merger left it for the owner: {why}",
+                      trouble.text(r))
+        ask["reviews"].append(review("APPROVED", 0.5, author=OWNER))  # the owner approved since
+        self.assertEqual(scope(trouble.report(d))["waiting"], [])
+
 
 class Authority(unittest.TestCase):
     def test_merges_by_the_merger_and_call_ins_only(self):
@@ -560,6 +587,26 @@ class GatherWithoutActsTest(unittest.TestCase):
         self.assertIsNone(d.owner_days)
         self.assertTrue(any(e.startswith("swarm acts: not synced") for e in d.errors), d.errors)
         self.assertEqual(trouble.report(d)["scopes"], [])
+
+    def test_reads_each_org_repo_s_open_prs_1292(self):
+        from unittest import mock
+        p = pr(21, 9)
+        fake = mock.Mock()
+        fake.gh_items.return_value = []
+        fake.gh_json.side_effect = lambda *a: [p] if a[:4] == ("pr", "list", "--repo", "o/scratch") and \
+            "open" in a else []
+        with tempfile.TemporaryDirectory() as home:
+            toml = Path(home) / "swarm.toml"
+            toml.write_text('[org]\nrepos = ["o/scratch", "elsewhere/x"]\n')
+            with mock.patch.object(swarm, "dashboard", return_value=fake), \
+                    mock.patch.object(swarm, "gh_merged", return_value=[]), \
+                    mock.patch.object(swarm, "gh_scopes", return_value={9: under(1)}) as scopes, \
+                    mock.patch.object(watch, "gh_recent_comments", return_value=[]), \
+                    mock.patch.object(watch, "gh_comments", return_value=[]):
+                d = trouble.gather(swarm.Launcher(Path(home)), REPO, OWNER, toml, now=NOW, sync_acts=False)
+        self.assertEqual(d.other_prs, {"o/scratch": [p]})               # elsewhere/x: not this org
+        self.assertEqual(d.other_pr_scopes, {"o/scratch": {9: under(1)}})
+        scopes.assert_called_once_with("o/scratch", [9])
 
 if __name__ == "__main__":
     unittest.main()
