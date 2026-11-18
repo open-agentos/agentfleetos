@@ -41,7 +41,14 @@ For each Goal and Area (GOV-0031):
        but whose role's App has posted nothing on its issue, or its PR, for QUIET_MINUTES (#773);
     6. `stopped-no-issue`: the last word on an open issue is a role saying it stopped because
        the next piece it needs has no issue yet (NO_ISSUE_RE), with no open PR for the issue
-       and no issue opened since that names it (#786).
+       and no issue opened since that names it (#786);
+    7. `wait-cleared`: a go issue (the owner's `ready`, or under a Goal or Area) whose role
+       App's latest comment says it waits on #N (or "after #N is answered"), and every #N
+       has since cleared: merged or closed, or a `gov:question` the owner answered (`ready`
+       or `gov:ruled`). There is no
+       open PR for it, no hand-started session on it, and the owner hasn't commented since.
+       `swarm watch` restarts only builds its own run said they wait on, and only once the
+       issue closes (#550); the planner's daily report asks for this start (#1293, #894).
 - **Waiting on the owner**, with its age: untriaged issues, `gov:question`s not yet
   answered, PRs GOV-0011 hands to the owner (an overstep not yet answered, or answered
   and replied to by the role [ruling] started), and every PR the reviewer approved at
@@ -249,6 +256,38 @@ def item(kind: str, ref: str, url: str | None, reason: str, since: str | dt.date
     return {"kind": kind, "ref": ref, "url": url, "reason": reason,
             "since": t.isoformat(timespec="seconds") if t else None,
             "age_hours": round((now - t).total_seconds() / 3600, 1) if t else None, **extra}
+
+
+WAIT_REF_RE = re.compile(r"(?<![\w/-])#(\d+)\b")   # this repo's #N, not scratch#9 or o/r#9
+AFTER_RE = re.compile(r"\bafter\s+((?:(?:PR\s+)?#\d+(?:,\s*|\s+(?:and|or)\s+)?)+)\s*(?:is|are)\s+"
+                      r"(?:answered|ruled|closed|merged|done)\b", re.IGNORECASE)
+
+
+def waited_on(body: str | None) -> list[int]:
+    """Rule 7's waits (#1293): this repo's #N refs in the rest of each sentence of a role's
+    comment that says it waits or is waiting on or for something (watch.WAIT_RE, the
+    wording #550 reads), or that names them in "after #N is answered" (or ruled, closed,
+    merged, done), as #894's builder did; in the order first named."""
+    import watch
+    found = [re.split(r"[.;:](?:\s|$)", m.group(1), maxsplit=1)[0] for m in watch.WAIT_RE.finditer(body or "")]
+    found += [m.group(1) for m in AFTER_RE.finditer(body or "")]
+    out: list[int] = []
+    for part in found:
+        out += [int(x) for x in WAIT_REF_RE.findall(part) if int(x) not in out]
+    return out
+
+
+def cleared_wait(n: int, open_by_n: dict[int, dict], merged: set[int]) -> str | None:
+    """How a wait on #n has cleared (rule 7), or None while it hasn't: #n merged or closed (it
+    is no longer open), or #n is a gov:question the owner answered (`ready` or `gov:ruled`,
+    GOV-0006), which stays open until its record merges."""
+    it = open_by_n.get(n)
+    if it is None:
+        return f"PR #{n} merged" if n in merged else f"#{n} closed"
+    labels = {lb.get("name") for lb in it.get("labels") or []}
+    if "gov:question" in labels and labels & {"ready", "gov:ruled"}:
+        return f"#{n} answered"
+    return None
 
 
 def merger_left(comments: list[dict], head: str | None) -> tuple[str, str] | None:
@@ -466,6 +505,40 @@ def report(d: Data, measures=None) -> dict:
             "stopped-no-issue", ref(n), c.get("html_url") or url(n),
             f"the {m.group(1)} stopped: the next piece it needs has no issue yet, so nothing will "
             f"start it", c.get("created_at"), now))
+
+    # Rule 7: a go issue whose role stopped to wait, and the wait has since cleared (#1293).
+    merged_n = {p["number"] for p in d.merged}
+    hand_on = {s.get("issue") for s in d.sessions if s.get("repo") in (None, repo)}
+    role_word: dict[int, dict] = {}
+    owner_said: dict[int, str] = {}
+    for c in d.comments:
+        n, login, at = watch.comment_issue(c), (c.get("user") or {}).get("login") or "", c.get("created_at") or ""
+        if n not in open_issues:
+            continue
+        m = ROLE_APP_RE.match(login)
+        if m and m.group(1) not in NOT_ROLES and at >= role_word.get(n, {}).get("created_at", ""):
+            role_word[n] = c
+        elif login == owner:
+            owner_said[n] = max(owner_said.get(n, ""), at)
+    for n, c in sorted(role_word.items()):
+        it = open_by_n[n]
+        labels = {lb.get("name") for lb in it.get("labels") or []}
+        waits = [b for b in waited_on(c.get("body")) if b != n]
+        if (not waits or n in pr_for or n in hand_on or "gov:question" in labels
+                or (it.get("type") or {}).get("name") in PLAN_TYPES
+                or owner_said.get(n, "") > c.get("created_at", "")
+                or ("ready" not in labels and goal_of(n) is None)):
+            continue
+        cleared = [cleared_wait(b, open_by_n, merged_n) for b in waits]
+        if not all(cleared):
+            continue
+        role = ROLE_APP_RE.match(c["user"]["login"]).group(1)
+        file(goal_of(n), "stuck", item(
+            "wait-cleared", ref(n), c.get("html_url") or url(n),
+            f"the {role} stopped to wait on {', '.join(f'#{b}' for b in waits)}, and the wait has "
+            f"cleared ({'; '.join(cleared)}), but nothing restarts it: ask for a start "
+            f"({watch.launch_cmd(role, n)})", c.get("created_at"), now,
+            role=role, waited_on=waits))
 
     # Fourth signal: owner commands nothing listens to. Call-ins by Apps are authority used.
     agents_call = []

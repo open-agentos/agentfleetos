@@ -441,7 +441,60 @@ class Stuck(unittest.TestCase):
         self.assertEqual(scope(trouble.report(data(**base, comments=[merger])))["stuck"], [])
         self.assertEqual(scope(trouble.report(data(**base, comments=[stop], prs=[pr(900, 786)])))["stuck"], [])
         plain = comment(786, "Stopping: waits on #12.", hours=2, author="productswarm-builder[bot]")
+        base["issues"] = [*base["issues"], issue(12)]     # still open, so not rule 7 either
         self.assertEqual(scope(trouble.report(data(**base, comments=[plain])))["stuck"], [])
+
+    def test_rule7_stopped_on_a_question_then_it_was_ruled_894(self):
+        # #894: the drill's builder stopped to wait on gov:question #936; the owner ruled it
+        # (`gov:ruled` and `ready`), and #936 stays open until its record merges.
+        stop = comment(894, "Still to come: scratch#9 waits on #936 (owner act 2: answer it).\n\n"
+                            "-- builder", hours=144, author="productswarm-builder[bot]")
+        q = issue(936, kind=None, author="productswarm-builder[bot]", labels=("gov:question",))
+        base = dict(scopes={894: under(1)}, comments=[stop])
+        self.assertEqual(scope(trouble.report(data(issues=[M1, issue(894), q], **base)))["stuck"], [])
+        ruled = issue(936, kind=None, author="productswarm-builder[bot]",
+                      labels=("gov:question", "gov:ruled", "ready"))
+        [x] = scope(trouble.report(data(issues=[M1, issue(894), ruled], **base)))["stuck"]
+        self.assertEqual((x["kind"], x["ref"], x["role"], x["waited_on"], x["age_hours"]),
+                         ("wait-cleared", "#894", "builder", [936], 144.0))
+        self.assertIn("#936 answered", x["reason"])
+        self.assertIn("launcher/swarm launch builder --issue 894", x["reason"])
+        # The builder is back on it: its new comment is the latest word, and says no wait.
+        back = comment(894, "Resuming the drill.", hours=1, author="productswarm-builder[bot]")
+        d = data(issues=[M1, issue(894), ruled], **{**base, "comments": [stop, back]})
+        self.assertEqual(scope(trouble.report(d))["stuck"], [])
+
+    def test_rule7_closed_or_merged_waits_and_what_holds_it_back(self):
+        stop = comment(50, "Stopping here: waiting for #60 and PR #61.", hours=5,
+                       author="productswarm-analyst[bot]")
+        base = dict(scopes={50: under(1)}, comments=[stop])
+        # #60 is still open: the wait hasn't cleared.
+        self.assertEqual(scope(trouble.report(data(issues=[M1, issue(50), issue(60)], **base)))["stuck"], [])
+        [x] = scope(trouble.report(data(issues=[M1, issue(50)], merged=[merged(61, 99, 3)], **base)))["stuck"]
+        self.assertEqual((x["kind"], x["role"]), ("wait-cleared", "analyst"))
+        self.assertIn("#60 closed; PR #61 merged", x["reason"])
+        quiet = lambda **kw: scope(trouble.report(data(**{"issues": [M1, issue(50)], **base, **kw})))["stuck"]
+        self.assertEqual(quiet(prs=[pr(70, 50)]), [])                                  # a PR is open
+        self.assertEqual(quiet(sessions=[{"name": "s", "role": "analyst", "issue": 50, "pr": None,
+                                          "started": ago(0.2)}]), [])                  # a session is on it
+        self.assertEqual(quiet(comments=[stop, comment(50, "Hold this.", hours=1)]), [])   # the owner spoke
+        self.assertEqual(quiet(scopes={50: under(None)}), [])                          # not go
+        ready = scope(trouble.report(data(issues=[M1, issue(50, labels=("ready",))],
+                                          **{**base, "scopes": {}})))
+        self.assertEqual(ready["stuck"], [])                                           # filed outside
+        self.assertEqual(trouble.report(data(issues=[M1, issue(50, labels=("ready",))], comments=[stop]))
+                         ["outside"]["stuck"][0]["kind"], "wait-cleared")
+        merger = comment(50, "Waits on #60.", hours=5, author="productswarm-merger[bot]")
+        self.assertEqual(quiet(comments=[merger]), [])                                 # not a role
+        other = comment(50, "Waits on scratch#60.", hours=5, author="productswarm-analyst[bot]")
+        self.assertEqual(quiet(comments=[other]), [])                                  # another repo's
+
+    def test_rule7_waits_wording(self):
+        self.assertEqual(trouble.waited_on("Still to come: scratch#9 after #936 is answered, then "
+                                           "events 3 and 4."), [936])          # #894's own words
+        self.assertEqual(trouble.waited_on("Stopping; waiting for #5 and #6. Then #7."), [5, 6])
+        self.assertEqual(trouble.waited_on("Resume after PR #8 and #9 are merged."), [8, 9])
+        self.assertEqual(trouble.waited_on("Fixed after #3 landed. Waits on nothing."), [])
 
     def test_switch_off_is_unheard(self):
         r = trouble.report(data(issues=[M1, issue(249, kind=None)], comments=[comment(249, "Ask: builder: x")],
