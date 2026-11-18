@@ -11,12 +11,15 @@ it retired the Bridge (#1114). Top to bottom:
   - four controls, segmented buttons: Group by (Effort, Goal, Role, Stage), Size (Cost, Tokens,
     Lines changed), Colour (Yield, Velocity, Change) and Window (Hour, Day, Week, Month). The
     viewer's choices are kept in this browser's localStorage, if it has one;
-  - the breadcrumb, the treemap, and the legend under it, beside the Selected panel (#1083):
-    one issue's story at the map's height, its six sections each at a fixed height, filled by
+  - the breadcrumb, the treemap, and the legend under it, beside the rail (layout.rail, #1249):
+    the Briefing by default, moved from the Bridge (M8, #1069), the lead's newest briefing, whole,
+    scrolling inside the rail; selecting something slides the Selected panel (#1083) in over it,
+    and "← Brief", Esc or selecting it again slides it back out. Under 900px the Briefing comes
+    before the map and the Selected panel is a bottom sheet. The panel tells
+    one issue's story, its six sections each at a fixed height, filled by
     workmap.js from the selected box or from any element with `data-wm-ref` in the page;
     since #1115 also a Goal, Area or role (the `scopes` and `roles` in the JSON block, from the
     Commissions and Agents drawers' builds), and the URL keeps the view and the selection;
-  - the Briefing, moved from the Bridge (M8, #1069): the lead's newest briefing, whole;
   - six lists (#1084), two rows of three: Needs you, Blocked, Spend no outcome, Running hot,
     Gone quiet and Best yield. workmap.py's lists() picks and orders each window's matches for
     each size; workmap.js keeps those in the zoomed group, shows five and counts them all.
@@ -216,7 +219,8 @@ def selected_html() -> str:
     bars = "".join('<span class="wm-bar"></span>' for _ in range(14))
     nums = "".join(f'<div class="wm-num"><dt>{esc(n)}</dt><dd data-n="{k}">–</dd></div>' for k, n in NUMBERS)
     return ('<aside class="wm-selected wm-sel-empty" id="wm-sel" aria-label="Selected" aria-live="polite">'
-            '<div class="wm-ss wm-ss-head"><span class="br-kind" id="wm-sel-kind">SELECTED</span><span class="mono" id="wm-sel-ref">–</span></div>'
+            '<div class="wm-ss wm-ss-head"><button type="button" class="wm-back" id="wm-sel-close">← Brief</button>'
+            '<span class="br-kind" id="wm-sel-kind">SELECTED</span><span class="mono" id="wm-sel-ref">–</span></div>'
             f'<div class="wm-ss wm-ss-title"><p class="wm-st" id="wm-sel-title">{esc(EMPTY)}</p>'
             '<p class="wm-sc muted" id="wm-sel-ctx">–</p></div>'
             '<div class="wm-ss wm-ss-i wm-ss-stage"><p class="wm-sh"><span>Stage</span><span id="wm-sel-stage">–</span></p>'
@@ -327,8 +331,7 @@ def render(m: dict, owner: str | None = None) -> str:
             'The Work map is drawn by a script in the page; with JavaScript off it can\'t show.</p></div>'
             '<div class="wm-tip" id="wm-tip" role="tooltip" hidden></div></div>'
             '<div class="wm-legend" id="wm-legend"></div></section>'
-            f'{selected_html()}</div>'
-            f'{briefing_html((m.get("report") or {}).get("briefing"), m["now"])}'
+            f'{layout.rail(briefing_html((m.get("report") or {}).get("briefing"), m["now"]), selected_html())}</div>'
             f'{lists_html()}'
             f'{strip.tape_html(strip.tape(m, owner), m["now"], on_map)}'
             f'{method}{data_block(d)}</div>')
@@ -337,4 +340,4 @@ def render(m: dict, owner: str | None = None) -> str:
 def page(m: dict, title: str, owner_line: str, owner: str | None = None) -> str:
     """workmap.html, in the shared page shell, with workmap.js as its one script."""
     return layout.page(FILE, title, m["repo"], m["now"], render(m, owner), owner_line, script=(JS.name, script()),
-                       live_mast=True)
+                       live_mast=True, rail=True)
