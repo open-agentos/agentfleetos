@@ -21,6 +21,10 @@
   5. Rehearse     list the proposed lessons that need an eval case (Rehearsal builds the gate).
   6. Promote      list patterns past a lesson for the owner: the same answer three times, a
                   lesson outside every role's jurisdiction. Drafting them is Escalation.
+  7. Owner model  propose entries for memory/owner.md from clusters of the owner's own acts
+                  and reviews, with their sources (#1188, owner.py). Only the owner adds one
+                  (GOV-0056); the librarian never writes the file (GOV-0059), and one like an
+                  entry the owner vetoed in the last 30 days isn't proposed.
 
 `swarm dream --dry-run` prints the plan and the run it would start. `swarm dream` starts one
 headless librarian run, capped at its spend_cap_usd ($3) and [watch] max_turns (GOV-0053); the
@@ -141,6 +145,8 @@ class Plan:
     kept_cited: list[str] = field(default_factory=list)           # past retention, but cited
     rehearse: list[dict] = field(default_factory=list)            # Rehearse
     promote: list[dict] = field(default_factory=list)             # Promote
+    owner: list[dict] = field(default_factory=list)               # Owner model: proposals
+    owner_held: list[dict] = field(default_factory=list)          # kept back by a veto
     uses: dict[str, dict] = field(default_factory=dict)           # id -> {uses, last_used, by}
     given: dict[str, dict] = field(default_factory=dict)          # id -> {given, cited, not_used}
     confidence: dict[str, float] = field(default_factory=dict)    # lesson id -> new value
@@ -195,10 +201,11 @@ def _pr_numbers(e: dict) -> set[int]:
 
 
 def plan(lessons: list[L.Lesson], episodes: list[dict], ctx: L.Context, *, since: str | None,
-         in_repo_ids: set[str] | None = None) -> Plan:
+         in_repo_ids: set[str] | None = None, owner_model=None) -> Plan:
     """Every phase's outcome, with no model call. `episodes` are all those the store holds,
     oldest first; those at or after `since` are new. `in_repo_ids` are the ones in
-    memory/episodes/ (the only ones retention deletes); None: all of them."""
+    memory/episodes/ (the only ones retention deletes); None: all of them. `owner_model`:
+    memory/owner.md as owner.load() reads it, for its proposals; None: an empty one."""
     today = ctx.today or L.today()
     p = Plan(since=since, today=today)
     by_id = {e["id"]: e for e in episodes}
@@ -351,6 +358,12 @@ def plan(lessons: list[L.Lesson], episodes: list[dict], ctx: L.Context, *, since
     cited = {str(s) for x in lessons for s in (x.meta.get("sources") or [])
              if isinstance(x.meta.get("sources"), list)}
     cited |= {s for c in p.proposed for s in c["sources"]}
+    # 7. Owner model (#1188), worked out here so the episodes its entries and proposals cite
+    # are kept past retention, as a lesson's are.
+    import owner as O
+    om = owner_model or O.Model()
+    p.owner, p.owner_held = O.proposals(om, episodes, new_ids, ctx.owner, today)
+    cited |= {s for e in om.entries for s in e.sources} | {s for c in p.owner for s in c["sources"]}
     cutoff = (today - dt.timedelta(days=RETENTION_DAYS)).isoformat()
     for e in episodes:
         if str(e.get("at") or "")[:10] >= cutoff or (in_repo_ids is not None and e["id"] not in in_repo_ids):
@@ -529,4 +542,11 @@ def report(p: Plan) -> str:
     out += lst([r["id"] for r in p.rehearse], "none")
     out.append(f"6. Promote: {len(p.promote)} pattern(s) for the owner.")
     out += lst([q["why"] for q in p.promote], "none")
+    out.append(f"7. Owner model: {len(p.owner)} proposed entr{'y' if len(p.owner) == 1 else 'ies'} for "
+               f"memory/owner.md. None reaches a session until the owner adds it (GOV-0056).")
+    out += lst([f"propose {c['id']} from {', '.join(c['sources'])}"
+                + (f" ({', '.join(c['links'])})" if c["links"] else "")
+                + (f"; shared words: {' '.join(c['words'])}" if c["words"] else "") for c in p.owner]
+               + [f"held back: {', '.join(h['sources'])} is like {h['veto']}, vetoed; not proposed "
+                  f"before {h['until']}" for h in p.owner_held], "none")
     return "\n".join(out)

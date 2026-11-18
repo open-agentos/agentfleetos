@@ -922,6 +922,7 @@ One librarian run over the episodes since the last run (FEAT-16). `dream.py` wor
 4. **Forget:** each citation (`per L-NNNN`, a `cite` episode) since the last run counts as a use: `uses` goes up by one and `last_used` moves to its date (#1187). Active lessons unused since the last run lose 10% confidence. Lessons unused for 21 days go dormant, and dormant ones past `review_by` are retired. Episodes in `memory/episodes/` older than 30 days are deleted unless a lesson cites them. Each role keeps at most 25 active lessons (a lesson for all roles counts for every role), and the lowest-ranked go dormant. The report lists each lesson's given-not-used count: sessions given it whose issue or PR never cited it. That count is only reported; one week of it isn't grounds to act.
 5. **Rehearse:** list proposed lessons with no eval case.
 6. **Promote:** list patterns for the owner: the owner taking the default 3 times in one domain, 3 acts tagged repeat answer, a lesson on paths no role edits.
+7. **Owner model:** propose entries for `memory/owner.md` from clusters of two or more independent owner episodes (acts with their words, reviews the owner wrote), one of them new, that no entry already says. Each proposal lists its source episodes and links. The run lists them in the report and never edits the file; only the owner adds one (#1188, below). One like an entry the owner vetoed in the last 30 days is held back, and the report says until when.
 
 The thresholds are the defaults on the Goal (#1179), which the owner confirms after the first run. They are constants in `dream.py`; `swarm.toml`'s `[memory]` table holds only the pack's cap so far.
 
@@ -979,6 +980,22 @@ No matching lesson means no pack, and the session's command doesn't change. The 
 
 **What was given and what was used.** A session given lessons gets a `given` episode in the engine's outbox (session, role, repo, issue, PR, lesson ids), and `sessions.json` records the ids too. The hourly sweep records a `cite` episode for each merged PR body and each issue or PR comment that cites `per L-NNNN`, but only when a swarm App wrote it, so nobody else can make a lesson look used. The next dream turns citations into uses and reports given-not-used (above). The heartbeat's events don't carry the lesson ids: GOV-0002 fixes their fields. #1243 asks whether they should.
 
+## swarm memory owner: the owner model (#1188)
+
+```bash
+launcher/swarm memory owner [--role ROLE] [--check] [--json] [--memory DIR]
+launcher/swarm memory owner veto O-NNNN [--text WORDS]
+```
+
+`memory/owner.md` (GOV-0052, `owner.py`) holds what the team knows about how the owner likes to work: preferences (style, format, what to leave out), standing patterns (what the owner reliably approves or rejects), vocabulary and don'ts. Each entry is a `### O-NNNN: <title>` heading, then `- kind:` (`preference`, `pattern`, `vocabulary` or `dont`), `- roles:`, `- sources:` (episode ids, `#N`, `owner/name#N` or a github.com link) and `- date:` lines, then a sentence or two. The file's own preamble shows the format.
+
+- **Who sees what** (GOV-0056). The planner gets the whole file; every other role gets only the entries whose `roles` name it. An entry with no roles reaches the planner alone. Each session's pack (above) ends with its role's part, and `swarm memory pack` prints it too. The part says the entries are preferences, not rules, and never outrank a ruling.
+- **Who changes it** (GOV-0056). Every change is an approved ask: `memory/owner.md` is a protected path for the merger, so only a PR the owner approved at head changes it. The librarian proposes in its dream report (step 7 above) and never writes the file (GOV-0059). The owner seeds it by hand, approving each line, and can edit it directly.
+- **Working preferences only.** The file is public. `--check` rejects an entry with an email address, a phone number, a handle, a link outside github.com, a street address, or words about the owner's health, family, finances, whereabouts or contacts. It also rejects an entry that asks to change permissions, credentials, tools or governance (GOV-0055's text check). An entry that fails never reaches a session, even once it's in the file.
+- **Vetoes.** `veto O-NNNN` moves an entry under `## Vetoed` with today's date, so it stops reaching sessions; commit that in a PR. `veto O-NNNN --text "..."` records a veto of a dream proposal that was never added. For 30 days after a veto, the dream doesn't propose an entry like it again.
+
+`swarm memory owner` with no flags prints every valid entry with its roles, date and sources; `--role` prints the part that role is given, as its session would see it.
+
 ## Tests
 
 ```bash
@@ -1026,7 +1043,7 @@ It prints one line per open PR: `#N <head sha> merge (standing grant)`, `merge (
 - the reviewer approved at the current head (a dismissed approval doesn't count), and no one's latest review requests changes;
 - no line starting `Overstep:` in any PR comment, review or review comment;
 - the newest `tests` check run from GitHub Actions at the current head succeeded;
-- it touches no protected path: `ops/`, `.github/`, `governance/`, `GOVERNANCE.md`, `roles/`, `CLAUDE.md` (anywhere), `swarm.toml`, the retired plan file at the repo root (so a PR can't bring it back unseen), or a dependency file (`requirements*.txt`, `pyproject.toml`, `package.json`, lock files and the like). Renamed files count by their old path too;
+- it touches no protected path: `ops/`, `.github/`, `governance/`, `GOVERNANCE.md`, `roles/`, `CLAUDE.md` (anywhere), `swarm.toml`, the retired plan file at the repo root (so a PR can't bring it back unseen), the owner model `memory/owner.md` (every change to it is an approved ask, per GOV-0056; #1188), or a dependency file (`requirements*.txt`, `pyproject.toml`, `package.json`, lock files and the like). Renamed files count by their old path too;
 - additions plus deletions are at most `[merger] max_changed_lines`.
 
 **Approved ask** (GOV-0027), for a PR that touches a protected path:

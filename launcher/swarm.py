@@ -43,6 +43,10 @@
                                     FEAT-19; rehearsal.py)
                                     the lesson store: list, show, validate, regenerate
                                     memory/INDEX.md (#1185, FEAT-15; lessons.py)
+    launcher/swarm memory owner [--role R] [--check] [--json]
+    launcher/swarm memory owner veto O-NNNN [--text T]
+                                    the owner model, in full or the part a role is given; check
+                                    it; veto an entry (#1188, FEAT-18; owner.py)
     launcher/swarm memory pack <role> [--issue N] [--pr M] [--repo R] [--json]
                                     the context pack of lessons a session on that work
                                     would be given at start (#1187, FEAT-17; recall.py)
@@ -216,7 +220,9 @@ def opener(role: str, issue: int | None = None, pr: int | None = None,
                 f"launcher/swarm dream --apply{since} to make its decays, status changes, "
                 f"merges and episode deletions in memory/. Write each proposed lesson you agree with "
                 f"as memory/lessons/<id>-<slug>.md with status proposed, using the ids, sources and "
-                f"review_by the plan gives; drop any you don't, and say why in the report. Run "
+                f"review_by the plan gives; drop any you don't, and say why in the report. List the plan's "
+                f"owner-model proposals in the report with their sources for the owner to approve, and "
+                f"never edit memory/owner.md yourself (GOV-0056, GOV-0059). Run "
                 f"launcher/swarm memory check and launcher/swarm memory index. Then run launcher/swarm "
                 f"escalate --open: on a Monday it opens the week's draft gov:questions (#1191) and "
                 f"records them in memory/escalations.json; other days the drafts wait. Then open one PR "
@@ -810,13 +816,15 @@ class Launcher:
 
     def pack(self, s: Started) -> str:
         """s's context pack (#1187): recall.build() over the pinned copy's memory/lessons/,
-        capped by its swarm.toml, as `swarm memory pack` builds it. Sets s.lessons and
-        records the `given` episode; "" when no lesson matches."""
+        capped by its swarm.toml, as `swarm memory pack` builds it, then the role's part of
+        the pinned copy's memory/owner.md (#1188, owner_part()). Sets s.lessons and records
+        the `given` episode; "" when neither has anything for the session."""
         import episodes
         import recall
         rt = self.runtime()
+        mine = owner_part(rt, s.role)
         if not any((rt / "memory" / "lessons").glob("*.md")):
-            return ""   # no lessons yet: nothing to read, not even this repo's name
+            return mine   # no lessons yet: nothing to read, not even this repo's name
         try:
             limit = recall.cap(rt / "swarm.toml")
         except ValueError as e:
@@ -827,11 +835,11 @@ class Launcher:
                                      work=self.work or recall.gh_work)
         s.lessons = [e.lesson.id for e in entries]
         if not entries:
-            return ""
+            return mine
         episodes.write(episodes.outbox(self.home), [episodes.given_episode(
             session_id=s.session_id, role=s.role, model=s.model, repo=repo, issue=s.issue, pr=s.pr,
             lessons=s.lessons, at=dt.datetime.fromtimestamp(self.clock(), dt.timezone.utc))])
-        return recall.render(entries, sess, limit)
+        return "\n\n".join(x.strip() for x in (recall.render(entries, sess, limit), mine) if x) + "\n"
 
     def add_session_files(self, s: Started, wt: Path, src: Path) -> None:
         """What ops/swarm-session needs in a worktree of another org repo (#912), which it
@@ -2491,7 +2499,9 @@ def dream(launcher: Launcher, args, repo: str) -> int:
     except (OSError, RuntimeError, ValueError) as e:
         say(f"swarm dream: {e}")
         return 1
-    plan = D.plan(all_lessons, eps, ctx, since=since, in_repo_ids=in_repo)
+    import owner as O
+    plan = D.plan(all_lessons, eps, ctx, since=since, in_repo_ids=in_repo,
+                  owner_model=O.load(memory / O.FILE))
     say(json.dumps(plan.as_json(), indent=2) if args.as_json else D.report(plan))
     if not plan.new:
         return 0
@@ -2530,6 +2540,51 @@ def dream(launcher: Launcher, args, repo: str) -> int:
                     session_id=str(uuid.uuid4()), started=launcher.clock(), issue=issue, by="watch",
                     budget_usd=lib.spend_cap_usd, max_turns=limits.max_turns, dream=since or DREAM_FROM_START)
     return 0 if launcher.start(entry, launcher.live(), args.dry_run) else 1
+
+
+# ---------------------------------------------------------------- the owner model (#1188)
+
+def owner_part(root: Path, role: str, memory: Path | None = None) -> str:
+    """The role's part of root's memory/owner.md as it goes into a session's pack (GOV-0056):
+    the whole model for the planner, the entries tagged for the role for anyone else. Only
+    valid entries go, so one carrying personal data never reaches a session; "" for none.
+    `memory`: a memory/ directory to read instead of root's."""
+    import owner as O
+    m = O.load((memory or root / "memory") / O.FILE)
+    return O.render(O.for_role(O.valid_entries(m, O.known_roles(root / "roles")), role), role)
+
+
+def memory_owner(launcher: Launcher, args) -> int:
+    """`swarm memory owner [--role R] [--check] [--json]` and `swarm memory owner veto O-NNNN`:
+    print the owner model in full for the owner, or the part a role is given, as owner_part()
+    gives it to a session; check the file; or veto an entry (#1188)."""
+    import owner as O
+    path = Path(args.memory) / O.FILE if args.memory else launcher.root / "memory" / O.FILE
+    roles = O.known_roles(launcher.root / "roles")
+    say = lambda x: launcher.out(f"swarm memory owner: {x}")
+    if args.owner_cmd == "veto":
+        try:
+            say(O.veto(path, args.id, dt.date.today(), args.text) + f" in {path}; commit it in a PR "
+                f"(memory/owner.md is protected: the owner merges it, GOV-0056)")
+        except (ValueError, OSError) as e:
+            say(str(e))
+            return 1
+        return 0
+    m = O.load(path)
+    errs = O.validate(m, roles)
+    if args.check:
+        launcher.out("\n".join(errs) if errs else f"swarm memory owner: {len(m.entries)} entries valid, "
+                                                   f"{len(m.vetoed)} vetoed")
+        return 1 if errs else 0
+    if args.role and roles and args.role not in roles:
+        say(f"no role {args.role} (roles/: {', '.join(sorted(roles))})")
+        return 2
+    entries = O.valid_entries(m, roles)
+    launcher.out(json.dumps(O.as_json(entries, args.role), indent=2) if args.as_json
+                 else O.text(entries, args.role))
+    if errs and not args.as_json:
+        launcher.out(f"\n{len(errs)} problem(s) leave entries out; run launcher/swarm memory owner --check")
+    return 0
 
 
 # ---------------------------------------------------------------- escalation (#1191)
@@ -2679,8 +2734,8 @@ def escalate(launcher: Launcher, args, repo: str, *, state_of: Callable = gh_iss
 # ---------------------------------------------------------------- memory pack (#1187)
 
 def memory_pack(launcher: Launcher, args, work: Callable | None = None) -> int:
-    """`swarm memory pack <role> --issue N`: the context pack a session would get, built as
-    Launcher.pack() builds it, from the same pinned copy of origin/main (refreshed first) and
+    """`swarm memory pack <role> --issue N`: the context pack a session would get, lessons and
+    the role's part of the owner model, built as Launcher.pack() builds it, from the same pinned copy of origin/main (refreshed first) and
     its swarm.toml, so anyone can see what a session is given. --memory reads a fixture."""
     import recall
     if args.memory:
@@ -2700,8 +2755,13 @@ def memory_pack(launcher: Launcher, args, work: Callable | None = None) -> int:
         return 1
     entries, sess = recall.build(lessons_dir, role=args.role, repo=repo, issue=args.issue, pr=args.pr,
                                  limit=limit, work=work or launcher.work or recall.gh_work)
-    launcher.out(json.dumps(recall.as_json(entries, sess, limit), indent=2) if args.as_json
-                 else recall.text(entries, sess, limit))
+    # The role's part of the owner model follows the lessons, as Launcher.pack() adds it (#1188).
+    mine = (owner_part(launcher.root, args.role, Path(args.memory)) if args.memory
+            else owner_part(launcher.runtime(), args.role))
+    if args.as_json:
+        launcher.out(json.dumps({**recall.as_json(entries, sess, limit), "owner": mine}, indent=2))
+    else:
+        launcher.out("\n\n".join(x.strip() for x in (recall.text(entries, sess, limit), mine) if x))
     return 0
 
 
@@ -2983,6 +3043,15 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
                                           "fixture; its pack_cap then comes from --manifest")
     p_mpack.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
     p_mpack.add_argument("--json", action="store_true", dest="as_json")
+    p_mown = memory_sub.add_parser("owner", help="the owner model, memory/owner.md, in full or the part a "
+                                                 "role is given; --check validates it (#1188)")
+    p_mown.add_argument("owner_cmd", nargs="?", choices=("veto",), help="veto: move an entry to Vetoed")
+    p_mown.add_argument("id", nargs="?", help="with veto: the entry's or proposal's O-NNNN")
+    p_mown.add_argument("--text", help="with veto of a dream proposal not in the file: its words")
+    p_mown.add_argument("--role", help="only the part this role is given (the planner: all of it)")
+    p_mown.add_argument("--check", action="store_true", help="validate the file; exit 1 if it isn't")
+    p_mown.add_argument("--memory", help="a memory/ directory to read instead, e.g. a fixture")
+    p_mown.add_argument("--json", action="store_true", dest="as_json")
     p_mindex = memory_sub.add_parser("index", help="regenerate memory/INDEX.md from memory/lessons/")
     p_mindex.add_argument("--check", action="store_true", help="write nothing; exit 1 if it's stale")
     p_mcheck = memory_sub.add_parser("check", help="validate every lesson (GOV-0055's source rules too)")
@@ -3031,6 +3100,11 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
         return classify_eval().eval_main(args, say=launcher.out)
     if args.cmd == "dream":
         return dream(launcher, args, args.repo or dashboard().default_repo() or "")
+    if args.cmd == "memory" and args.memory_cmd == "owner":
+        if args.owner_cmd == "veto" and not args.id:
+            launcher.out("swarm memory owner veto: name the entry, O-NNNN")
+            return 2
+        return memory_owner(launcher, args)
     if args.cmd == "escalate":
         return escalate(launcher, args, args.repo or dashboard().default_repo() or "")
     if args.cmd == "memory" and args.memory_cmd == "pack":
