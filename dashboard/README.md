@@ -69,6 +69,7 @@ The fonts are **self-hosted**, so the public page loads nothing from a third par
 A right-hand rail beside the map (#1249) holds the Briefing, with the [Selected panel](#the-selected-panel) sliding over it. The map takes two-thirds of the width and the rail the other third, at least 340px; the page is up to 1440px wide (other pages stay at 1100px). The rail starts level with the map frame, is as tall as the frame plus the legend, and is sticky.
 
 - **Briefing**, by default, moved from the Bridge (M8, #1029): the lead's newest daily briefing, whole, one paragraph per chapter, scrolling inside the rail. It comes from the report issue's comments the desk already reads (`report.py` takes the newest planner comment starting `**Briefing`, without its first line or signature). It links to the comment, and says so when it's from before today. It shows here only. A newer briefing from `state.json` replaces it in place, even while the Selected panel covers it, so it's there when the panel slides away.
+- **Memory**, under the Briefing (#1192, FEAT-22): the last dream's three lines (learned: lessons proposed and reconfirmed; forgot: lessons to dormant and retired, and episodes deleted; proposing: patterns for the owner and owner-model entries), and the owner model, each entry with its kind, the roles it reaches and its sources. Each lesson id the Desk has opens its provenance in the Selected panel. It comes from `swarm memory desk --json` (`launcher/memdesk.py`), carried under `memory` in the page's block and in `state.json`, and redrawn in place from a newer `state.json`. There's no page listing all memory.
 - **Selected**: selecting a box, a list row, a Goal, Area or role slides the panel in over the Briefing (a 0.28s slide, none under `prefers-reduced-motion`). "← Brief" at its top, Esc, or selecting the same thing again clears the selection and slides it back out. Whichever side is covered is hidden (`visibility`), so nothing in it can be focused, and closing the panel with focus inside it moves focus to the Briefing.
 - **Phones** (under 900px): the Briefing comes before the map, and the Selected panel is a bottom sheet, fixed to the foot of the screen, up to 75% of its height, that slides up while something is selected.
 
@@ -76,20 +77,25 @@ The rail is the shell's (`layout.rail()`, with `layout.page(rail=True)` for the 
 
 ### The Selected panel
 
-The panel (#1083, FEAT-10) tells one issue's story in [the rail](#the-rail): the rail's width (340px to about 480px) and height, or 460px tall as a bottom sheet on a phone. Each section is always there at a fixed height, and text is cut rather than wrapped past it, so selecting or clearing an issue changes no element's size or position on the page. Top to bottom:
+The panel (#1083, FEAT-10) tells one issue's story in [the rail](#the-rail): the rail's width (340px to about 480px) and height, or 500px tall as a bottom sheet on a phone. Each section is always there at a fixed height, and text is cut rather than wrapped past it, so selecting or clearing an issue changes no element's size or position on the page. Top to bottom:
 
 1. **Selected**, with the issue number on the right.
 2. **Title**, at most two lines, linking the issue, then a context line: effort, role and Goal, plus "◆ needs you" (amber, with the shape and words) and "idle this window" (no spend and no outcome in the window, or not in its rows at all) when they apply.
 3. **Stage**: four labelled segments, Queued, Building, In review, Merging. Past stages are light, the current one umber with a bold label, and a blocked issue shows red stripes at the stage it stopped in (`blocked_at`), with "blocked at …" in words. A closed issue shows every stage past.
 4. **Waits on / Holds up** (#1115): the issues in its `blocked_by` and `blocks`, each one a button that selects it (or a link to GitHub when it isn't on the map), else "nothing". While an issue is selected, the boxes it holds up get a thin dashed outline.
-5. **Cost, last 14 days**: one bar per UTC day, to scale against the issue's peak day, today darkest; a dark dot under each day with an outcome. Labelled "14d ago", "today" and "peak $X" (the tallest bar). The header gives the 14 days' cost for this one issue and its outcome count: a per-issue figure, not a sum across issues, so GOV-0033 doesn't bar it. An issue idle in the window still shows its 14 days.
-6. **Yield against its group**: one line from 0 to the largest yield, a light dot per issue on the map in the same group (the Group by chosen) and window, a tick at their median, and this issue as a large ink dot. Labelled 0, the median and the maximum; the header names the group and its size.
-7. **Numbers**, in two columns: cost, tokens, lines, outcomes, yield (per the chosen size unit) and change against usual (the window's cost against its baseline).
+5. **Given / Cited** (#1192): the lessons sessions on the issue were given, and those cited as `per L-NNNN` on it, on a PR that closes it or in a comment on it, each id a button that opens its provenance; "no lessons" when there are none, "memory not read" when the build couldn't read it.
+6. **Cost, last 14 days**: one bar per UTC day, to scale against the issue's peak day, today darkest; a dark dot under each day with an outcome. Labelled "14d ago", "today" and "peak $X" (the tallest bar). The header gives the 14 days' cost for this one issue and its outcome count: a per-issue figure, not a sum across issues, so GOV-0033 doesn't bar it. An issue idle in the window still shows its 14 days.
+7. **Yield against its group**: one line from 0 to the largest yield, a light dot per issue on the map in the same group (the Group by chosen) and window, a tick at their median, and this issue as a large ink dot. Labelled 0, the median and the maximum; the header names the group and its size.
+8. **Numbers**, in two columns: cost, tokens, lines, outcomes, yield (per the chosen size unit) and change against usual (the window's cost against its baseline).
 
 **A Goal, Area or role** (#1115, FEAT-13). Grouped by Goal or Role, each group header has an "i" button that selects that Goal or role; clicking the header itself still zooms. The role and Goal in an issue's context line select them too, as does any element with `data-wm-sel="goal-N"`, `"role-NAME"` or `"#N"` (the [tape](#the-strip-and-the-tape)). The panel keeps its size: the head and title stay, and in place of the issue's sections one area scrolls inside the same box.
 
 - A Goal or Area: its type, criteria met of total and its date; the done test, each criterion with its status ("unmeasured: not known to be on track" for one that isn't measured); what's stuck and why nothing will start it; what waits on you; the authority used under it in the last 24 hours; its open sub-issues, each with its go status, its PR and its share of the Goal's size in the window, as a percentage (never a summed amount, GOV-0033); and a link to it on GitHub. It's what the Commissions drawer showed (`commissions.build`), carried in the page's JSON block under `scopes`.
 - A role: what it does and whether it's working, idle or blocked; what it's on now; its merged PRs and sessions in the window (Month shows the 14 days the Desk reads), its open PRs and those with changes requested at head; the merger's calls on its PRs in the last 24 hours; and how to ask it something (`Ask: <role>: …` on the report issue, GOV-0029). It's what the Agents drawer showed (`agents.build`), under `roles`.
+
+- A lesson (#1192): selected from a lesson id anywhere on the page (`data-wm-sel="lesson-L-NNNN"`, `#lesson-L-NNNN` in the URL). Its status, scope and roles; confidence, uses, last used and review date; its rehearsal result; its sources (each episode's type, whether the engine recorded it, who, when and a link); the issues it was given on and the PRs and comments that cited it; its text; and any validation errors, worded. It's `swarm memory show --json`'s fields. A lesson scoped to another repo isn't on the Desk, so selecting one shows nothing.
+
+A Goal and a role also list the lessons given to and cited in their work: a Goal's from its own issue, its open sub-issues and its issues on the map; a role's from its sessions and its App's citations.
 
 ### Links
 
@@ -127,9 +133,10 @@ The Work map retired the Bridge (#1114, FEAT-12): `bridge.html` only sends the b
 **The strip** sits between the title and the map controls, one line high (it wraps on a phone). Counts only, never money (GOV-0033):
 
 - **Goals and Areas flagged**, of the open ones. A Goal or Area is flagged when something under it is stuck, one of its criteria is failing, or its date is missed.
-- **Decisions waiting**, with the oldest one's age.
+- **Decisions waiting**, with the oldest one's age. An open gov:question Escalation drafted (#1191) is one like any other, and Needs you says "drafted by the dream" and its kind (#1192).
 - **Agents working**, of the live sessions.
 - **Authority used** in `swarm trouble`'s window.
+- **Memory** (#1192): the fullest role's active lessons against the dream's per-role budget ("memory 4 of 25 lessons, fullest role builder"), and **lessons dormant**, from `swarm memory desk`'s counts. "memory not read" if the build couldn't read it.
 
 Picking "flagged" or "decisions waiting" sets Group by to Goal and outlines the matching boxes: a red frame round each flagged Goal, or an ink outline on each issue a decision is about (the needs-you issues, the questions, and the issues a waiting PR closes). Picking it again clears the outline. It never resizes anything. With JavaScript off the counts still show and the two picks are disabled.
 

@@ -980,6 +980,21 @@ No matching lesson means no pack, and the session's command doesn't change. The 
 
 **What was given and what was used.** A session given lessons gets a `given` episode in the engine's outbox (session, role, repo, issue, PR, lesson ids), and `sessions.json` records the ids too. The hourly sweep records a `cite` episode for each merged PR body and each issue or PR comment that cites `per L-NNNN`, but only when a swarm App wrote it, so nobody else can make a lesson look used. The next dream turns citations into uses and reports given-not-used (above). The heartbeat's events don't carry the lesson ids: GOV-0002 fixes their fields. #1243 asks whether they should.
 
+## swarm memory desk: what the Desk shows of memory (#1192)
+
+```bash
+launcher/swarm memory desk [--repo owner/name] [--memory DIR] [--json]
+```
+
+`memdesk.py` builds one JSON of what the Desk shows of memory, and the Desk's build (`dashboard/generate.py`) calls the same `memdesk.build()`, so every number and list the Desk shows of memory comes from this command (FEAT-22). It reads only files: `memory/` and the engine's episodes outbox (`--memory DIR` reads a fixture and leaves the outbox out).
+
+- `lessons`: every lesson this repo can see (fleet, or `repo:<this repo>`), by id, as `swarm memory show --json` prints it: summary, body, sources, eval and rehearsal result, and validation errors. A lesson scoped to another repo is never in it.
+- `used`: this repo's `given` and `cite` episodes (#1187), with only the lessons in `lessons`. The Desk works out what was given to and cited in an issue, Goal or role from these.
+- `counts`: active and dormant lessons, and each role's active lessons against the dream's per-role budget (25). Counts only.
+- `dream`: the last applied dream's three lines, learned, forgot and proposing, which `swarm dream --apply` now keeps in `memory/dream.json` beside `last_run`; a lesson this repo can't see is left out.
+- `owner`: the owner model's valid entries with their sources, as `swarm memory owner --json` prints them.
+- `drafts`: Escalation's draft gov:questions still open, as `swarm escalate --list --json` prints them.
+
 ## swarm memory owner: the owner model (#1188)
 
 ```bash
