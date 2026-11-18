@@ -117,7 +117,8 @@ GRANT, ASK = "merge (standing grant)", "merge (approved ask)"
 # PLAN.md is protected until it is deleted: an agent PR adding a milestone there would make its own
 # issues go under GOV-0026 (operating model v2).
 PROTECTED_DIRS = ("ops/", ".github/", "governance/", "roles/")
-PROTECTED_FILES = ("GOVERNANCE.md", "CLAUDE.md", "swarm.toml", "PLAN.md")
+# memory/owner.md is the owner model: GOV-0056 has every change to it be an approved ask (#1188).
+PROTECTED_FILES = ("GOVERNANCE.md", "CLAUDE.md", "swarm.toml", "PLAN.md", "memory/owner.md")
 DEPENDENCY_FILES = frozenset({
     "requirements.txt", "requirements-dev.txt", "constraints.txt", "pyproject.toml", "setup.py",
     "setup.cfg", "Pipfile", "Pipfile.lock", "poetry.lock", "uv.lock", "package.json",
