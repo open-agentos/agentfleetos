@@ -43,6 +43,8 @@ Standing grant (GOV-0027, GOV-0022), in the order checked:
   the owner added its most recent `ready`, or it sits under an open Goal or Area the owner
   opened with no open blocked-by issue and no veto (swarm.go_refusals, the watcher's own
   check, so the two agree). A gov:question never counts;
+  a librarian memory-only PR is exempt and needs no closing issue (GOV-0061, #1280): its
+  memory/-only scope, with memory/owner.md protected, is the guard;
 - the reviewer approved at the current head, and no one's latest review requests changes;
 - no `Overstep:` line in any PR comment, review or review comment;
 - the `tests` check (from GitHub Actions) passed at the current head;
@@ -344,7 +346,8 @@ def decide(pr: dict, ctx: Context, r: Reader) -> str:
                     f"PRs that touch only {MEMORY_DIR} (GOV-0056), and it {what}")
     elif author != BUILDER:
         return f"miss: not opened by {BUILDER}"
-    why = grant_issue(n, ctx, r) or common(n, head, REVIEWER, r)
+    # GOV-0061: a librarian memory-only PR (the nightly dream's `Refs #N`) needs no go issue.
+    why = (None if author == LIBRARIAN else grant_issue(n, ctx, r)) or common(n, head, REVIEWER, r)
     if why:
         return f"miss: {why}"
     size = pr.get("additions"), pr.get("deletions")

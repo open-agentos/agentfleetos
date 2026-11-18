@@ -108,13 +108,33 @@ class StandingGrant(unittest.TestCase):
         self.librarian("memory/lessons/L-0001.md", "memory/dream.json")
         self.assertEqual(self.w.decide(), merger.GRANT)
 
+    def test_librarian_needs_no_closing_issue(self):
+        """GOV-0061 (#1280): the nightly PR's `Refs #N` closes nothing, and it still merges."""
+        self.librarian("memory/lessons/L-0001.md")
+        self.w.closes = []
+        self.assertEqual(self.w.decide(), merger.GRANT)
+        self.w.closes = [(REPO, 9), (REPO, 10)]
+        self.w.issue["labels"] = [{"name": "gov:question"}]
+        self.assertEqual(self.w.decide(), merger.GRANT)
+
+    def test_builder_still_needs_a_closing_issue(self):
+        self.w.closes = []
+        self.miss("closes 0 issues")
+
     def test_librarian_keeps_every_other_condition(self):
         self.librarian("memory/lessons/L-0001.md")
-        self.w.closes = []          # the nightly PR's `Refs #N` closes nothing (#1274)
-        self.miss("closes 0 issues")
-        self.w.closes = [(REPO, 9)]
+        self.w.closes = []
         self.w.reviews = []
         self.miss("hasn't approved at head")
+        self.w.reviews = [{"user": {"login": merger.REVIEWER}, "state": "APPROVED", "commit_id": HEAD}]
+        self.w.checks = []
+        self.miss("tests")
+        self.w.checks = World().checks
+        self.w.comments = [{"body": "Overstep: x", "user": {"login": merger.REVIEWER}}]
+        self.miss("Overstep")
+        self.w.comments = []
+        self.w.pr["additions"] = 500
+        self.miss("max_changed_lines")
 
     def test_librarian_outside_memory(self):
         self.librarian("memory/lessons/L-0001.md", "launcher/dream.py")
