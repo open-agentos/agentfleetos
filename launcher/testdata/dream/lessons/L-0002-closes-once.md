@@ -16,6 +16,8 @@ last_used: 2026-11-12
 created: 2026-11-01
 review_by: 2027-02-01
 eval_case: evals/lessons/x.json
+rehearsal:
+  result: promoted
 supersedes: []
 related_rulings: []
 ---

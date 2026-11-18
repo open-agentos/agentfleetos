@@ -68,9 +68,11 @@ def cap_of(table) -> int:
         return DEFAULT_CAP
     if not isinstance(table, dict):
         raise ValueError("[memory] must be a table")
-    unknown = sorted(set(table) - {"pack_cap"})
+    # The replay keys share the table (#1189); launcher/rehearsal.py validates those.
+    keys = {"pack_cap", "replay_model", "replay_cap_usd", "replays_per_night"}
+    unknown = sorted(set(table) - keys)
     if unknown:
-        raise ValueError(f"memory: unknown key '{unknown[0]}' (allowed: pack_cap)")
+        raise ValueError(f"memory: unknown key '{unknown[0]}' (allowed: {', '.join(sorted(keys))})")
     v = table.get("pack_cap", DEFAULT_CAP)
     if isinstance(v, bool) or not isinstance(v, int) or v < 1:
         raise ValueError(f"memory: pack_cap must be a whole number of at least 1, not {v!r}")

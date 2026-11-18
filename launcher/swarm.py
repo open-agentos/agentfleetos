@@ -34,6 +34,9 @@
                                     the librarian's dream over new episodes: one run under
                                     its $3 cap, or none if nothing is new (#1186; dream.py)
     launcher/swarm memory lessons|show|check|index
+    launcher/swarm memory rehearse [L-NNNN ...]   replay due lessons' eval cases without and
+                                    with them; promote those that pass the gate (#1189,
+                                    FEAT-19; rehearsal.py)
                                     the lesson store: list, show, validate, regenerate
                                     memory/INDEX.md (#1185, FEAT-15; lessons.py)
     launcher/swarm memory pack <role> [--issue N] [--pr M] [--repo R] [--json]
@@ -2607,6 +2610,74 @@ def memory_lessons(launcher: Launcher, args, repo: str) -> int:
     return 0
 
 
+def memory_rehearse(launcher: Launcher, args, repo: str) -> int:
+    """`swarm memory rehearse`: the replay gate (#1189, FEAT-19). Rehearses the named lessons,
+    or every lesson that is due, within GOV-0053's caps, writes each result into the lesson's
+    frontmatter, regenerates memory/INDEX.md, and prints the dream report's rehearsal section."""
+    import lessons as L
+    import rehearsal as R
+    say = lambda s: launcher.out(f"swarm memory rehearse: {s}")
+    if not repo:
+        say("can't tell the repo; pass --repo owner/name")
+        return 2
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        say("ANTHROPIC_API_KEY isn't set. Replays run only on the engine's Console key "
+            "(GOV-0053), never on this machine's Claude login")
+        return 2
+    try:
+        cfg = R.settings(Path(args.manifest))
+    except R.RehearsalError as e:
+        say(str(e))
+        return 2
+    store = Path(args.store) if args.store else L.LESSONS
+    all_lessons = L.load_all(store)
+    if args.lessons:
+        by_id = {x.id: x for x in all_lessons}
+        targets = []
+        for lid in args.lessons:
+            les = by_id.get(lid.upper())
+            if les is None or not L.visible_in(les, repo):
+                say(f"no lesson {lid} for {repo}")
+                return 1
+            if les.errors or les.status not in ("proposed", "active"):
+                say(f"{les.id} is {les.status or 'unreadable'}; only proposed and active lessons "
+                    f"are rehearsed")
+                return 1
+            targets.append(les)
+    else:
+        targets = R.due(all_lessons, repo)
+
+    def source_for(case_repo: str) -> Path:
+        if case_repo.lower() == repo.lower():
+            return launcher.root
+        try:
+            clone = launcher.repo_clone(case_repo)
+        except ValueError as e:
+            raise R.RehearsalError(str(e)) from None
+        if not (clone / ".git").exists():
+            raise R.RehearsalError(f"no clone of {case_repo} at {clone}")
+        return clone
+
+    results = []
+    for les in targets:
+        if results and results[-1].result == "waits":
+            results.append(R.Result(les.id, "waits", note=results[-1].note))
+            continue
+        results.append(R.rehearse(les, home=launcher.home, cfg=cfg, source_for=source_for,
+                                  runner=R.claude_runner))
+    if store == L.LESSONS and any(r.result not in ("waits", "error") for r in results):
+        L.INDEX.parent.mkdir(parents=True, exist_ok=True)
+        L.INDEX.write_text(L.index_text(L.load_all()))
+    now = dt.datetime.now(dt.timezone.utc).date()
+    if args.as_json:
+        launcher.out(json.dumps([{"lesson": r.lesson, "result": r.result, "status": r.status,
+                                  "note": r.note, "without": r.without, "with": r.with_}
+                                 for r in results], indent=2))
+    else:
+        launcher.out(R.report_text(results, now).rstrip())
+    return 1 if any(r.result == "error" for r in results) else 0
+
+
 def main(argv: list[str], launcher: Launcher | None = None) -> int:
     ap = argparse.ArgumentParser(prog="swarm", description="Start, list and stop the swarm in swarm.toml.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -2762,6 +2833,15 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     p_mindex.add_argument("--check", action="store_true", help="write nothing; exit 1 if it's stale")
     p_mcheck = memory_sub.add_parser("check", help="validate every lesson (GOV-0055's source rules too)")
     p_mcheck.add_argument("--repo", help="owner/name (default: this checkout's origin)")
+    p_mreh = memory_sub.add_parser("rehearse", help="replay lessons' eval cases without and with "
+                                   "them; promote those that pass the gate (#1189)")
+    p_mreh.add_argument("lessons", nargs="*", metavar="L-NNNN",
+                        help="these lessons (default: every one that is due)")
+    p_mreh.add_argument("--json", action="store_true", dest="as_json")
+    p_mreh.add_argument("--repo", help="owner/name (default: this checkout's origin)")
+    p_mreh.add_argument("--store", help="a lessons directory other than memory/lessons/ "
+                                        "(the drill's planted lesson, evals/drills.md)")
+    p_mreh.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
     p_dream = sub.add_parser("dream", help="the librarian's dream over new episodes (#1186): plan, "
                                            "apply, or start one capped run")
     p_dream.add_argument("--since", type=since_stamp,
@@ -2791,6 +2871,8 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     if args.cmd == "memory" and args.memory_cmd in LESSON_CMDS:
         repo = getattr(args, "repo", None) or dashboard().default_repo() or ""
         return memory_lessons(launcher, args, repo)
+    if args.cmd == "memory" and args.memory_cmd == "rehearse":
+        return memory_rehearse(launcher, args, args.repo or dashboard().default_repo() or "")
     if args.cmd == "backup":
         try:
             out = statedb.backup(launcher.dir, Path(args.out) if args.out else None)

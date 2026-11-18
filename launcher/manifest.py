@@ -42,9 +42,10 @@ only that it is a table; launcher/specs/config.py validates what is in it.
 An optional [classify] table (#1010, GOV-0045) sets the classifier's model and a live eval
 run's budget. This module checks only that it is a table; classify/evalrun.py validates it.
 
-An optional [memory] table (#1187, GOV-0058) holds pack_cap, the most lessons a session's
-context pack holds: a whole number of at least 1, default 10. recall.py reads it; a bad one
-is a problem here.
+An optional [memory] table sets the lesson replays' model, per-replay cap and nightly count
+(#1189, GOV-0053; launcher/rehearsal.py validates those), and pack_cap, the most lessons a
+session's context pack holds: a whole number of at least 1, default 10 (#1187, GOV-0058).
+recall.py reads pack_cap; a bad one is a problem here.
 
 An optional [org] table (#772) lists in `repos` the org's other repos ("owner/name") that
 `swarm watch` and the merger work beside this one. Left out, they work this repo only. A
@@ -241,10 +242,10 @@ def parse_valid(text: str, path: Path = DEFAULT_PATH, roles_dir: Path = ROOT / "
                 "[org], [specs], [classify] and [memory] are allowed)"
                 for k in sorted(set(data) - {"session", "watch", "merger", "org", "specs", "classify",
                                              "memory"})]
-    for t in ("specs", "classify"):
+    for t in ("specs", "classify", "memory"):
         if t in data and not isinstance(data[t], dict):
             problems.append(f"{t}: must be a [{t}] table")
-    if "memory" in data:   # #1187, GOV-0058: the context pack's cap
+    if isinstance(data.get("memory"), dict):   # #1187, GOV-0058: the context pack's cap
         import recall
         try:
             recall.cap_of(data["memory"])

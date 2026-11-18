@@ -135,6 +135,12 @@ class CapSettingTest(unittest.TestCase):
         self.assertEqual(recall.cap(self.toml("[memory]\npack_cap = 4\n")), 4)
         self.assertEqual(recall.cap(Path("/nonexistent/swarm.toml")), 10)
 
+    def test_replay_keys_share_the_table(self):
+        """#1189's replay settings live in the same [memory] table."""
+        self.assertEqual(recall.cap(self.toml(
+            '[memory]\nreplay_model = "claude-haiku-5-5"\nreplay_cap_usd = 0.5\n'
+            'replays_per_night = 10\npack_cap = 3\n')), 3)
+
     def test_bad_values_raise(self):
         for bad in ("pack_cap = 0", "pack_cap = true", 'pack_cap = "10"', "pack_cap = 2.5", "cap = 3"):
             with self.subTest(bad), self.assertRaises(ValueError):

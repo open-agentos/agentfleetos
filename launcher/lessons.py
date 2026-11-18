@@ -385,6 +385,13 @@ def validate(lesson: Lesson, ctx: Context) -> list[str]:
     eval_case = m.get("eval_case")
     if status == "active" and not (isinstance(eval_case, str) and eval_case.strip()):
         err("an active lesson needs an eval_case")
+    reh = m.get("rehearsal")
+    if reh is not None and not isinstance(reh, dict):
+        err("rehearsal must be the replay gate's result block (#1189)")
+    elif status == "active" and (reh or {}).get("result") not in ("promoted", "confirmed"):
+        # The replay gate (#1189) is the only way to active: `swarm memory rehearse` sets it.
+        err("an active lesson needs a passing rehearsal; run launcher/swarm memory rehearse "
+            f"{lid if isinstance(lid, str) else 'L-NNNN'}")
     for k, pat in (("supersedes", ID_RE), ("related_rulings", GOV_RE)):
         v = m.get(k)
         if v is not None and not isinstance(v, list):
@@ -545,10 +552,18 @@ def resolve_sources(les: Lesson, episodes: dict[str, dict], owner: str) -> list[
 
 
 def eval_result(les: Lesson) -> dict:
-    """The lesson's eval case. Replays (#1189) don't record results yet, so there is none."""
+    """The lesson's eval case and its last rehearsal (#1189), if it has one."""
     case = les.meta.get("eval_case") or None
-    return {"case": case, "result": None,
-            "note": "no eval case yet" if not case else "not run yet: replays come with #1189"}
+    r = les.meta.get("rehearsal") if isinstance(les.meta.get("rehearsal"), dict) else None
+    if not case:
+        note = "no eval case yet"
+    elif not r:
+        note = "not rehearsed yet: launcher/swarm memory rehearse " + les.id
+    else:
+        note = (f"{r.get('result')} on {_iso(r.get('at'))}: without it {r.get('without')} "
+                f"(${r.get('cost_without_usd')}), with it {r.get('with')} "
+                f"(${r.get('cost_with_usd')}), on {r.get('model')}")
+    return {"case": case, "result": r.get("result") if r else None, "rehearsal": r, "note": note}
 
 
 def show_text(les: Lesson, sources: list[dict], ev: dict, errors: list[str]) -> str:
