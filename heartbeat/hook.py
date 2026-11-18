@@ -264,8 +264,32 @@ def gh(*args: str, stdin: str | None = None) -> str:
 
 
 def number_from_url(text: str, repo: str, kind: str) -> int | None:
-    m = re.search(rf"https://github\.com/{re.escape(repo)}/{kind}/(\d+)", text or "")
+    """The number in a URL `gh` printed for `repo`. GitHub prints a renamed repo's URLs under
+    its new name, so any owner/name is read (#1262): `gh issue create` succeeded either way."""
+    m = re.search(rf"https://github\.com/[\w.-]+/[\w.-]+/{kind}/(\d+)", text or "")
     return int(m.group(1)) if m else None
+
+
+def existing_tracking_issue(state: dict) -> int | None:
+    """An open tracking issue this session already opened, so a retry reuses it (#1262).
+
+    Read from the issues list, not search: GitHub's search API doesn't follow a renamed
+    repo (GOV-0048). The title and marker name this session; only its role's App opens it."""
+    title = f"[heartbeat] {state['role']} {state['session_id']}"
+    marker = MARKER.format(v=SCHEMA_VERSION, sid=state["session_id"])
+    out = gh("api", "--paginate", f"repos/{state['repo']}/issues?state=open&per_page=100",
+             "--jq", ".[] | select(.pull_request == null) | "
+             "{number, title, body, login: .user.login} | @json")
+    found = []
+    for line in out.splitlines():
+        try:
+            it = json.loads(line)
+        except ValueError:
+            continue
+        if (it.get("title") == title and (it.get("body") or "").startswith(marker)
+                and it.get("login") == f"productswarm-{state['role']}[bot]"):
+            found.append(it["number"])
+    return min(found) if found else None
 
 
 def signature(state: dict) -> str:
@@ -276,6 +300,11 @@ def ensure_tracking_issue(sid: str) -> dict:
     with locked(sid):
         state = load_state(sid)
         if state["tracking_issue"]:
+            return state
+        found = existing_tracking_issue(state)
+        if found:
+            state["tracking_issue"] = found
+            save_state(state)
             return state
         body = (MARKER.format(v=SCHEMA_VERSION, sid=sid) + "\n"
                 f"Heartbeat events for one {state['role']} session, posted automatically. "

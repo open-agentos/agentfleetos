@@ -89,6 +89,8 @@ The session's role App opens **one issue per session** in `repo`:
 - **Title:** `[heartbeat] <role> <session_id>`
 - **Body:** starts with the marker `<!-- productswarm-heartbeat schema_version=1 session_id=<session_id> -->`, which is how the dashboard finds tracking issues (with the author being a `productswarm-*[bot]` App).
 - **Labels:** none. Never `status:` or `gov:` labels (GOV-0003), and new issues are created unlabelled anyway (CLAUDE.md).
+- **Opened once.** Before opening one, the hook looks for an open issue its App opened with this session's title and marker, and reuses it. It reads the new issue's number from any repo name in the URL `gh` prints, since a renamed repo's URLs carry the new name. Before #1262 it read only the old name, so it retried and opened duplicates.
+- **`repo` in events** is the checkout's origin. A session from before the rename wrote `open-agentos/productswarm`; the dashboard accepts that name too (per GOV-0048).
 - The issue is closed after the `stopped` event is posted, so the open issue list only shows live sessions. The dashboard reads open and closed tracking issues alike.
 
 Each **comment** carries one or more events, without `prompt`, as a fenced `jsonl` block, one event per line, in time order. The comment ends with the usual signature line, which readers ignore.
