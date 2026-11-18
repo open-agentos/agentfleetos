@@ -48,6 +48,8 @@ For each Goal and Area (GOV-0031):
   head that the merger left for the owner, for whatever reason: the reason is the
   merger's own `Left for the owner at <head>: <reason>` comment, not re-derived here.
   Once the owner approves at head after that comment, the PR no longer waits on them.
+  The PRs are this repo's and each swarm.toml [org] repo's (#1292, GOV-0036): another
+  repo's PR is named `owner/name#N`, and the same rules apply to it.
 - **On the owner's authority**, in the last --hours: merges by the merger App (GOV-0027;
   a PR it enqueued counts as its merge, as in `swarm merges`) and call-ins by a swarm App.
 - **Spend**: the runs ledger's total under it (ledger.totals), reported only.
@@ -118,6 +120,9 @@ class Data:
     scopes: dict[int, dict | None] = field(default_factory=dict)   # swarm.parse_scope() per issue
     other_scopes: dict[str, dict] = field(default_factory=dict)    # "o/r#n" -> REST item, other repos
     prs: list[dict] = field(default_factory=list)        # open PRs (gh pr list JSON)
+    other_prs: dict[str, list[dict]] = field(default_factory=dict)   # "o/r" -> its open PRs, [org] repos
+    other_pr_scopes: dict[str, dict[int, dict | None]] = field(default_factory=dict)  # "o/r" -> parse_scope()
+                                                         # per issue its open PRs close
     merged: list[dict] = field(default_factory=list)     # PRs merged in the last MERGED_DAYS
     comments: list[dict] = field(default_factory=list)   # repo comments, last COMMAND_DAYS (REST)
     report_issue: int | None = None
@@ -305,83 +310,93 @@ def report(d: Data, measures=None) -> dict:
     def file(goal: str | None, section: str, x: dict) -> None:
         (buckets[goal] if goal in buckets else outside)[section].append(x)
 
-    # Rule 1, and PRs waiting on the owner.
+    # Rule 1, and PRs waiting on the owner: this repo's PRs, then each [org] repo's (#1292,
+    # GOV-0036). Another repo's PR is named owner/name#N and filed under the Goal or Area
+    # above the issue it closes in that repo.
     import watch
-    for p in d.prs:
-        if p.get("isDraft"):
-            continue
-        n, author = p["number"], rest_login((p.get("author") or {}).get("login"))
-        head = p.get("headRefOid")
-        reviews = [{"user": {"login": rest_login((r.get("author") or {}).get("login"))},
-                    "state": r.get("state"), "body": r.get("body"),
-                    "commit_id": (r.get("commit") or {}).get("oid"), "at": r.get("submittedAt")}
-                   for r in p.get("reviews") or []]
-        comments = [{"login": rest_login((c.get("author") or {}).get("login")),
-                     "at": c.get("createdAt"), "body": c.get("body") or ""}
-                    for c in p.get("comments") or []]
-        rv = generate.reviewer_state(reviews, head)
-        closes = [c["number"] for c in p.get("closingIssuesReferences") or []]
-        goal, pr_url = pr_goal(closes), p.get("url") or url(n)
-        at_head = [r for r in reviews if r["user"]["login"] == generate.REVIEWER and r["commit_id"] == head]
-        role = generate.pr_role(author)
-        asked = at_head[-1]["at"] if at_head else None
-        answered = sorted(t for t in [*(c["at"] for c in comments if c["login"] == owner),
-                                      *(r["at"] for r in reviews if r["user"]["login"] == owner)]
-                          if t and asked and t > asked)
-        one = len(closes) == 1
-        if rv["at_head"] is not None and rv["authority"] == "fail":
-            # An overstep, whatever the review's state (#679's was COMMENTED). GOV-0011 hands it
-            # to the owner; once the owner comments, [ruling] restarts the PR's role if it can.
-            if not answered:
-                file(goal, "waiting", item("pr", ref(n, True), pr_url, "overstep: needs the owner",
-                                           asked, now))
-            elif role not in watch.RULING_ROLES or not one:
-                cant = (f"[ruling] restarts only {' and '.join(watch.RULING_ROLES)} PRs" if role not in
-                        watch.RULING_ROLES else f"[ruling] skips a PR that closes {len(closes)} issues")
-                file(goal, "stuck", item("changes-no-restart", ref(n, True), pr_url,
-                                         f"overstep; @{owner} answered, and no trigger starts the "
-                                         f"{role or 'author'} ({cant})", answered[0], now))
-            else:
-                replied = [c["at"] for c in comments
-                           if c["login"] == f"productswarm-{role}[bot]" and c["at"] and c["at"] > answered[-1]]
-                if replied:                              # [ruling] ran, and it asked back
-                    file(goal, "waiting", item("pr", ref(n, True), pr_url,
-                                               f"overstep: the {role} replied to @{owner}'s ruling "
-                                               f"and changed nothing", replied[0], now))
-        elif rv["at_head"] == CHANGES:
-            if role in watch.RESPOND_ROLES and one and not generate.past_bound(rv["changes_requested"]):
-                continue                                 # [respond] restarts it
-            if role not in watch.RESPOND_ROLES:
-                file(goal, "stuck", item("changes-no-restart", ref(n, True), pr_url,
-                                         f"changes requested at {head[:7]}, no push since, and no "
-                                         f"trigger restarts the {role or 'author'} ([respond] "
-                                         f"restarts only {' and '.join(watch.RESPOND_ROLES)} PRs)",
-                                         asked, now))
+    pr_sets = [(repo, d.prs, d.scopes),
+               *((r, ps, d.other_pr_scopes.get(r) or {}) for r, ps in d.other_prs.items())]
+    for prepo, prs, pscopes in pr_sets:
+        def pr_ref(n: int, prepo=prepo) -> str:
+            return ref(n, True) if prepo == repo else f"{prepo}#{n}"
+
+        for p in prs:
+            if p.get("isDraft"):
                 continue
-            why = (generate.needs_owner(rv, author)
-                   or f"changes requested on a PR that closes {len(closes)} issues: needs the owner")
-            if answered:
-                file(goal, "stuck", item("changes-no-restart", ref(n, True), pr_url,
-                                         f"{why.split(':')[0]}; @{owner} answered, and no trigger "
-                                         f"starts the fix", answered[0], now))
-            else:
-                file(goal, "waiting", item("pr", ref(n, True), pr_url, why, asked, now))
-        elif rv["at_head"] == "APPROVED":
-            mine = [r for r in reviews if r["user"]["login"] == owner and r["commit_id"] == head
-                    and r["state"] in ("APPROVED", CHANGES, "DISMISSED")]
-            owner_ok = mine[-1]["at"] if mine and mine[-1]["state"] == "APPROVED" else None
-            if p.get("mergeable") == "CONFLICTING":           # rule 4 (PR #839)
-                by = f"the reviewer and @{owner}" if owner_ok else "the reviewer"
-                file(goal, "stuck", item("conflict", ref(n, True), pr_url,
-                                         f"approved at head by {by}, but it conflicts with main: "
-                                         f"the merger can't merge it, and nothing will start a fix",
-                                         owner_ok or asked, now))
-                continue
-            left = merger_left(comments, head)
-            if left and not (owner_ok and owner_ok > left[0]):    # the owner approved since
-                file(goal, "waiting", item("pr", ref(n, True), pr_url,
-                                           f"approved at head; the merger left it for the owner: "
-                                           f"{left[1]}", left[0], now))
+            n, author = p["number"], rest_login((p.get("author") or {}).get("login"))
+            head = p.get("headRefOid")
+            reviews = [{"user": {"login": rest_login((r.get("author") or {}).get("login"))},
+                        "state": r.get("state"), "body": r.get("body"),
+                        "commit_id": (r.get("commit") or {}).get("oid"), "at": r.get("submittedAt")}
+                       for r in p.get("reviews") or []]
+            comments = [{"login": rest_login((c.get("author") or {}).get("login")),
+                         "at": c.get("createdAt"), "body": c.get("body") or ""}
+                        for c in p.get("comments") or []]
+            rv = generate.reviewer_state(reviews, head)
+            closes = [c["number"] for c in p.get("closingIssuesReferences") or []]
+            goal = next((f"{g['repo'] or prepo}#{g['number']}" for g in
+                         (swarm.scope_goal(pscopes.get(c), owner) for c in closes) if g), None)
+            pr_url = p.get("url") or f"https://github.com/{prepo}/pull/{n}"
+            at_head = [r for r in reviews if r["user"]["login"] == generate.REVIEWER and r["commit_id"] == head]
+            role = generate.pr_role(author)
+            asked = at_head[-1]["at"] if at_head else None
+            answered = sorted(t for t in [*(c["at"] for c in comments if c["login"] == owner),
+                                          *(r["at"] for r in reviews if r["user"]["login"] == owner)]
+                              if t and asked and t > asked)
+            one = len(closes) == 1
+            if rv["at_head"] is not None and rv["authority"] == "fail":
+                # An overstep, whatever the review's state (#679's was COMMENTED). GOV-0011 hands it
+                # to the owner; once the owner comments, [ruling] restarts the PR's role if it can.
+                if not answered:
+                    file(goal, "waiting", item("pr", pr_ref(n), pr_url, "overstep: needs the owner",
+                                               asked, now))
+                elif role not in watch.RULING_ROLES or not one:
+                    cant = (f"[ruling] restarts only {' and '.join(watch.RULING_ROLES)} PRs" if role not in
+                            watch.RULING_ROLES else f"[ruling] skips a PR that closes {len(closes)} issues")
+                    file(goal, "stuck", item("changes-no-restart", pr_ref(n), pr_url,
+                                             f"overstep; @{owner} answered, and no trigger starts the "
+                                             f"{role or 'author'} ({cant})", answered[0], now))
+                else:
+                    replied = [c["at"] for c in comments
+                               if c["login"] == f"productswarm-{role}[bot]" and c["at"] and c["at"] > answered[-1]]
+                    if replied:                              # [ruling] ran, and it asked back
+                        file(goal, "waiting", item("pr", pr_ref(n), pr_url,
+                                                   f"overstep: the {role} replied to @{owner}'s ruling "
+                                                   f"and changed nothing", replied[0], now))
+            elif rv["at_head"] == CHANGES:
+                if role in watch.RESPOND_ROLES and one and not generate.past_bound(rv["changes_requested"]):
+                    continue                                 # [respond] restarts it
+                if role not in watch.RESPOND_ROLES:
+                    file(goal, "stuck", item("changes-no-restart", pr_ref(n), pr_url,
+                                             f"changes requested at {head[:7]}, no push since, and no "
+                                             f"trigger restarts the {role or 'author'} ([respond] "
+                                             f"restarts only {' and '.join(watch.RESPOND_ROLES)} PRs)",
+                                             asked, now))
+                    continue
+                why = (generate.needs_owner(rv, author)
+                       or f"changes requested on a PR that closes {len(closes)} issues: needs the owner")
+                if answered:
+                    file(goal, "stuck", item("changes-no-restart", pr_ref(n), pr_url,
+                                             f"{why.split(':')[0]}; @{owner} answered, and no trigger "
+                                             f"starts the fix", answered[0], now))
+                else:
+                    file(goal, "waiting", item("pr", pr_ref(n), pr_url, why, asked, now))
+            elif rv["at_head"] == "APPROVED":
+                mine = [r for r in reviews if r["user"]["login"] == owner and r["commit_id"] == head
+                        and r["state"] in ("APPROVED", CHANGES, "DISMISSED")]
+                owner_ok = mine[-1]["at"] if mine and mine[-1]["state"] == "APPROVED" else None
+                if p.get("mergeable") == "CONFLICTING":           # rule 4 (PR #839)
+                    by = f"the reviewer and @{owner}" if owner_ok else "the reviewer"
+                    file(goal, "stuck", item("conflict", pr_ref(n), pr_url,
+                                             f"approved at head by {by}, but it conflicts with main: "
+                                             f"the merger can't merge it, and nothing will start a fix",
+                                             owner_ok or asked, now))
+                    continue
+                left = merger_left(comments, head)
+                if left and not (owner_ok and owner_ok > left[0]):    # the owner approved since
+                    file(goal, "waiting", item("pr", pr_ref(n), pr_url,
+                                               f"approved at head; the merger left it for the owner: "
+                                               f"{left[1]}", left[0], now))
 
     # Rule 2: merged, but its issue is still open.
     for p in d.merged:
@@ -613,6 +628,33 @@ def hand_sessions(launcher) -> list[dict]:
     return out
 
 
+def other_repo_prs(pool, g, repo: str, manifest_path, errors: list[str]
+                   ) -> tuple[dict[str, list[dict]], dict[str, dict[int, dict | None]]]:
+    """Each [org] repo's open PRs and the scopes of the issues they close (#1292, GOV-0036),
+    so a PR waiting on the owner there is listed too. A paused repo is still read: a PR left
+    for the owner there still waits on them. A repo that can't be read is named in errors."""
+    import manifest
+    try:
+        repos, problems = manifest.load_repos(manifest_path)
+    except manifest.ManifestError:
+        return {}, {}         # report_issue's read above names the file's problem
+    errors.extend(f"swarm.toml {p}; other repos' PRs not read" for p in problems)
+    others = manifest.others(repos, repo)[0]
+    jobs = {r: pool.submit(g.gh_json, "pr", "list", "--repo", r, "--state", "open", "--limit", "200",
+                           "--json", PR_FIELDS) for r in others}
+    prs: dict[str, list[dict]] = {}
+    scopes: dict[str, dict[int, dict | None]] = {}
+    for r, job in jobs.items():
+        try:
+            prs[r] = job.result() or []
+            numbers = sorted({c["number"] for p in prs[r] for c in p.get("closingIssuesReferences") or []})
+            scopes[r] = swarm.gh_scopes(r, numbers) if numbers else {}
+        except RuntimeError as e:
+            prs.pop(r, None)
+            errors.append(f"{r}'s PRs: {e}")
+    return prs, scopes
+
+
 def gather(launcher, repo: str, owner: str, manifest_path, hours: int = HOURS,
            now: dt.datetime | None = None, sync_acts: bool = True) -> Data:
     """Read everything report() needs. Raises RuntimeError if GitHub can't be read; a local
@@ -671,7 +713,9 @@ def gather(launcher, repo: str, owner: str, manifest_path, hours: int = HOURS,
         numbers = {it["number"] for it in issues if "pull_request" not in it}
         numbers |= {c["number"] for p in [*prs, *merged] for c in p.get("closingIssuesReferences") or []}
         scopes = swarm.gh_scopes(repo, sorted(numbers)) if numbers else {}
-        keys = sorted({f"{p['repo']}#{p['number']}" for sc in scopes.values() for p in (sc or {}).get("parents") or []
+        other_prs, other_pr_scopes = other_repo_prs(pool, g, repo, manifest_path, errors)
+        every = [*scopes.values(), *(sc for got in other_pr_scopes.values() for sc in got.values())]
+        keys = sorted({f"{p['repo']}#{p['number']}" for sc in every for p in (sc or {}).get("parents") or []
                        if p["repo"] not in (None, repo) and p["type"] in SCOPE_TYPES and p["state"] == "open"
                        and p["author"] == owner})
         got = list(pool.map(lambda k: g.gh_json("api", "repos/{}/issues/{}".format(*k.split("#"))) or {}, keys))
@@ -711,6 +755,7 @@ def gather(launcher, repo: str, owner: str, manifest_path, hours: int = HOURS,
         errors.append(f"launcher sessions: {e}")
     switches = {k: bool(getattr(limits, k, False)) for k in ("asks", "call_ins", "research")}
     return Data(repo=repo, owner=owner, now=now, issues=issues, scopes=scopes, other_scopes=other,
-                prs=prs, merged=merged, comments=comments, report_issue=report_issue,
+                prs=prs, other_prs=other_prs, other_pr_scopes=other_pr_scopes,
+                merged=merged, comments=comments, report_issue=report_issue,
                 switches=switches, daily_rows=daily_rows, week_merges=week_merges, owner_days=owner_days,
                 spend=spend, hours=hours, errors=errors, sessions=sessions)

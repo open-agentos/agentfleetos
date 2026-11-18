@@ -149,6 +149,15 @@ class StripTest(unittest.TestCase):
         m = model(prs=[{"number": 930, "title": "Fix the merger", "closes": [{"number": 77}]}])
         self.assertEqual(strip.strip(m)["decision_refs"], ["#77", "#901"])
 
+    def test_another_repo_s_pr_is_not_this_repo_s_number_1292(self):
+        m = model()
+        m["trouble"]["scopes"][2]["waiting"] = [item("o/scratch#930", "approved at head; left", 2)]
+        got = strip.decisions(m)
+        self.assertIn("o/scratch#930", [d["ref"] for d in got])
+        self.assertIn("PR #930", [d["ref"] for d in got])                 # not deduped against it
+        mine = next(d for d in got if d["ref"] == "o/scratch#930")
+        self.assertEqual((mine["title"], mine["issues"]), ("approved at head; left", []))
+
     def test_no_strip_on_the_page(self):
         # The owner took the counts line off the top of the Work map; its counts stay in state.json.
         page = wp.page(page_model(), "t", "", OWNER)
