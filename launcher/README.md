@@ -821,6 +821,8 @@ It pins Notion API version `2022-06-28`, the last that treats a database as one 
 
 ## swarm memory: lessons, the format and the store (#1185)
 
+These share `swarm memory` with `episodes` and `record` (#1184).
+
 ```bash
 launcher/swarm memory lessons [--role R] [--path P] [--status S] [--json] [--repo owner/name]
 launcher/swarm memory show L-0001 [--json]   # the lesson, its sources, its eval result
@@ -842,7 +844,7 @@ applies_to:
     - launcher/**
   situations:
     - running the tests
-sources:                    # episode ids from memory/episodes/
+sources:                    # episode ids (#1184)
   - <episode id>
   - <episode id>
 confidence: 0.6             # 0 to 1
@@ -861,16 +863,16 @@ The body says the lesson in a few plain sentences, then has a `## Why` and an `#
 **The validator** (`lessons.py`, run by `swarm memory check` and by `test_lessons.py` over the committed store) enforces GOV-0055 (option 1 of #1151) and the format:
 
 - every field above, a file name that matches the id, ids unique, and paths that match something in this repo (for fleet lessons and this repo's; another repo's paths aren't checked here);
-- at least two sources, independent: different sessions for notes, different source links for signals, so two quotes of one comment count once;
-- at least one source an engine-recorded signal (episode `type` in `ENGINE_TYPES`: `owner_act`, `review`, `revert`, `closed_unmerged`, `failed_run`, `cap_hit`, `gov_answer`); a session's `note` doesn't count, nor does a type it doesn't know;
-- every source by the owner, a swarm App (`identities.agents`) or a listed maintainer (an `identities.maintainers` block in `jurisdictions.yml`, read if the owner adds one; there is none today);
+- at least two sources, independent: different sessions for notes and for runs, different source links for other signals, so two quotes of one comment count once;
+- at least one source an engine-recorded signal (episode `type` in `ENGINE_TYPES`: `act`, `retag`, `review`, `revert`, `closed-unmerged`, `run`, `answer`); a session's `note` doesn't count, nor does a type it doesn't know;
+- every source by the owner, a swarm App (`identities.agents`) or a listed maintainer (an `identities.maintainers` block in `jurisdictions.yml`, read if the owner adds one; there is none today). The author is a review's, revert's or unmerged PR's `by`; the owner for an `act`, `retag` or `answer`, which the engine records only for the owner; `productswarm-<role>[bot]` for a note; and the engine itself for a `run`, which comes from its own runs ledger;
 - an active lesson has an `eval_case`;
 - every ruling it names is in force in `governance/INDEX.md`, and the text doesn't set a ruling aside ("ignore GOV-0055");
 - neither title nor body asks to change permissions, credentials, tools or governance. Any sentence pairing a change verb with such a target (`GH_TOKEN`, `allowed_tools`, `GOVERNANCE.md`, the `ready` label and so on) is refused, even a negated one: rulings already say "never", and a lesson needn't.
 
 **Every source must resolve**, however old the lesson is: GOV-0055 makes no exception for age, so a missing episode is an error (`swarm memory show` lists it as `missing`). Nothing deletes episodes yet. When FEAT-14's 30-day retention does, it must keep the episodes a lesson cites, or the owner must rule on how old lessons are checked.
 
-**What this reads from an episode:** `id`, `type`, `author`, `session` (notes) and `link` (signals), from `memory/episodes/*.jsonl`. Episodes are #1184's; nothing else in their schema matters here.
+**What this reads from an episode:** `id`, `type`, `by`, `role` (notes), `session_id` (notes and runs), `source` and `at`, through `episodes.load()`. `swarm memory show` and `check` read `memory/episodes/` and the engine's outbox, `~/.productswarm/memory/episodes/`, as `swarm memory episodes` does, until #1199's record merges.
 
 **Listings are per repo.** `lessons` and `show` default to this checkout's repo and show fleet lessons plus that repo's `repo:<x>` lessons. A `repo:<x>` lesson never shows for another repo. `--role` and `--path` keep lessons that name the role or a matching path, or that name none.
 

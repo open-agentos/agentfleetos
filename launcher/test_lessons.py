@@ -15,18 +15,28 @@ TODAY = dt.date(2026, 11, 17)
 OWNER = "mattmcalister"
 TRUSTED = {OWNER, "productswarm-builder[bot]", "productswarm-reviewer[bot]"}
 
+PR9 = "https://github.com/open-agentos/agentfleetos/pull/9"
+
+
+def ep(id_: str, type_: str, **kw) -> dict:
+    """An episode in episodes.py's schema 1."""
+    return {"schema": 1, "id": id_, "type": type_, "at": "2026-11-16T10:00:00Z", "source": None, **kw}
+
+
+# Shaped as episodes.py (#1184) writes them.
 EPISODES = {
-    "ep-note-a": {"id": "ep-note-a", "type": "note", "session": "s-1", "author": "productswarm-builder[bot]"},
-    "ep-note-a2": {"id": "ep-note-a2", "type": "note", "session": "s-1", "author": "productswarm-builder[bot]"},
-    "ep-note-b": {"id": "ep-note-b", "type": "note", "session": "s-2", "author": "productswarm-builder[bot]"},
-    "ep-act": {"id": "ep-act", "type": "owner_act", "author": "@mattmcalister",
-               "link": "https://github.com/open-agentos/agentfleetos/pull/9#issuecomment-1"},
-    "ep-act-quote": {"id": "ep-act-quote", "type": "owner_act", "author": "mattmcalister",
-                     "link": "https://github.com/open-agentos/agentfleetos/pull/9#issuecomment-1"},
-    "ep-review": {"id": "ep-review", "type": "review", "author": "app/productswarm-reviewer",
-                  "link": "https://github.com/open-agentos/agentfleetos/pull/9#pullrequestreview-2"},
-    "ep-outsider": {"id": "ep-outsider", "type": "review", "author": "some-stranger",
-                    "link": "https://github.com/open-agentos/agentfleetos/pull/10#issuecomment-3"},
+    "ep-note-a": ep("ep-note-a", "note", session_id="s-1", role="builder", source=PR9),
+    "ep-note-a2": ep("ep-note-a2", "note", session_id="s-1", role="builder", source=PR9),
+    "ep-note-b": ep("ep-note-b", "note", session_id="s-2", role="builder", source=PR9),
+    "ep-act": ep("ep-act", "act", tag="correction", source=PR9 + "#issuecomment-1"),
+    "ep-act-quote": ep("ep-act-quote", "retag", tag="approval", source=PR9 + "#issuecomment-1"),
+    "ep-review": ep("ep-review", "review", by="app/productswarm-reviewer", pr=9,
+                    source=PR9 + "#pullrequestreview-2"),
+    "ep-outsider": ep("ep-outsider", "review", by="some-stranger", pr=10,
+                      source="https://github.com/open-agentos/agentfleetos/pull/10#pullrequestreview-3"),
+    "ep-run-1": ep("ep-run-1", "run", outcome="failed", session_id="s-1", source=PR9),
+    "ep-run-2": ep("ep-run-2", "run", outcome="at cap", session_id="s-3", source=PR9),
+    "ep-note-guest": ep("ep-note-guest", "note", session_id="s-4", role="guest", source=PR9),
 }
 
 FRONT = {
@@ -89,7 +99,8 @@ class Fixture(unittest.TestCase):
 
     def ctx(self, **kw):
         return L.Context(trusted=TRUSTED, episodes=EPISODES, rulings={"GOV-0055": "in-force",
-                         "GOV-0047": "superseded"}, repo=REPO, root=self.root, today=TODAY, **kw)
+                         "GOV-0047": "superseded"}, repo=REPO, root=self.root, today=TODAY,
+                         owner=OWNER, **kw)
 
     def write(self, name: str = "L-0001-run-tests-in-launcher.md", **over) -> L.Lesson:
         body = over.pop("body", BODY)
@@ -159,8 +170,8 @@ class SourceRulesTest(Fixture):
                             "engine-recorded signal")
 
     def test_unknown_type_isnt_a_signal(self):
-        eps = {**EPISODES, "ep-odd": {"id": "ep-odd", "type": "made_up", "author": OWNER, "link": "x"}}
-        ctx = L.Context(TRUSTED, eps, {"GOV-0055": "in-force"}, REPO, self.root, TODAY)
+        eps = {**EPISODES, "ep-odd": ep("ep-odd", "made_up", by=OWNER, source="x")}
+        ctx = L.Context(TRUSTED, eps, {"GOV-0055": "in-force"}, REPO, self.root, TODAY, OWNER)
         les = self.write(sources="\n  - ep-note-a\n  - ep-odd")
         self.assertRejected(L.validate(les, ctx), "engine-recorded signal")
 
@@ -170,6 +181,24 @@ class SourceRulesTest(Fixture):
 
     def test_author_spellings_normalised(self):
         self.assertEqual(self.errors(sources="\n  - ep-review\n  - ep-act"), [])
+
+    def test_a_notes_author_is_its_roles_app(self):
+        self.assertEqual(L.author(EPISODES["ep-note-a"], OWNER), "productswarm-builder[bot]")
+        self.assertRejected(self.errors(sources="\n  - ep-note-guest\n  - ep-act"),
+                            "productswarm-guest[bot], not the owner")
+
+    def test_owner_acts_and_runs_are_trusted(self):
+        self.assertEqual(L.author(EPISODES["ep-act"], OWNER), OWNER)
+        self.assertEqual(self.errors(sources="\n  - ep-run-2\n  - ep-act"), [])
+
+    def test_a_run_and_a_note_from_one_session_are_two_signals(self):
+        # different types, so different keys; two runs are keyed by their sessions, not their PR
+        self.assertEqual(self.errors(sources="\n  - ep-note-a\n  - ep-run-1"), [])
+        self.assertEqual(self.errors(sources="\n  - ep-run-1\n  - ep-run-2"), [])
+
+    def test_engine_types_are_episodes_types_less_note(self):
+        import episodes
+        self.assertEqual(L.ENGINE_TYPES, set(episodes.TYPES) - {"note"})
 
     def test_missing_source(self):
         self.assertRejected(self.errors(sources="\n  - ep-act\n  - ep-gone"), "isn't an episode")
@@ -306,10 +335,10 @@ class EpisodesTest(unittest.TestCase):
     def test_load_skips_bad_lines(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "2026-11-17.jsonl"
-            p.write_text('{"id": "a", "type": "note"}\nnot json\n[1]\n{"type": "note"}\n')
+            p.write_text('{"schema": 1, "id": "a", "type": "note"}\nnot json\n[1]\n'
+                         '{"schema": 1, "type": "note"}\n{"schema": 2, "id": "b"}\n')
             eps = L.load_episodes([Path(d), Path(d) / "missing"])
         self.assertEqual(list(eps), ["a"])
-        self.assertEqual(eps["a"]["_file"], "2026-11-17.jsonl")
 
     def test_norm_login(self):
         self.assertEqual(L.norm_login("app/productswarm-builder"), "productswarm-builder[bot]")
@@ -324,15 +353,21 @@ class CommandTest(Fixture):
         out = []
         launcher = mock.Mock()
         launcher.out = out.append
+        launcher.home = self.root / "home"
         eps = self.root / "memory" / "episodes"
         eps.mkdir(exist_ok=True)
-        (eps / "2026-11-17.jsonl").write_text("".join(json.dumps(e) + "\n" for e in EPISODES.values()
-                                                       if e["id"] != "ep-note-b"))
+        (eps / "2026-11-16.jsonl").write_text("".join(json.dumps(e) + "\n" for e in EPISODES.values()
+                                                       if e["id"] not in ("ep-note-b", "ep-act")))
+        # the engine's outbox, until #1199's record merges: read too
+        outbox = launcher.home / "memory" / "episodes"
+        outbox.mkdir(parents=True, exist_ok=True)
+        (outbox / "2026-11-16.jsonl").write_text(json.dumps(EPISODES["ep-act"]) + "\n")
         with mock.patch.multiple(L, LESSONS=self.dir, EPISODES=eps, INDEX=self.root / "memory" / "INDEX.md",
                                  ROOT=self.root), \
              mock.patch.object(L, "trusted_logins", lambda: TRUSTED), \
              mock.patch.object(L, "in_force_rulings", lambda: {"GOV-0055": "in-force"}), \
-             mock.patch.object(L, "today", lambda: TODAY):
+             mock.patch.object(L, "today", lambda: TODAY), \
+             mock.patch("swarm.owner_login", lambda *a: OWNER):
             code = swarm.main(list(argv), launcher)
         return code, "\n".join(out)
 
@@ -341,7 +376,7 @@ class CommandTest(Fixture):
         code, out = self.run_swarm("memory", "show", "L-0001", "--repo", REPO)
         self.assertEqual(code, 0)
         self.assertIn("ep-note-a: note (session note) by productswarm-builder[bot]", out)
-        self.assertIn("ep-act: owner_act (engine signal) by @mattmcalister", out)
+        self.assertIn("ep-act: act (engine signal) by mattmcalister", out)
         self.assertIn("ep-note-b: missing", out)
         self.assertIn("Eval: evals/lessons/L-0001.json: not run yet", out)
 

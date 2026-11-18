@@ -10,22 +10,25 @@ This module:
   - lists and shows lessons (`swarm memory lessons`, `swarm memory show`);
   - generates `memory/INDEX.md` (`swarm memory index`), one row per active or dormant lesson.
 
-Episodes (#1184, FEAT-14) are read from `memory/episodes/*.jsonl`. Only these fields of an
-episode are used, so the episode schema can grow without touching this file:
+Episodes (#1184, FEAT-14) are read with episodes.load(), from `memory/episodes/` and, until
+#1199's record merges, the engine's outbox. Only these fields of an episode are used:
 
-  id       the id a lesson's `sources` names
-  type     "note" for a session's own note; an engine-recorded signal otherwise (ENGINE_TYPES)
-  author   the GitHub login whose content the episode carries
-  session  the session that wrote a note (notes only)
-  link     the signal's source link (signals only)
-  ts       when it was recorded (shown, not checked)
+  id          the id a lesson's `sources` names
+  type        "note" for a session's own note; an engine-recorded signal if in ENGINE_TYPES
+  by          who wrote a review, revert or unmerged PR
+  role        the role whose session wrote a note: its App, productswarm-<role>[bot]
+  session_id  the session that wrote a note, or whose run failed
+  source      the signal's source link
+  at          when it was recorded (shown, not checked)
+
+An act, retag or answer is the owner's by construction (episodes.py records only theirs), and
+a run comes from the engine's own runs ledger. See author().
 
 Nothing here reads a lesson's or an episode's text as instructions: they are data.
 """
 from __future__ import annotations
 
 import datetime as dt
-import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,8 +46,11 @@ REQUIRED = ("id", "title", "status", "scope", "applies_to", "sources", "confiden
 # Episode types the engine records with no model call (FEAT-14's signals). GOV-0055 needs at
 # least one source of these: "an owner act, a review outcome, a revert, a failed run".
 # Anything else, including a type this list doesn't know, is not an engine-recorded signal.
-ENGINE_TYPES = frozenset({"owner_act", "review", "revert", "closed_unmerged", "failed_run",
-                          "cap_hit", "gov_answer"})
+# These are episodes.TYPES less "note", listed here so a type episodes.py adds later doesn't
+# count until someone adds it.
+ENGINE_TYPES = frozenset({"act", "retag", "review", "revert", "closed-unmerged", "run", "answer"})
+OWNER_TYPES = frozenset({"act", "retag", "answer"})   # recorded only for the owner's own acts
+ENGINE = "the engine"   # a run's author: the runs ledger, written by swarm watch itself
 
 FILE_RE = re.compile(r"^(L-\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$")
 ID_RE = re.compile(r"^L-\d{4}$")
@@ -201,29 +207,35 @@ def norm_login(login: str | None) -> str:
 
 
 def load_episodes(dirs: list[Path] | None = None) -> dict[str, dict]:
-    """Every episode by id from the JSONL files in `dirs` (default memory/episodes/).
-    Lines that aren't JSON objects with an id are skipped: they can't be a source."""
-    out: dict[str, dict] = {}
-    for d in dirs if dirs is not None else [EPISODES]:
-        if not d.is_dir():
-            continue
-        for f in sorted(d.glob("*.jsonl")):
-            for line in f.read_text(errors="replace").splitlines():
-                try:
-                    e = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(e, dict) and isinstance(e.get("id"), str):
-                    out.setdefault(e["id"], {**e, "_file": f.name})
-    return out
+    """Every episode by id, read by episodes.load() from `dirs` (default memory/episodes/;
+    `swarm memory` adds the engine's outbox)."""
+    import episodes
+    return {e["id"]: e for e in episodes.load(dirs if dirs is not None else [EPISODES])
+            if isinstance(e.get("id"), str)}
+
+
+def author(e: dict, owner: str) -> str | None:
+    """The login whose content the episode carries, or ENGINE for a run; None if unknown."""
+    if e.get("by"):
+        return str(e["by"])
+    t = e.get("type")
+    if t in OWNER_TYPES:
+        return owner
+    if t == "run":
+        return ENGINE
+    if t == "note" and isinstance(e.get("role"), str) and re.fullmatch(r"[a-z]+", e["role"]):
+        return f"productswarm-{e['role']}[bot]"
+    return None
 
 
 def independence_key(e: dict) -> str:
-    """Two sources are independent when their keys differ: a note's session, a signal's
-    source link. Two quotes of one comment share a link, so they count once (GOV-0055)."""
-    if e.get("type") == "note":
-        return "session:" + str(e.get("session") or e["id"])
-    return "link:" + str(e.get("link") or e["id"])
+    """Two sources are independent when their keys differ: a note's session, a run's session,
+    another signal's source link. Two quotes of one comment share a link, so they count once
+    (GOV-0055)."""
+    t = e.get("type")
+    if t in ("note", "run"):
+        return f"{t}:" + str(e.get("session_id") or e["id"])
+    return "link:" + str(e.get("source") or e["id"])
 
 
 def engine_recorded(e: dict) -> bool:
@@ -299,10 +311,14 @@ class Context:
     repo: str
     root: Path | None = None    # None: ROOT
     today: dt.date | None = None  # None: today()
+    owner: str | None = None    # None: humans.owner in jurisdictions.yml
 
     def __post_init__(self):
         self.root = self.root or ROOT
         self.today = self.today or today()
+        if self.owner is None:
+            import swarm
+            self.owner = swarm.owner_login()
 
 
 def validate(lesson: Lesson, ctx: Context) -> list[str]:
@@ -413,11 +429,12 @@ def source_errors(m: dict, ctx: Context) -> list[str]:
     errs = []
     # Every source must resolve, whatever the lesson's age: GOV-0055 makes no exception (#1206).
     if missing:
-        errs.append(f"source {', '.join(missing)} isn't an episode in memory/episodes/")
-    trusted = {norm_login(t) for t in ctx.trusted}
+        errs.append(f"source {', '.join(missing)} isn't an episode")
+    trusted = {norm_login(t) for t in ctx.trusted} | {ENGINE}
     for e in found:
-        if norm_login(e.get("author")) not in trusted:
-            errs.append(f"source {e['id']} is by {e.get('author') or 'an unknown author'}, not the "
+        who = author(e, ctx.owner)
+        if norm_login(who) not in trusted:
+            errs.append(f"source {e['id']} is by {who or 'an unknown author'}, not the "
                         f"owner, a swarm App or a listed maintainer (GOV-0055)")
     if len({independence_key(e) for e in found}) < 2:
         errs.append("needs two independent sources: different sessions or signals (GOV-0055)")
@@ -512,7 +529,7 @@ def list_text(lessons: list[Lesson]) -> str:
     return "\n".join(rows)
 
 
-def resolve_sources(les: Lesson, episodes: dict[str, dict]) -> list[dict]:
+def resolve_sources(les: Lesson, episodes: dict[str, dict], owner: str) -> list[dict]:
     out = []
     for s in les.meta.get("sources") or [] if isinstance(les.meta.get("sources"), list) else []:
         e = episodes.get(str(s))
@@ -520,9 +537,9 @@ def resolve_sources(les: Lesson, episodes: dict[str, dict]) -> list[dict]:
             out.append({"id": str(s), "found": False})
         else:
             out.append({"id": str(s), "found": True, "type": e.get("type"),
-                        "engine_recorded": engine_recorded(e), "author": e.get("author"),
-                        "session": e.get("session"), "link": e.get("link"), "ts": e.get("ts"),
-                        "file": f"memory/episodes/{e['_file']}"})
+                        "engine_recorded": engine_recorded(e), "author": author(e, owner),
+                        "session_id": e.get("session_id"), "source": e.get("source"),
+                        "at": e.get("at")})
     return out
 
 
@@ -537,12 +554,12 @@ def show_text(les: Lesson, sources: list[dict], ev: dict, errors: list[str]) -> 
     out = [les.path.read_text().rstrip(), "", "Sources:"]
     for s in sources:
         if not s["found"]:
-            out.append(f"  {s['id']}: missing (not in memory/episodes/)")
+            out.append(f"  {s['id']}: missing (not in memory/episodes/ or the engine's outbox)")
         else:
             kind = "engine signal" if s["engine_recorded"] else "session note"
-            where = s.get("link") or (f"session {s['session']}" if s.get("session") else "")
+            where = s.get("source") or (f"session {s['session_id']}" if s.get("session_id") else "")
             out.append(f"  {s['id']}: {s.get('type')} ({kind}) by {s.get('author')}, "
-                       f"{s.get('ts') or 'undated'}{', ' + where if where else ''} [{s['file']}]")
+                       f"{s.get('at') or 'undated'}{', ' + where if where else ''}")
     out += ["", f"Eval: {ev['case'] or '-'}: {ev['note']}"]
     if errors:
         out += ["", "Invalid:"] + [f"  {e}" for e in errors]

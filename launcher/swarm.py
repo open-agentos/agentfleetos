@@ -30,6 +30,9 @@
     launcher/swarm memory record [--since D]
                                     record the signals since D (default: yesterday) as
                                     episodes by hand; swarm watch does it hourly
+    launcher/swarm memory lessons|show|check|index
+                                    the lesson store: list, show, validate, regenerate
+                                    memory/INDEX.md (#1185, FEAT-15; lessons.py)
     launcher/swarm watch [--dry-run] [--serve] [--container IMAGE]
                                     the v2 wake-up loop: start sessions on triggers, within
                                     the [watch] limits in swarm.toml (#90, GOV-0010; watch.py)
@@ -2360,9 +2363,14 @@ def classify_eval():
 
 # ---------------------------------------------------------------- memory (#1185)
 
-def memory(launcher: Launcher, args, repo: str) -> int:
+LESSON_CMDS = ("lessons", "show", "index", "check")
+
+
+def memory_lessons(launcher: Launcher, args, repo: str) -> int:
     """`swarm memory lessons|show|index|check`: the lesson store (FEAT-15). Only reads,
-    except `index`, which writes memory/INDEX.md."""
+    except `index`, which writes memory/INDEX.md. Sources resolve against memory/episodes/
+    and the engine's outbox, as `swarm memory episodes` reads them."""
+    import episodes
     import lessons as L
     all_lessons = L.load_all()
     if args.memory_cmd == "index":
@@ -2389,7 +2397,8 @@ def memory(launcher: Launcher, args, repo: str) -> int:
         launcher.out(f"swarm memory {args.memory_cmd}: can't tell the repo; pass --repo owner/name")
         return 2
     try:
-        ctx = L.Context(L.trusted_logins(), L.load_episodes(), L.in_force_rulings(), repo)
+        eps = L.load_episodes([L.EPISODES, episodes.outbox(launcher.home)])
+        ctx = L.Context(L.trusted_logins(), eps, L.in_force_rulings(), repo)
     except (OSError, RuntimeError) as e:
         launcher.out(f"swarm memory {args.memory_cmd}: {e}")
         return 1
@@ -2401,7 +2410,8 @@ def memory(launcher: Launcher, args, repo: str) -> int:
     if les is None or not L.visible_in(les, repo):
         launcher.out(f"swarm memory show: no lesson {args.lesson} for {repo}")
         return 1
-    sources, ev, errs = L.resolve_sources(les, ctx.episodes), L.eval_result(les), L.validate(les, ctx)
+    sources, ev, errs = (L.resolve_sources(les, ctx.episodes, ctx.owner), L.eval_result(les),
+                         L.validate(les, ctx))
     if args.as_json:
         launcher.out(json.dumps({**L.summary(les), "body": les.body, "sources": sources,
                                  "eval": ev, "errors": errs}, indent=2))
@@ -2445,7 +2455,7 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     p_acts.add_argument("--json", action="store_true", dest="as_json", help="the same per-day list as JSON")
     p_acts.add_argument("--repo", help="owner/name (default: this checkout's origin)")
     p_acts.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
-    p_memory = sub.add_parser("memory", help="the learning loop's episodes (#1184)")
+    p_memory = sub.add_parser("memory", help="the learning loop: episodes (#1184) and lessons (#1185)")
     mem = p_memory.add_subparsers(dest="memory_cmd", required=True)
     p_eps = mem.add_parser("episodes", help="session notes and the engine's signals, oldest first")
     p_eps.add_argument("--since", type=dt.date.fromisoformat, help="YYYY-MM-DD")
@@ -2540,8 +2550,7 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     classify_sub = p_classify.add_subparsers(dest="classify_cmd", required=True)
     classify_eval().add_eval_args(classify_sub.add_parser(
         "eval", help="score a classifier on a labelled set and write a Markdown report"))
-    p_memory = sub.add_parser("memory", help="team memory: lessons in memory/lessons/ (#1185)")
-    memory_sub = p_memory.add_subparsers(dest="memory_cmd", required=True)
+    memory_sub = mem   # lessons share #1184's `memory` parser
     p_mls = memory_sub.add_parser("lessons", help="list lessons for this repo (fleet and repo:<this>)")
     p_mls.add_argument("--role", help="only lessons for this role (or for all roles)")
     p_mls.add_argument("--path", help="only lessons whose paths match this path (or that name none)")
@@ -2564,9 +2573,9 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     launcher = launcher or Launcher(home())
     if args.cmd == "classify":
         return classify_eval().eval_main(args, say=launcher.out)
-    if args.cmd == "memory":
+    if args.cmd == "memory" and args.memory_cmd in LESSON_CMDS:
         repo = getattr(args, "repo", None) or dashboard().default_repo() or ""
-        return memory(launcher, args, repo)
+        return memory_lessons(launcher, args, repo)
     if args.cmd == "backup":
         try:
             out = statedb.backup(launcher.dir, Path(args.out) if args.out else None)
