@@ -453,7 +453,32 @@
     return c === 0 ? "none (usual " + usd(b) + ")" : "×" + num(c / b, 1) + " usual (" + usd(b) + ")";
   }
 
+  // The rail (#1249): the Briefing, with the Selected panel sliding in over it while something
+  // is selected. Closing it with focus inside hands focus back to the Briefing's box, so it
+  // doesn't stay on a control that's now hidden.
+  function drawer() {
+    var rail = document.querySelector("[data-rail]");
+    if (!rail) return;
+    var open = st.selected !== null;
+    var over = rail.querySelector(".rail-over");
+    var inside = !open && over && document.activeElement && over.contains(document.activeElement);
+    rail.classList.toggle("rail-open", open);
+    if (inside) { var base = rail.querySelector(".rail-base"); if (base) base.focus({ preventScroll: true }); }
+  }
+  // "← Brief" and Esc clear the selection through select()'s toggle, as selecting it again does.
+  function toBrief() { if (st.selected !== null) select(st.selected); }
+  var closeBtn = $("wm-sel-close");
+  if (closeBtn) closeBtn.addEventListener("click", toBrief);
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && !ev.defaultPrevented && st.selected !== null) toBrief();
+  });
+
   function panel() {
+    fillPanel();
+    drawer();
+  }
+
+  function fillPanel() {
     var box = $("wm-sel");
     if (!box) return;
     var kind = st.selected ? st.selected.split("-")[0] : null;
