@@ -52,4 +52,4 @@ n/a. This is an authoritative decision by the owner on #1280.
 
 ## Consequences
 
-`launcher/merger.py` skips the closing-issue condition for a librarian PR that touches only `memory/`; the builder's PR for #1274 changes it. A memory-only librarian PR needs no go issue at all, so the only guards are the `memory/` scope limit, the protected owner model and the reviewer's approval at head. Revisit if a librarian PR ever merges something the owner would have wanted to see first. Reversal is one condition in the merger.
+#1281 (for #1274) kept the closing-issue check, so `launcher/merger.py` doesn't yet apply this ruling. #1285 tracks the change that skips the condition for a librarian PR that touches only `memory/`. A memory-only librarian PR needs no go issue at all, so the only guards are the `memory/` scope limit, the protected owner model and the reviewer's approval at head. Revisit if a librarian PR ever merges something the owner would have wanted to see first. Reversal is one condition in the merger.
