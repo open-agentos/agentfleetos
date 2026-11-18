@@ -209,6 +209,7 @@ class CallCountTest(unittest.TestCase):
 
     def rebuild(self):
         base = f"repos/{REPO}"
+        recent = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         runs_ = [{"id": i, "event": "schedule", "created_at": ts(i), "status": "completed",
                   "conclusion": "success", "html_url": f"https://x/runs/{i}",
                   "actor": {"login": "x"}, "triggering_actor": {"login": "x"}}
@@ -222,8 +223,10 @@ class CallCountTest(unittest.TestCase):
                      "closingIssuesReferences": [], "headRefOid": SHA} for i in range(self.OPEN_PRS)],
             "rate_limit": limits(),
             # #406's question history: QUESTIONS gov questions in the window, PRs merged.
+            # The rebuild's window runs from the real clock, so date them from it, not NOW:
+            # dated from NOW they fell out of the 14-day window once it passed.
             f"{base}/issues": [{"number": 600 + i, "title": "q", "state": "open",
-                                "created_at": ts(60), "html_url": "u", "labels": []}
+                                "created_at": recent, "html_url": "u", "labels": []}
                                for i in range(self.QUESTIONS)],
             "search/issues": [{"number": 700, "pull_request": {"merged_at": ts(30)}}],
             f"{base}/actions/workflows/reviewer.yml/runs": runs_,
