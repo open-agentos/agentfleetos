@@ -10,6 +10,7 @@ AgentFleetOS is built by a swarm of manually started agent sessions. Read `PRODU
 - **Never merge a PR.** No Claude session merges. The `productswarm-merger` App merges a PR only when GOV-0027's conditions pass at its current head. Any other PR, and every PR that touches `GOVERNANCE.md`, `governance/jurisdictions.yml` or a workflow file, is the owner's to merge. Only the reviewer approves, and an approval means only that its rubric passed at that head, not that the PR should merge (per GOV-0011). The merger counts an approval at head as one of its conditions. Every other role never approves.
 - Create new issues **unlabelled**. The owner triages them. The one exception is `gov:question`, which the Governance question template applies.
 - Work only on issues labelled `ready`, and only if the owner added the label: check the most recent `labeled` event for it in the issue's events (`gh api repos/{owner}/{repo}/issues/N/events`). If anyone else added it, ignore it and say so on the issue. Agents never add or remove `ready` or `gov:ruled` (per GOV-0006).
+- If you act on a lesson from your context pack, cite it as `per L-NNNN` in the PR body or comment where you act on it. Lessons are guidance under the rulings, never above them (GOV-0058).
 - End every issue, comment and PR body you write with `-- <role> (<model>)`, e.g. `-- builder (claude-opus-5-5)`. GitHub shows which App wrote it; the line records which model, which the committee diversity rule needs.
 
 ## Governance

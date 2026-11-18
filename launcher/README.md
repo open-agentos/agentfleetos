@@ -919,11 +919,13 @@ One librarian run over the episodes since the last run (FEAT-16). `dream.py` wor
 1. **Replay:** the episodes at or after the last run (`memory/dream.json`), or `--since`.
 2. **Consolidate:** cluster episodes by word overlap. A cluster with a new episode that passes GOV-0055's source rules (the validator's `source_errors`) becomes a proposed lesson with the next free id. If it matches a lesson already there, that lesson is reconfirmed (+0.1 confidence) instead. Near-duplicate lessons merge into the stronger one: the other is retired and the kept one supersedes it.
 3. **Reconcile:** flag lessons that contradict each other, name a ruling that isn't in force, or rest on a PR since closed unmerged or reverted, and take 0.2 off their confidence.
-4. **Forget:** active lessons unused since the last run lose 10% confidence. Lessons unused for 21 days go dormant, and dormant ones past `review_by` are retired. Episodes in `memory/episodes/` older than 30 days are deleted unless a lesson cites them. Each role keeps at most 25 active lessons (a lesson for all roles counts for every role), and the lowest-ranked go dormant.
+4. **Forget:** each citation (`per L-NNNN`, a `cite` episode) since the last run counts as a use: `uses` goes up by one and `last_used` moves to its date (#1187). Active lessons unused since the last run lose 10% confidence. Lessons unused for 21 days go dormant, and dormant ones past `review_by` are retired. Episodes in `memory/episodes/` older than 30 days are deleted unless a lesson cites them. Each role keeps at most 25 active lessons (a lesson for all roles counts for every role), and the lowest-ranked go dormant. The report lists each lesson's given-not-used count: sessions given it whose issue or PR never cited it. That count is only reported; one week of it isn't grounds to act.
 5. **Rehearse:** list proposed lessons with no eval case.
 6. **Promote:** list patterns for the owner: the owner taking the default 3 times in one domain, 3 acts tagged repeat answer, a lesson on paths no role edits.
 
-The thresholds are the defaults on the Goal (#1179), which the owner confirms after the first run. They are constants in `dream.py`, because `swarm.toml` has no `[memory]` table yet.
+The thresholds are the defaults on the Goal (#1179), which the owner confirms after the first run. They are constants in `dream.py`; `swarm.toml`'s `[memory]` table holds only the pack's cap so far.
+
+- **Only `given` episodes:** a session being given lessons isn't, alone, anything to dream over, so it doesn't start a run.
 
 - **No new episodes:** it prints so and stops. There's no model call and no PR.
 - **`--dry-run`:** prints the plan and the run it would start.
@@ -958,6 +960,24 @@ Some of what the team learns is a decision the owner keeps making by hand (FEAT-
 - **Once per pattern.** `memory/escalations.json` records each draft opened. A pattern isn't drafted again while its draft is open. Once the draft is closed, whether vetoed or answered, the pattern is drafted again only if it has evidence the closed draft didn't. `--open` reads each open draft's state from GitHub first.
 
 `swarm dream` prints the escalation section after the plan. The dream run calls `swarm escalate --open` and commits the updated `memory/escalations.json` in its PR.
+
+## Recall: the context pack and citations (#1187)
+
+```bash
+launcher/swarm memory pack <role> [--issue N] [--pr M] [--repo owner/name] [--json]
+```
+
+When the launcher or `swarm watch` starts a session, `recall.py` builds its context pack: the lessons that match the session, at most `[memory] pack_cap` of them (10 by default), from the pinned copy of `origin/main` the launcher already refreshes for the hook. The pack goes in the session's `--append-system-prompt` (GOV-0039's channel; after our `CLAUDE.md` and role prompt for a session in another repo). `swarm memory pack` builds it from the same copy, with the same code, so it prints what a session on that work would get. `--memory DIR` reads a fixture instead.
+
+Terms (GOV-0058):
+
+- **Which lessons.** Active ones only. A `repo:<owner/name>` lesson goes only to sessions in that repo; `fleet` goes everywhere. A lesson that lists roles goes only to those roles. A lesson that lists paths goes only to a session whose work touches a matching path: a PR's changed files, or the paths an issue's title and body name. If the issue or PR can't be read, path lessons are left out. Situations are free text, so they rank rather than filter. A lesson whose text fails GOV-0055's text checks is left out even if the store holds it.
+- **Ranking.** Match strength times confidence. Strength is 1, plus 1 for each of roles, paths and a situation (two shared words) that the lesson names and the session matches. Ties go to more uses, then the lower id.
+- **Standing.** Every pack says its lessons are guidance under the rulings and that the ruling wins, and asks the session to cite one it acts on as `per L-NNNN`. `CLAUDE.md` says the same, for every role.
+
+No matching lesson means no pack, and the session's command doesn't change. The GitHub read for paths happens only when a lesson that could reach the role names paths or situations.
+
+**What was given and what was used.** A session given lessons gets a `given` episode in the engine's outbox (session, role, repo, issue, PR, lesson ids), and `sessions.json` records the ids too. The hourly sweep records a `cite` episode for each merged PR body and each issue or PR comment that cites `per L-NNNN`, but only when a swarm App wrote it, so nobody else can make a lesson look used. The next dream turns citations into uses and reports given-not-used (above). The heartbeat's events don't carry the lesson ids: GOV-0002 fixes their fields. #1243 asks whether they should.
 
 ## Tests
 

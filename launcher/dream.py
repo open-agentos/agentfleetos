@@ -9,10 +9,15 @@
                   lessons merge into the stronger one.
   3. Reconcile    flag lessons that contradict each other, name a ruling no longer in force, or
                   rest on a PR since closed unmerged or reverted; lower their confidence.
-  4. Forget       decay active lessons unused since the last run; move ones unused past
+  4. Forget       count each lesson cited (`per L-NNNN`, a cite episode) since the last run as
+                  a use, updating uses and last_used (#1187); decay active lessons unused since
+                  the last run; move ones unused past
                   DORMANT_DAYS to dormant; retire dormant ones past review_by; delete episodes
                   in memory/episodes/ past RETENTION_DAYS that no lesson cites; keep each role
-                  within BUDGET active lessons, moving the lowest-ranked to dormant.
+                  within BUDGET active lessons, moving the lowest-ranked to dormant. Report each
+                  lesson's given-not-used count: sessions given it (given episodes) whose issue
+                  or PR never cited it. That count is only reported: one week of it isn't
+                  grounds to act (FEAT-17's notes).
   5. Rehearse     list the proposed lessons that need an eval case (Rehearsal builds the gate).
   6. Promote      list patterns past a lesson for the owner: the same answer three times, a
                   lesson outside every role's jurisdiction. Drafting them is Escalation.
@@ -136,6 +141,8 @@ class Plan:
     kept_cited: list[str] = field(default_factory=list)           # past retention, but cited
     rehearse: list[dict] = field(default_factory=list)            # Rehearse
     promote: list[dict] = field(default_factory=list)             # Promote
+    uses: dict[str, dict] = field(default_factory=dict)           # id -> {uses, last_used, by}
+    given: dict[str, dict] = field(default_factory=dict)          # id -> {given, cited, not_used}
     confidence: dict[str, float] = field(default_factory=dict)    # lesson id -> new value
     status: dict[str, str] = field(default_factory=dict)          # lesson id -> new status
 
@@ -195,7 +202,10 @@ def plan(lessons: list[L.Lesson], episodes: list[dict], ctx: L.Context, *, since
     today = ctx.today or L.today()
     p = Plan(since=since, today=today)
     by_id = {e["id"]: e for e in episodes}
-    new = [e for e in episodes if since is None or str(e.get("at") or "") >= since]
+    # A session being given lessons is not, alone, something to dream over: it is read below
+    # for given-not-used, but doesn't make a run start.
+    new = [e for e in episodes if (since is None or str(e.get("at") or "") >= since)
+           and e.get("type") != "given"]
     p.new = [e["id"] for e in new]
     for e in new:
         p.by_type[str(e.get("type"))] = p.by_type.get(str(e.get("type")), 0) + 1
@@ -290,12 +300,29 @@ def plan(lessons: list[L.Lesson], episodes: list[dict], ctx: L.Context, *, since
                                  "confidence": conf[keep.id]})
                 p.status[drop.id] = "retired"
 
-    # 4. Forget
+    # 4. Forget: first, the uses cited since the last run (#1187)
+    lives = {x.id: x for x in live if x.id not in gone}
+    for e in new:
+        if e.get("type") != "cite":
+            continue
+        day = L._date(str(e.get("at") or "")[:10])
+        for lid in dict.fromkeys(str(i) for i in e.get("lessons") or []):
+            x = lives.get(lid)
+            if x is None or day is None:
+                continue
+            u = p.uses.setdefault(lid, {"uses": int(_num(x.meta.get("uses"))), "last_used": None, "by": []})
+            u["uses"] += 1
+            u["by"].append(e["id"])
+            prev = L._date(u["last_used"] or x.meta.get("last_used"))
+            u["last_used"] = max(day, prev).isoformat() if prev else day.isoformat()
+    for lid in p.uses:
+        touched.add(lid)
+    p.given = given_not_used(episodes, {x.id for x in live})
     ref_run = L._date((since or "")[:10]) if since else None
     for x in live:
         if x.id in gone:
             continue
-        used = L._date(x.meta.get("last_used"))
+        used = L._date(p.uses[x.id]["last_used"]) if x.id in p.uses else L._date(x.meta.get("last_used"))
         if x.status == "active":
             idle_from = used or L._date(x.meta.get("created")) or today
             if (today - idle_from).days > DORMANT_DAYS:
@@ -361,6 +388,38 @@ def plan(lessons: list[L.Lesson], episodes: list[dict], ctx: L.Context, *, since
     return p
 
 
+def _refs(e: dict) -> set[tuple[str, int]]:
+    """The (repo, number) pairs a given or cite episode is about: its issue, PR and, for a
+    merged PR's citation, the issues it closes."""
+    repo = str(e.get("repo") or "").lower()
+    nums = [e.get(k) for k in ("issue", "pr", "number")] + list(e.get("closes") or [])
+    return {(repo, n) for n in nums if isinstance(n, int) and not isinstance(n, bool)}
+
+
+def given_not_used(episodes: list[dict], ids: set[str]) -> dict[str, dict]:
+    """For each lesson in `ids` that a session was given: how many sessions were given it,
+    how many of those cited it on their issue or PR (at or after being given), and the rest,
+    given-not-used (#1187). Reads every given episode the store holds, which is up to
+    RETENTION_DAYS of them."""
+    cites = [e for e in episodes if e.get("type") == "cite"]
+    out: dict[str, dict] = {}
+    for g in episodes:
+        if g.get("type") != "given":
+            continue
+        refs, at = _refs(g), str(g.get("at") or "")
+        for lid in dict.fromkeys(str(i) for i in g.get("lessons") or []):
+            if lid not in ids:
+                continue
+            c = out.setdefault(lid, {"given": 0, "cited": 0, "not_used": 0})
+            c["given"] += 1
+            if refs and any(lid in (e.get("lessons") or []) and str(e.get("at") or "") >= at
+                            and _refs(e) & refs for e in cites):
+                c["cited"] += 1
+            else:
+                c["not_used"] += 1
+    return dict(sorted(out.items()))
+
+
 # ---------------------------------------------------------------- applying it
 
 def set_fields(text: str, values: dict[str, str]) -> str:
@@ -394,6 +453,8 @@ def apply(p: Plan, lessons: list[L.Lesson], memory: Path, now: dt.datetime) -> l
     updates: dict[str, dict[str, str]] = {}
     for lid, c in p.confidence.items():
         updates.setdefault(lid, {})["confidence"] = f"{c:g}"
+    for lid, u in p.uses.items():
+        updates.setdefault(lid, {}).update(uses=str(u["uses"]), last_used=u["last_used"])
     for lid, st in p.status.items():
         updates.setdefault(lid, {})["status"] = st
     for m in p.merges:
@@ -452,12 +513,18 @@ def report(p: Plan) -> str:
                "nothing")
     out.append(f"3. Reconcile: {len(p.flags)} flagged.")
     out += lst([f"{f['id']} {f['why']}: confidence {f['confidence']:g}" for f in p.flags], "nothing")
-    out.append(f"4. Forget: {len(p.decays)} decayed, {len(p.dormant)} to dormant, "
+    out.append(f"4. Forget: {len(p.uses)} used, {len(p.decays)} decayed, {len(p.dormant)} to dormant, "
                f"{len(p.retired)} retired, {len(p.expired)} episodes deleted"
                + (f" ({len(p.kept_cited)} past retention kept: a lesson cites them)" if p.kept_cited else "") + ".")
-    out += lst([f"decay {d['id']}: confidence {d['confidence']:g}" for d in p.decays]
+    out += lst([f"used {lid}: {u['uses']} uses, last {u['last_used']} ({', '.join(u['by'])})"
+                for lid, u in p.uses.items()]
+               + [f"decay {d['id']}: confidence {d['confidence']:g}" for d in p.decays]
                + [f"dormant {d['id']}: {d['why']}" for d in p.dormant]
                + [f"retire {r['id']}: {r['why']}" for r in p.retired], "nothing")
+    if p.given:
+        out.append("   Given, not used (report only; don't act on one week of it):")
+        out += [f"   - {lid}: given {c['given']}, cited {c['cited']}, not used {c['not_used']}"
+                for lid, c in p.given.items()]
     out.append(f"5. Rehearse: {len(p.rehearse)} proposed lesson(s) need an eval case.")
     out += lst([r["id"] for r in p.rehearse], "none")
     out.append(f"6. Promote: {len(p.promote)} pattern(s) for the owner.")

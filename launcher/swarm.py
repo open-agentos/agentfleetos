@@ -43,6 +43,9 @@
                                     FEAT-19; rehearsal.py)
                                     the lesson store: list, show, validate, regenerate
                                     memory/INDEX.md (#1185, FEAT-15; lessons.py)
+    launcher/swarm memory pack <role> [--issue N] [--pr M] [--repo R] [--json]
+                                    the context pack of lessons a session on that work
+                                    would be given at start (#1187, FEAT-17; recall.py)
     launcher/swarm watch [--dry-run] [--serve] [--container IMAGE]
                                     the v2 wake-up loop: start sessions on triggers, within
                                     the [watch] limits in swarm.toml (#90, GOV-0010; watch.py)
@@ -97,6 +100,9 @@ A session on another org repo's issue gets its worktree from that repo's own clo
 (#853, #820 stage 2). Its opener names the repo, our CLAUDE.md and role prompt go in as
 --append-system-prompt, and the worktree gets git-excluded copies of ops/ and the role
 prompt, which ops/swarm-session needs (#912, #820 stage 3, GOV-0039).
+Every session also gets its context pack of lessons in --append-system-prompt, built from the
+pinned copy's memory/lessons/ (#1187, GOV-0058; recall.py), and a `given` episode records which
+lessons it got.
 
 What the launcher started is recorded locally, never on GitHub:
     ~/.productswarm/launcher/sessions.json   name, role, model, session id, start time;
@@ -403,6 +409,7 @@ class Started:
     conflict: bool = False            # a [conflict] run (#893): bring the base into the PR's branch
     repo: str | None = None           # owner/name of the issue's repo; None: this repo (#829)
     dream: str | None = None          # a dream run (#1186): the episodes since this stamp
+    lessons: list[str] | None = None  # the lesson ids in its context pack (#1187), set by prepare()
 
     @classmethod
     def from_dict(cls, d: dict) -> "Started":
@@ -413,7 +420,28 @@ class Started:
                    daily=d.get("daily"), ask=d.get("ask"), ask_comment=d.get("ask_comment"),
                    research=d.get("research"), research_comment=d.get("research_comment"),
                    ruling=d.get("ruling"), ruling_comment=d.get("ruling_comment"),
-                   conflict=bool(d.get("conflict")), repo=d.get("repo"), dream=d.get("dream"))
+                   conflict=bool(d.get("conflict")), repo=d.get("repo"), dream=d.get("dream"),
+                   lessons=d.get("lessons"))
+
+
+def run_kind(s: Started) -> str | None:
+    """What a special run does, in words its lessons' situations are matched against (#1187);
+    None for a plain issue or PR run, which recall.situation() words from its role."""
+    if s.dream:
+        return "keeping team memory: the dream"
+    if s.daily:
+        return "writing the daily report"
+    if s.ask:
+        return "answering the owner's question"
+    if s.research:
+        return "researching a question"
+    if s.called_by:
+        return "answering a call-in"
+    if s.ruling is not None:
+        return "applying the owner's ruling on an overstep on a PR"
+    if s.conflict:
+        return "resolving a merge conflict on a PR"
+    return None
 
 
 # The product's name in an opener: AgentFleetOS, or productswarm in one written before GOV-0047.
@@ -456,6 +484,7 @@ class Launcher:
     claude_dir: Path = field(default_factory=lambda: Path(
         os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser())   # transcripts (#550)
     container: str | None = None    # a pinned image: runs swarm watch starts go in containers (#661)
+    work: Callable | None = None    # reads an issue or PR for its context pack (#1187); None: GitHub
 
     def use_container(self, image: str) -> None:
         """Start each run swarm watch starts in its own container from image (#661), in the
@@ -746,8 +775,7 @@ class Launcher:
             self.git_ok("-C", str(src), "worktree", "add", "-q", "--detach", str(wt), "origin/main")
             if s.repo:
                 self.add_session_files(s, wt, src)
-        if s.repo:
-            self.write_instructions(s)
+        self.write_instructions(s)
         base = install.read_settings(self.root / ".claude" / "settings.local.json")
         settings = install.with_hooks(base, hook=hook)
         if s.by == "watch":      # loop-started runs keep going until they're done (#148)
@@ -760,15 +788,50 @@ class Launcher:
         return self.home / "runtime"
 
     def write_instructions(self, s: Started) -> None:
-        """instructions_file() for a session in another org repo (#912): our CLAUDE.md and
+        """instructions_file(), which the session's command appends to its system prompt, if
+        it has anything to say. For a session in another org repo (#912): our CLAUDE.md and
         roles/<role>.md from the pinned copy, which hook_path() has just refreshed to this
         repo's origin/main (GOV-0039), under a header saying they win where that repo's own
-        CLAUDE.md disagrees."""
+        CLAUDE.md disagrees. For every session: its context pack of lessons (#1187,
+        GOV-0058), from the same copy. A session given lessons is recorded as a `given`
+        episode, which the dream reads for given-not-used."""
         rt = self.runtime()
-        parts = [other_repo_instructions(s.role, s.repo or "", self.home_repo()),
-                 (rt / "CLAUDE.md").read_text(), (rt / "roles" / f"{s.role}.md").read_text()]
+        parts = []
+        if s.repo:
+            parts = [other_repo_instructions(s.role, s.repo, self.home_repo()),
+                     (rt / "CLAUDE.md").read_text(), (rt / "roles" / f"{s.role}.md").read_text()]
+        pack = self.pack(s)
+        if pack:
+            parts.append(pack)
+        if not parts:
+            return
         self.dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.instructions_file(s.session_id).write_text("\n\n".join(p.strip() for p in parts) + "\n")
+
+    def pack(self, s: Started) -> str:
+        """s's context pack (#1187): recall.build() over the pinned copy's memory/lessons/,
+        capped by its swarm.toml, as `swarm memory pack` builds it. Sets s.lessons and
+        records the `given` episode; "" when no lesson matches."""
+        import episodes
+        import recall
+        rt = self.runtime()
+        if not any((rt / "memory" / "lessons").glob("*.md")):
+            return ""   # no lessons yet: nothing to read, not even this repo's name
+        try:
+            limit = recall.cap(rt / "swarm.toml")
+        except ValueError as e:
+            raise RuntimeError(f"swarm.toml: {e}") from None
+        repo = s.repo or self.home_repo() or ""
+        entries, sess = recall.build(rt / "memory" / "lessons", role=s.role, repo=repo, issue=s.issue,
+                                     pr=s.pr, kind=run_kind(s), limit=limit,
+                                     work=self.work or recall.gh_work)
+        s.lessons = [e.lesson.id for e in entries]
+        if not entries:
+            return ""
+        episodes.write(episodes.outbox(self.home), [episodes.given_episode(
+            session_id=s.session_id, role=s.role, model=s.model, repo=repo, issue=s.issue, pr=s.pr,
+            lessons=s.lessons, at=dt.datetime.fromtimestamp(self.clock(), dt.timezone.utc))])
+        return recall.render(entries, sess, limit)
 
     def add_session_files(self, s: Started, wt: Path, src: Path) -> None:
         """What ops/swarm-session needs in a worktree of another org repo (#912), which it
@@ -915,7 +978,7 @@ class Launcher:
                                     s.ask, s.ask_comment, s.research, s.research_comment,
                                     s.ruling, s.ruling_comment, s.conflict, s.repo,
                                     self.home_repo() if s.repo else None, dream=s.dream))
-        if s.repo:   # #912, GOV-0039: our CLAUDE.md and role prompt, read when the window runs
+        if s.repo or s.lessons:   # #912, GOV-0039: our CLAUDE.md and role prompt; #1187: its lessons
             prompt += (" --append-system-prompt \"$(cat "
                        + shlex.quote(str(self.instructions_file(s.session_id))) + ')"')
         if s.by == "watch":
@@ -2613,6 +2676,35 @@ def escalate(launcher: Launcher, args, repo: str, *, state_of: Callable = gh_iss
     return code
 
 
+# ---------------------------------------------------------------- memory pack (#1187)
+
+def memory_pack(launcher: Launcher, args, work: Callable | None = None) -> int:
+    """`swarm memory pack <role> --issue N`: the context pack a session would get, built as
+    Launcher.pack() builds it, from the same pinned copy of origin/main (refreshed first) and
+    its swarm.toml, so anyone can see what a session is given. --memory reads a fixture."""
+    import recall
+    if args.memory:
+        lessons_dir, toml = Path(args.memory) / "lessons", Path(args.manifest)
+    else:
+        try:
+            launcher.hook_path()   # fetches origin/main and refreshes the pinned copy
+        except RuntimeError as e:
+            launcher.out(f"swarm memory pack: {e}")
+            return 1
+        lessons_dir, toml = launcher.runtime() / "memory" / "lessons", launcher.runtime() / "swarm.toml"
+    repo = args.repo or launcher.home_repo() or ""
+    try:
+        limit = recall.cap(toml)
+    except ValueError as e:
+        launcher.out(f"swarm memory pack: swarm.toml: {e}")
+        return 1
+    entries, sess = recall.build(lessons_dir, role=args.role, repo=repo, issue=args.issue, pr=args.pr,
+                                 limit=limit, work=work or launcher.work or recall.gh_work)
+    launcher.out(json.dumps(recall.as_json(entries, sess, limit), indent=2) if args.as_json
+                 else recall.text(entries, sess, limit))
+    return 0
+
+
 # ---------------------------------------------------------------- memory (#1185)
 
 LESSON_CMDS = ("lessons", "show", "index", "check")
@@ -2881,6 +2973,16 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     p_mshow.add_argument("lesson", help="L-NNNN")
     p_mshow.add_argument("--json", action="store_true", dest="as_json")
     p_mshow.add_argument("--repo", help="owner/name (default: this checkout's origin)")
+    p_mpack = memory_sub.add_parser("pack", help="the context pack of lessons a session would get (#1187)")
+    p_mpack.add_argument("role")
+    p_mpack.add_argument("--issue", type=int, help="the issue the session would work on")
+    p_mpack.add_argument("--pr", type=int, help="the PR: with --issue, responding to changes on it; "
+                                                "alone, reviewing it")
+    p_mpack.add_argument("--repo", help="owner/name the session would work in (default: this checkout's origin)")
+    p_mpack.add_argument("--memory", help="a memory/ directory to read instead of origin/main's, e.g. a "
+                                          "fixture; its pack_cap then comes from --manifest")
+    p_mpack.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
+    p_mpack.add_argument("--json", action="store_true", dest="as_json")
     p_mindex = memory_sub.add_parser("index", help="regenerate memory/INDEX.md from memory/lessons/")
     p_mindex.add_argument("--check", action="store_true", help="write nothing; exit 1 if it's stale")
     p_mcheck = memory_sub.add_parser("check", help="validate every lesson (GOV-0055's source rules too)")
@@ -2931,6 +3033,8 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
         return dream(launcher, args, args.repo or dashboard().default_repo() or "")
     if args.cmd == "escalate":
         return escalate(launcher, args, args.repo or dashboard().default_repo() or "")
+    if args.cmd == "memory" and args.memory_cmd == "pack":
+        return memory_pack(launcher, args)
     if args.cmd == "memory" and args.memory_cmd in LESSON_CMDS:
         repo = getattr(args, "repo", None) or dashboard().default_repo() or ""
         return memory_lessons(launcher, args, repo)
