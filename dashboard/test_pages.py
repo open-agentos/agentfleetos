@@ -168,6 +168,10 @@ class OnePlaceTest(unittest.TestCase):
         self.assertEqual(set(sections(pages["crew.html"])), {"roles", "floor", "sessions", "reviewer", "grants", "effort"})
         self.assertEqual(set(sections(pages["governance.html"])),
                          {"rulings", "questions", "committees", "authority", "precedent", "trends"})
+        # #1273: the Work map and Crew are wide; Governance stays at 1100px.
+        self.assertIn('<body class="wide">', pages["workmap.html"])
+        self.assertIn('<body class="wide">', pages["crew.html"])
+        self.assertIn("<body>", pages["governance.html"])
 
 
 if __name__ == "__main__":

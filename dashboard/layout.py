@@ -161,34 +161,36 @@ table.precedent td.num { min-width:34px; }
 .floor .spark .bar { fill:var(--agent); } .floor .spark .zero { fill:var(--line); }
 .floor .used, .idle { font-size:13px; }
 .watcher ul { margin:0; padding-left:20px; font-size:14px; } .watcher .stale { color:var(--red); }
-/* Crew's top (#1261): counts, the In progress band's lanes, the panels, the role chips. */
+/* Crew's top (#1261): counts, the In progress band's lanes, the panels, the role chips. Since #1273
+   in the Map's colours: its ground, its lightest tan for a card and its darkest for one being worked
+   on (paper text, 6.7:1), and its marks as they are (wm-needs, wm-blocked). */
 .cw-counts { display:flex; flex-wrap:wrap; gap:8px 28px; margin:6px 0 10px; }
 .cw-count { display:flex; flex-direction:column; }
 .cw-big { font:400 34px/1 var(--mono); } .cw-label { font-size:13px; color:var(--muted); }
 .cw-count.agent .cw-big { color:var(--agent); } .cw-count.owner .cw-big { color:var(--owner); }
-.cw-band { background-color:var(--ink); color:var(--paper); border-radius:8px; padding:10px 12px 12px;
-  background-image:linear-gradient(rgba(244,243,238,.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(244,243,238,.05) 1px, transparent 1px); background-size:24px 24px; }
-.cw-band h2 { color:var(--paper); border:0; margin:0 0 8px; padding:0; font:600 15px/1.2 var(--cond);
+.cw-band { background:var(--line); color:var(--ink); border-radius:8px; padding:10px 12px 12px; }
+.cw-band h2 { color:var(--ink); border:0; margin:0 0 8px; padding:0; font:600 15px/1.2 var(--cond);
   text-transform:uppercase; letter-spacing:.08em; }
 .cw-lanes { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:10px; }
 .cw-lane { min-width:0; display:flex; flex-direction:column; gap:6px; }
-.cw-lane h3 { margin:0; font:600 13px/1.3 var(--cond); color:var(--paper); text-transform:uppercase;
+.cw-lane h3 { margin:0; font:600 13px/1.3 var(--cond); color:var(--ink); text-transform:uppercase;
   letter-spacing:.06em; display:flex; justify-content:space-between; border-bottom:1px solid var(--muted);
   padding-bottom:3px; }
-.cw-none, .cw-more { margin:0; font-size:12px; color:var(--quiet); } .cw-more a { color:var(--paper); }
-.cw-card { background:var(--card); color:var(--ink); border-radius:6px; padding:6px 8px; font-size:13px;
-  border-left:4px solid var(--line); }
-.cw-card.working { border-left-color:var(--agent); } .cw-card.cw-ask { border-left-color:var(--owner); }
-.cw-card.merged { border-left-color:var(--agent); opacity:.9; }
+.cw-none, .cw-more { margin:0; font-size:12px; color:var(--ink); }
+.cw-card { background:#F3EFE7; color:var(--ink); border-radius:6px; padding:6px 8px 6px 10px; font-size:13px; }
+.cw-card.working { background:#64523E; color:var(--paper); }
+.cw-card.working a, .cw-card.working .muted, .cw-card.working .cw-run, .cw-card.working .cw-needs { color:var(--paper); }
+.cw-card.working a { text-decoration-color:#CBBBA2; }
 .cw-top { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .cw-title { font-weight:600; line-height:1.3; margin:3px 0; overflow:hidden; display:-webkit-box;
   -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
 .cw-meta { font-size:12px; } .cw-run { color:var(--agent); } .cw-needs { color:var(--owner); font-weight:600; }
 .cw-card .spark { display:block; margin-top:4px; } .cw-card .spark .bar { fill:var(--agent); }
 .cw-card .spark .zero { fill:var(--line); }
-.cw-badge { font:11px/1 var(--mono); padding:3px 4px; border-radius:4px; background:#E1E7F5; color:var(--agent); }
-.cw-badge.on { background:var(--agent); color:#fff; }
+.cw-card.working .spark .bar { fill:var(--paper); } .cw-card.working .spark .zero { fill:#8A7458; }
+.cw-badge { font:11px/1 var(--mono); padding:2px 4px; border-radius:4px; border:1px solid var(--line);
+  background:var(--paper); color:var(--ink); }
+.cw-badge.on { background:var(--agent); border-color:var(--agent); color:#fff; }
 .cw-live { width:8px; height:8px; border-radius:50%; background:var(--red); margin-left:auto;
   animation:cw-pulse 1.6s ease-in-out infinite; }
 @keyframes cw-pulse { 0%, 100% { opacity:1; } 50% { opacity:.25; } }
@@ -274,12 +276,15 @@ nav.top { max-width:1100px; margin:0 auto 4px; display:flex; flex-wrap:wrap; gap
   font:600 13px/1.6 var(--cond); text-transform:uppercase; letter-spacing:.06em; }
 nav.top .here { text-decoration:none; color:var(--muted); }
 .sec { scroll-margin-top:12px; }
+/* Wide pages (#1273): page(wide=True), and every rail page, is up to 1440px wide, not 1100px,
+   with a side gutter that grows with the screen (16px on a phone, 56px from 1400px). */
+body.wide { padding-inline:clamp(16px, 4vw, 56px); }
+body.wide main, body.wide header.mast, body.wide nav.top { max-width:1440px; }
 /* The rail (#1249): a right-hand column that shows its base (the Work map's Briefing) and slides
-   a drawer (the Selected panel) over it while something is selected. page(rail=True) widens the
-   page for it; `.rail-open` on the rail opens the drawer. The covered side is visibility:hidden,
+   a drawer (the Selected panel) over it while something is selected. page(rail=True) makes the
+   page wide for it; `.rail-open` on the rail opens the drawer. The covered side is visibility:hidden,
    once the slide is over, so nothing in it can be focused. Under 900px the base stays in the
    flow and the drawer is a bottom sheet, up to 75vh. */
-body.has-rail main, body.has-rail header.mast, body.has-rail nav.top { max-width:1440px; }
 .rail { position:sticky; top:12px; min-width:0; overflow:hidden; }
 .rail-base, .rail-over { position:absolute; inset:0; transition:transform .28s ease, visibility 0s linear 0s; }
 .rail-base { overflow:auto; }
@@ -384,7 +389,7 @@ svg.ef-line circle { fill:var(--agent); stroke:none; }
 .wm-seg button[aria-pressed="true"] { background:var(--ink); color:var(--paper); }
 .wm-seg button:disabled { cursor:default; }
 .wm-seg button:focus-visible, .wm-gh:focus-visible, .wm-back:focus-visible { outline:3px solid var(--agent); outline-offset:1px; }
-.wm-top { display:grid; grid-template-columns:minmax(0, 2fr) minmax(340px, 1fr); gap:16px 20px; align-items:start; }
+.wm-top { display:grid; grid-template-columns:minmax(0, 2fr) minmax(340px, 1fr); gap:16px 32px; align-items:start; }
 .wm-mapcol { min-width:0; }
 /* The Work map's rail (#1249): as tall as the map frame plus the legend, beside the frame. */
 .wm-top > .rail { margin-top:30px; height:calc(clamp(460px, 68vh, 640px) + 72px); }
@@ -632,7 +637,7 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "", live_
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
          script: tuple[str, str] | None = None, libs: dict[str, bytes] | None = None,
-         live_mast: bool = False, rail: bool = False) -> str:
+         live_mast: bool = False, rail: bool = False, wide: bool = False) -> str:
     """One whole page in the shared shell: head (noindex, CSP, CSS), masthead (#402), the nav
     (Map · Crew · Governance, #1113), then the body. `script` is the page's own script as (file
     name, text), e.g. the Work map's (#1082). The page loads it from js/ (write_scripts puts it
@@ -642,8 +647,9 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
     vendored libraries the page loads before its own script, as layout.libs() returns them
     (#1107): each is served from js/ too and allowed by its hash. With `live_mast`, the
     masthead's changing part is a `data-panel="mast"` box for the page's own script to redraw
-    (Governance's, #1140). With `rail`, the page is wider (1440px, not 1100px) for a rail()
-    beside its main column (#1249); only the Work map has one so far."""
+    (Governance's, #1140). With `wide`, the page is up to 1440px wide, not 1100px, and its side
+    gutter grows with the screen (#1273): the Work map and Crew. `rail` implies `wide`, for a
+    rail() beside the main column (#1249); only the Work map has one so far."""
     name = NAMES[current]
     js = script[1] if script else None
     libs = libs or {}
@@ -653,7 +659,7 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         '<meta name="robots" content="noindex, nofollow">',  # published publicly; see #33
         f"<title>{esc(name)} · {esc(title)} · {esc(repo)}</title><style>{CSS}</style></head>"
-        + ('<body class="has-rail">' if rail else "<body>"),
+        + ('<body class="wide">' if wide or rail else "<body>"),
         f'<header class="mast">{masthead(current, repo, built, owner, live_box=live_mast)}</header>',
         f'<nav class="top" aria-label="Pages">{nav(current)}</nav>',
         f"<main>{body}</main>",

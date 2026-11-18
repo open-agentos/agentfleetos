@@ -167,7 +167,9 @@
         : ss.status === "idle" ? muted("idle " + short(ss.idle_minutes)) : muted(ss.status));
     }
     if (c.needs_you) { meta.push(h("span", {"class": "cw-needs"}, "needs you")); }
-    return h("div", {"class": "cw-card" + (c.working ? " working" : "") + (c.needs_you ? " cw-ask" : "")},
+    // The Map's marks as they are (#1273): amber outline for needs you, red left edge for blocked.
+    return h("div", {"class": "cw-card" + (c.working ? " working" : "") + (c.needs_you ? " wm-needs" : "") +
+        (ss && ss.status === "blocked" ? " wm-blocked" : "")},
       h("div", {"class": "cw-top"}, roleBadge(c, c.working), link(c.ref, c.url, {"class": "mono"}),
         c.lead ? h("span", {"class": "mono muted"}, c.lead) : null,
         c.working ? h("span", {"class": "cw-live", title: "running", "aria-label": "running"}) : null),

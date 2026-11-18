@@ -174,7 +174,7 @@ class SelectedTest(unittest.TestCase):
         self.assertEqual(html.count('aria-label="Briefing"'), 1)
         self.assertIn('<button type="button" class="wm-back" id="wm-sel-close">← Brief</button>', self.panel())
         page = wp.page(model(), "t", "")
-        self.assertIn('<body class="has-rail">', page)
+        self.assertIn('<body class="wide">', page)
 
     def test_script_opens_and_closes_the_drawer(self):
         js = wp.script()
@@ -298,13 +298,25 @@ class RailTest(unittest.TestCase):
                          '<div class="rail" data-rail><div class="rail-base" tabindex="-1"><p>b</p></div>'
                          '<div class="rail-over"><p>o</p></div></div>')
 
-    def test_only_a_rail_page_is_wider(self):
+    def test_only_a_wide_or_rail_page_is_wider(self):
         t = dt.datetime(2026, 11, 18, tzinfo=dt.timezone.utc)
-        self.assertIn("<body>", layout.page("crew.html", "t", "o/r", t, "<p>x</p>"))
-        self.assertIn('<body class="has-rail">', layout.page("workmap.html", "t", "o/r", t, "<p>x</p>", rail=True))
-        self.assertIn("body.has-rail main, body.has-rail header.mast, body.has-rail nav.top { max-width:1440px; }",
-                      layout.CSS)
+        self.assertIn("<body>", layout.page("governance.html", "t", "o/r", t, "<p>x</p>"))
+        self.assertIn('<body class="wide">', layout.page("workmap.html", "t", "o/r", t, "<p>x</p>", rail=True))
+        self.assertIn('<body class="wide">', layout.page("crew.html", "t", "o/r", t, "<p>x</p>", wide=True))
+        self.assertIn("body.wide main, body.wide header.mast, body.wide nav.top { max-width:1440px; }", layout.CSS)
         self.assertIn("main, header.mast { max-width:1100px;", layout.CSS)
+        # #1273: the gutter grows with the screen on wide pages; a phone keeps 16px.
+        self.assertIn("body.wide { padding-inline:clamp(16px, 4vw, 56px); }", layout.CSS)
+        self.assertIn("body { margin:0; padding:20px 16px 32px;", layout.CSS)
+        self.assertIn("minmax(340px, 1fr); gap:16px 32px;", layout.CSS)
+
+    def test_crew_takes_the_maps_colours(self):
+        css = layout.CSS   # #1273: no ink band, the Map's tans, its marks reused as they are
+        self.assertIn(".cw-band { background:var(--line); color:var(--ink);", css)
+        self.assertNotIn("cw-band { background-color:var(--ink)", css)
+        self.assertIn(".cw-card { background:#F3EFE7;", css)
+        self.assertIn(".cw-card.working { background:#64523E; color:var(--paper); }", css)
+        self.assertNotIn("#E1E7F5; color:var(--agent); }\n.cw-badge.on", css)
 
     def test_drawer_slides_and_is_hidden_when_closed(self):
         css = layout.CSS

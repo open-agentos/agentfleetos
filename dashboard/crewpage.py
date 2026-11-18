@@ -60,4 +60,4 @@ def body(d: dict) -> str:
 def page(m: dict, title: str, owner_line: str, state: dict) -> str:
     """The whole page. `state` is state.state(m), what the build writes to state.json."""
     return layout.page(FILE, title, m["repo"], m["now"], body(data(state)), owner_line,
-                       script=(JS.name, script()), live_mast=True)
+                       script=(JS.name, script()), live_mast=True, wide=True)
