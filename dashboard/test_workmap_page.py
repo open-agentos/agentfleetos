@@ -107,11 +107,14 @@ class PageTest(unittest.TestCase):
 
     def test_layout_map_then_briefing_then_lists(self):
         html = wp.render(model())
-        order = [html.index(x) for x in ("<h1>Work map</h1>", 'class="wm-keyline"', 'class="wm-ctls"',
+        order = [html.index(x) for x in ("<h1>Work map</h1>", 'class="wm-ctls"',
                                          'id="wm-crumb"', 'id="wm-map"', 'id="wm-legend"', 'class="rail"',
                                          'aria-label="Briefing"', 'aria-label="Selected"', 'aria-label="Lists"')]
         self.assertEqual(order, sorted(order))
         self.assertIn("with JavaScript off", html)
+        # No counts strip or key line above the controls: the legend under the map is the key.
+        self.assertNotIn('class="sp"', html)
+        self.assertNotIn("wm-keyline", html)
 
     def test_no_left_column(self):
         """#1114: the Bridge's shared left column went with it."""
@@ -300,11 +303,12 @@ class RailTest(unittest.TestCase):
 
     def test_only_a_wide_or_rail_page_is_wider(self):
         t = dt.datetime(2026, 11, 18, tzinfo=dt.timezone.utc)
-        self.assertIn("<body>", layout.page("governance.html", "t", "o/r", t, "<p>x</p>"))
+        self.assertIn("<body>", layout.page("effort.html", "t", "o/r", t, "<p>x</p>"))
+        self.assertIn('<body class="wide">', layout.page("governance.html", "t", "o/r", t, "<p>x</p>", wide=True))
         self.assertIn('<body class="wide">', layout.page("workmap.html", "t", "o/r", t, "<p>x</p>", rail=True))
         self.assertIn('<body class="wide">', layout.page("crew.html", "t", "o/r", t, "<p>x</p>", wide=True))
-        self.assertIn("body.wide main, body.wide header.mast, body.wide nav.top { max-width:1440px; }", layout.CSS)
-        self.assertIn("main, header.mast { max-width:1100px;", layout.CSS)
+        self.assertIn("body.wide main, body.wide header.mast, body.wide nav.top, body.wide footer.foot { max-width:1440px; }", layout.CSS)
+        self.assertIn("main, header.mast, footer.foot { max-width:1100px;", layout.CSS)
         # #1273: the gutter grows with the screen on wide pages; a phone keeps 16px.
         self.assertIn("body.wide { padding-inline:clamp(16px, 4vw, 56px); }", layout.CSS)
         self.assertIn("body { margin:0; padding:20px 16px 32px;", layout.CSS)
@@ -544,10 +548,8 @@ class RefreshBehaviourTest(unittest.TestCase):
         self.assertTrue(got["stale"]["stale"])
         self.assertFalse(got["fresh_again"]["stale"])                # new data brings it back
         self.assertEqual(got["fresh_again"]["boxes"], ["#10", "#11", "#99"])
-        # #1135: a newer state.json redraws the strip, Briefing, tape and masthead in place.
+        # #1135: a newer state.json redraws the Briefing, tape and masthead in place.
         p = n["parts"]
-        self.assertIn("3 decisions waiting, oldest 5h", p["section.sp"])
-        self.assertIn("1 agents working of 2 live", p["section.sp"])
         self.assertIn("Plain and bold and code.", p["section.wm-brief"])
         self.assertIn("PR #5 merged: x", p["section.tp"])
         self.assertIn("Owner: no activity in the last 3 days", p['header.mast [data-panel="mast"]'])
@@ -628,14 +630,10 @@ class MemoryPageTest(unittest.TestCase):
         self.assertIn(f'href="https://github.com/{REPO}/issues/1150"', sec)
         self.assertNotIn("L-0003", html)                         # scoped to another repo
 
-    def test_counts_strip(self):
-        html = wp.render(model(memory=self.mem))
-        sp = re.search(r'<section class="sp".*?</section>', html, re.S).group(0)
-        self.assertIn("memory 1 of 25 lessons, fullest role builder", sp)
-        self.assertIn("1 lesson dormant", sp)
-        self.assertNotIn("$", sp)
-        self.assertIn("memory not read", wp.render(model(memory={"error": "x"})))
-        self.assertNotIn("memory", re.search(r'<section class="sp".*?</section>', wp.render(model()), re.S).group(0))
+    def test_memory_counts_in_the_page_data(self):
+        sp = wp.live_data(model(memory=self.mem))["strip"]["memory"]
+        self.assertEqual((sp["used"], sp["budget"], sp["role"], sp["dormant"]), (1, 25, "builder", 1))
+        self.assertIn("Memory not read", wp.render(model(memory={"error": "x"})))
 
     def test_no_meaning_by_colour_and_nothing_moves(self):
         """The Work map's design rules: memory adds no colour of its own (the words carry it), and

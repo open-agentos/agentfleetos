@@ -101,10 +101,6 @@ def tape_of(page: str) -> str:
     return re.search(r'<section class="tp".*?</section>', page, re.S).group(0)
 
 
-def strip_of(page: str) -> str:
-    return re.search(r'<section class="sp".*?</section>', page, re.S).group(0)
-
-
 # What the Bridge showed on these fixtures: bridge.build()'s output, recorded by the first
 # commit of #1114 while bridge.py was still there, before its render code went.
 BRIDGE = {"status": {"commissions": 3, "flagged": 1, "working": 1, "agents": 2, "authority": 1},
@@ -116,21 +112,13 @@ BRIDGE = {"status": {"commissions": 3, "flagged": 1, "working": 1, "agents": 2, 
 
 
 class BridgeItemsOnTheWorkMapTest(unittest.TestCase):
-    """Every item the Bridge showed appears on /: in the strip, a list, the Briefing or the tape
+    """Every item the Bridge showed appears on /: in a list, the Briefing or the tape
     (#1114's first criterion). In flight is each Goal's criteria, shown when it is selected
     (FEAT-13, #1115), from the page's `scopes`."""
 
     def setUp(self):
         self.page = wp.page(page_model(), "t", "", OWNER)
         self.data = json_block(self.page)
-
-    def test_status_is_in_the_strip(self):
-        s = strip_of(self.page)
-        b = BRIDGE["status"]
-        self.assertIn(f'{b["flagged"]} of {b["commissions"]} Goals and Areas flagged', s)
-        self.assertIn(f'{len(BRIDGE["decisions"])} decisions waiting', s)
-        self.assertIn(f'{b["working"]} agents working of {b["agents"]} live', s)
-        self.assertIn(f'{b["authority"]} uses of your authority', s)
 
     def test_decisions_are_in_the_needs_you_list(self):
         self.assertEqual([d["ref"] for d in self.data["needs_extra"]], BRIDGE["decisions"])
@@ -161,14 +149,11 @@ class StripTest(unittest.TestCase):
         m = model(prs=[{"number": 930, "title": "Fix the merger", "closes": [{"number": 77}]}])
         self.assertEqual(strip.strip(m)["decision_refs"], ["#77", "#901"])
 
-    def test_picks_start_disabled_and_unpressed_and_no_amount(self):
-        html = strip_of(wp.page(page_model(), "t", "", OWNER))
-        self.assertEqual(html.count('aria-pressed="false" disabled'), 2)
-        self.assertNotIn("$", html)
-
-    def test_strip_sits_between_the_title_and_the_controls(self):
+    def test_no_strip_on_the_page(self):
+        # The owner took the counts line off the top of the Work map; its counts stay in state.json.
         page = wp.page(page_model(), "t", "", OWNER)
-        order = [page.index(x) for x in ("<h1>Work map</h1>", '<section class="sp"', 'class="wm-ctls"',
+        self.assertNotIn('<section class="sp"', page)
+        order = [page.index(x) for x in ("<h1>Work map</h1>", 'class="wm-ctls"',
                                          'aria-label="Lists"', '<section class="tp"')]
         self.assertEqual(order, sorted(order))
 
@@ -232,16 +217,12 @@ class TapeTest(unittest.TestCase):
 
 
 class FixedLayoutTest(unittest.TestCase):
-    """The strip and the tape keep their height and position: the strip is one wrapping line
-    whose picks change only colour, and the tape a fixed-height box that scrolls inside itself."""
+    """The tape keeps its height and position: a fixed-height box that scrolls inside itself."""
 
     def test_css(self):
         import layout
         css = layout.CSS
         self.assertRegex(css, r"\.tp-box \{ height:360px; overflow-y:auto;")
-        self.assertRegex(css, r"\.sp \{ display:flex; flex-wrap:wrap;")
-        pressed = re.search(r'\.sp-pick\[aria-pressed="true"\] \{([^}]*)\}', css).group(1)
-        self.assertNotRegex(pressed, r"width|height|padding|margin|border-width|font-size")
         self.assertRegex(css, r'\.wm-list\[data-list="needs"\] \.wm-lol \{ overflow-y:auto; \}')
 
 

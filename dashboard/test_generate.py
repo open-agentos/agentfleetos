@@ -225,8 +225,10 @@ class PageTest(unittest.TestCase):
             # Nothing loaded from a third party: the only URLs in the head are the fonts.
             # (A script's base64 hash in the CSP may hold "//", so hashes are left out.)
             self.assertNotIn("//", re.sub(r"'sha256-[^']+'", "", head.replace("http-equiv", "")), name)
-            # One nav on every page, Map · Crew · Governance, and no footer page list (#1113).
-            self.assertNotIn("<footer", page, name)
+            # One nav on every page, Map · Crew · Governance (#1113), and a footer that only links the repo.
+            foot = re.findall(r'<footer class="foot">(.*?)</footer>', page, re.S)
+            self.assertEqual(len(foot), 1, name)
+            self.assertEqual(re.findall(r'href="([^"]+)"', foot[0]), [f"https://github.com/{g.layout.esc(self.model()['repo'])}"], name)
             nav = re.findall(r'<nav class="top" aria-label="Pages">(.*?)</nav>', page)
             self.assertEqual(len(nav), 1, name)
             for f, label in g.layout.PAGES:

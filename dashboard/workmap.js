@@ -1078,10 +1078,6 @@
     for (var i = 0; i < bs.length; i++) {
       bs[i].setAttribute("aria-pressed", st[bs[i].getAttribute("data-k")] === bs[i].getAttribute("data-v") ? "true" : "false");
     }
-    var ms = document.querySelectorAll(".sp-pick[data-mark]");
-    for (var j = 0; j < ms.length; j++) {
-      ms[j].setAttribute("aria-pressed", st.mark === ms[j].getAttribute("data-mark") ? "true" : "false");
-    }
   }
 
   var bs = document.querySelectorAll(".wm-seg button[data-k]");
@@ -1094,21 +1090,6 @@
     });
   }
 
-  // The strip (#1114): picking "flagged" or "decisions waiting" sets Group by to Goal and
-  // outlines the matching boxes; picking it again clears the outline. Nothing is resized.
-  // One listener on the page, since the strip is redrawn from each newer state.json (#1135).
-  var ms = document.querySelectorAll(".sp-pick[data-mark]");
-  for (var mi = 0; mi < ms.length; mi++) ms[mi].disabled = false;
-  document.addEventListener("click", function (ev) {
-    var b = ev.target && ev.target.closest ? ev.target.closest(".sp-pick[data-mark]") : null;
-    if (!b) return;
-    var v = b.getAttribute("data-mark");
-    if (st.mark === v) { st.mark = null; draw(); return; }
-    st.mark = v;
-    if (st.group !== "goal") { st.group = "goal"; st.zoom = null; save(); writeUrl(false); }
-    draw();
-  });
-
   // Back and Forward: the URL's view and selection, as on opening it.
   window.addEventListener("popstate", function () { readUrl(); draw(); });
 
@@ -1118,32 +1099,6 @@
   // workmap_page.py and strip.py draw it at build time. Each part is built whole, then swapped
   // in, so one that fails to draw keeps what it showed.
   function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
-
-  function stripNode(s) {
-    var f = (s.flagged || []).length, sec = el("section", "sp");
-    sec.setAttribute("aria-label", "Counts");
-    function pickBtn(mark, cls, text) {
-      var b = el("button", "sp-i sp-pick" + cls, text);
-      b.type = "button";
-      b.setAttribute("data-mark", mark);
-      b.setAttribute("aria-pressed", st.mark === mark ? "true" : "false");
-      return b;
-    }
-    sec.appendChild(pickBtn("flagged", f ? " sp-red" : "", f + " of " + s.scopes + " Goals and Areas flagged"));
-    sec.appendChild(pickBtn("decisions", s.waiting ? " sp-owner" : "",
-      plural(s.waiting, "decision") + " waiting" + (s.oldest ? ", oldest " + s.oldest : "")));
-    sec.appendChild(el("span", "sp-i", s.working + " agents working of " + s.agents + " live"));
-    sec.appendChild(el("span", "sp-i", s.authority + " uses of your authority, last " + s.authority_hours + "h"));
-    var mm = s.memory;
-    if (mm && mm.error) sec.appendChild(el("span", "sp-i sp-red", "memory not read"));
-    else if (mm) {
-      sec.appendChild(el("span", "sp-i", "memory " + mm.used + " of " + mm.budget + " lessons" +
-        (mm.role && mm.used ? ", fullest role " + mm.role : "")));
-      sec.appendChild(el("span", "sp-i", plural(mm.dormant, "lesson") + " dormant"));
-    }
-    if (s.error) sec.appendChild(el("span", "sp-i sp-red", "trouble report not read: counts may be low"));
-    return sec;
-  }
 
   // A line of report Markdown: `code` and **bold** kept, the rest text (report.inline's rule).
   var INLINE = /`([^`]+)`|\*\*(.+?)\*\*/g;
@@ -1336,7 +1291,6 @@
 
   function drawState(s) {
     var w = s.workmap;
-    swap("section.sp", function () { return stripNode(w.strip); });
     swap("section.wm-brief", function () { return briefingNode(w.briefing); });
     if (w.memory) swap("section.wm-mem", function () { return memoryNode(w.memory); });
     swap("section.tp", function () { return tapeNode(w.tape || []); });
