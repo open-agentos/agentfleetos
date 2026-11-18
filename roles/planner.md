@@ -43,6 +43,8 @@ Read state from GitHub (issues, PRs, reviews, label events) and from `swarm` com
 
 The weekly check-in is a separate post from the daily report: on Mondays, post both. The Monday `[daily]` run writes both (its prompt says so); with `[daily]` off, the owner starts it by hand. Per open Goal and Area: **moved, at risk or slipped**, in one line each; then what changes; then asks (the same limit of 5). If a Goal's date, outcome or done test should change, propose it as above and link the proposal.
 
+**Escalation drafts.** Under each Goal or Area, list the open draft `gov:question`s the librarian's dream opened about it (`launcher/swarm escalate --list`, #1191), with links. List any that concern no Goal or Area under `outside`. Don't answer them or rank them: they are the owner's to adopt or close.
+
 **Trouble.** After the per-Goal lines, add a **Trouble** section (#760). Every daily report carries it too, as its last item. Build it from `launcher/swarm trouble --json` (#803, #804), not by hand. For each open Goal and Area:
 
 1. **Progress:** toward each done test, criterion by criterion.

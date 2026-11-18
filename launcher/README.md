@@ -932,6 +932,33 @@ The thresholds are the defaults on the Goal (#1179), which the owner confirms af
 
 `--apply` writes only under `memory/`: confidence, status, merges, expired episodes, `memory/dream.json` and `memory/INDEX.md`. It doesn't touch the engine's outbox; its expired episodes stay there until #1199's record merges. `--memory DIR` reads another memory directory, such as the fixture, and not the outbox.
 
+## swarm escalate: drafts for the owner (#1191)
+
+```bash
+launcher/swarm escalate [--json]     # what the Promote phase would draft, and what waits
+launcher/swarm escalate --open       # on a Monday: open the drafts as gov:questions
+launcher/swarm escalate --list       # the open drafts, for the Monday check-in
+```
+
+Some of what the team learns is a decision the owner keeps making by hand (FEAT-21). `escalation.py` finds these patterns with no model call and drafts each one as a `gov:question` from the Governance question template, with options, a recommended default and the evidence. The librarian may draft them (GOV-0056). Only the owner adopts anything, and only merged records are rulings (GOV-0006).
+
+| Pattern | Draft |
+|---|---|
+| 3 or more `gov:question` answers in one domain, each taking the default | a standing grant |
+| a mature lesson on paths no role decides (`governance/`, `roles/`, `ops/`, `.github/`) | a ruling or a jurisdiction change |
+| a mature lesson at confidence 0.7 or more that pulls against an in-force ruling it names | an amendment |
+| an in-force ruling within 30 days of its `review_by` that no lesson, episode or commit from the last 90 days cites | a retirement |
+| 3 or more mature lessons for one role alone | a change to `roles/<role>.md`, listed for the dream report only: GOV-0059 keeps the librarian out of `roles/` |
+
+**Guardrails.**
+
+- A lesson escalates only when it is **mature**: active, with a passing rehearsal at least 14 days old, and sources that pass GOV-0055 (two independent sources, one an engine-recorded signal, every author trusted). The rehearsal date restarts when a lesson changes, because a changed lesson reruns.
+- Nothing escalates from the owner model: the command doesn't read `memory/owner.md`, and a lesson about it is held back.
+- **Mondays only.** On other days `--open` opens nothing, and the drafts wait for the check-in batch. There's no weekly cap (GOV-0056). Instead, the dream report counts the drafts opened in each of the last 4 weeks.
+- **Once per pattern.** `memory/escalations.json` records each draft opened. A pattern isn't drafted again while its draft is open. Once the draft is closed, whether vetoed or answered, the pattern is drafted again only if it has evidence the closed draft didn't. `--open` reads each open draft's state from GitHub first.
+
+`swarm dream` prints the escalation section after the plan. The dream run calls `swarm escalate --open` and commits the updated `memory/escalations.json` in its PR.
+
 ## Tests
 
 ```bash

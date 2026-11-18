@@ -33,6 +33,10 @@
     launcher/swarm dream [--since D] [--dry-run|--apply] [--issue N] [--memory DIR]
                                     the librarian's dream over new episodes: one run under
                                     its $3 cap, or none if nothing is new (#1186; dream.py)
+    launcher/swarm escalate [--open|--list] [--memory DIR]
+                                    the dream's draft gov:questions: list them, open them on
+                                    Mondays, or list the open ones for the check-in (#1191;
+                                    escalation.py)
     launcher/swarm memory lessons|show|check|index
     launcher/swarm memory rehearse [L-NNNN ...]   replay due lessons' eval cases without and
                                     with them; promote those that pass the gate (#1189,
@@ -207,7 +211,9 @@ def opener(role: str, issue: int | None = None, pr: int | None = None,
                 f"merges and episode deletions in memory/. Write each proposed lesson you agree with "
                 f"as memory/lessons/<id>-<slug>.md with status proposed, using the ids, sources and "
                 f"review_by the plan gives; drop any you don't, and say why in the report. Run "
-                f"launcher/swarm memory check and launcher/swarm memory index, then open one PR "
+                f"launcher/swarm memory check and launcher/swarm memory index. Then run launcher/swarm "
+                f"escalate --open: on a Monday it opens the week's draft gov:questions (#1191) and "
+                f"records them in memory/escalations.json; other days the drafts wait. Then open one PR "
                 f"titled 'memory: night of <today>' that touches only memory/, with the dream report "
                 f"(learned, forgot, proposing) as its body. It closes #{issue}, but if #{issue} is the "
                 f"pinned report issue it says Refs #{issue} instead. Post the same report as one comment on "
@@ -2426,6 +2432,10 @@ def dream(launcher: Launcher, args, repo: str) -> int:
     say(json.dumps(plan.as_json(), indent=2) if args.as_json else D.report(plan))
     if not plan.new:
         return 0
+    if not args.as_json:
+        import escalation as E
+        b = escalation_batch(memory, all_lessons, eps, ctx, launcher.root)
+        say(E.report(b))
     if args.apply:
         for line in D.apply(plan, all_lessons, memory, dt.datetime.now(dt.timezone.utc)):
             say(f"  {line}")
@@ -2457,6 +2467,118 @@ def dream(launcher: Launcher, args, repo: str) -> int:
                     session_id=str(uuid.uuid4()), started=launcher.clock(), issue=issue, by="watch",
                     budget_usd=lib.spend_cap_usd, max_turns=limits.max_turns, dream=since or DREAM_FROM_START)
     return 0 if launcher.start(entry, launcher.live(), args.dry_run) else 1
+
+
+# ---------------------------------------------------------------- escalation (#1191)
+
+CITE_DAYS = 90      # commits this recent count as citing a ruling
+
+
+def recent_commit_text(root: Path, days: int = CITE_DAYS) -> list[str]:
+    """Commit messages from the last `days` days, for which rulings are still cited."""
+    try:
+        r = subprocess.run(["git", "-C", str(root), "log", f"--since={days} days ago", "--format=%B"],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [r.stdout] if r.returncode == 0 else []
+
+
+def escalation_batch(memory: Path, all_lessons: list, eps: list[dict], ctx, root: Path,
+                     ledger: list[dict] | None = None, commits: list[str] | None = None):
+    """The drafts the Promote phase would open, wait on or skip today (escalation.py)."""
+    import escalation as E
+    rules = E.rulings(root / "governance" / "INDEX.md") or E.rulings()
+    cited = E.cited_rulings(all_lessons, eps, recent_commit_text(root) if commits is None else commits)
+    drafts, held = E.find(all_lessons, eps, ctx, rules, cited)
+    return E.batch(drafts, held, E.load_ledger(memory) if ledger is None else ledger, ctx.today)
+
+
+def gh_issue_state(repo: str, n: int) -> str | None:
+    """open or closed, or None if it can't be read."""
+    try:
+        d = dashboard().gh_json("api", f"repos/{repo}/issues/{n}") or {}
+    except RuntimeError:
+        return None
+    return d.get("state")
+
+
+def gh_open_question(repo: str, title: str, body: str) -> int:
+    """Open a gov:question (the template's label) and return its number."""
+    r = subprocess.run(["gh", "issue", "create", "--repo", repo, "--title", title, "--body-file", "-",
+                        "--label", "gov:question"], input=body, capture_output=True, text=True, timeout=120)
+    m = re.search(r"/issues/(\d+)", r.stdout)
+    if r.returncode != 0 or not m:
+        raise RuntimeError((r.stderr or r.stdout).strip() or "gh issue create failed")
+    return int(m.group(1))
+
+
+def escalate(launcher: Launcher, args, repo: str, *, state_of: Callable = gh_issue_state,
+             open_question: Callable = gh_open_question, commits: list[str] | None = None) -> int:
+    """`swarm escalate` (#1191): the Promote phase's draft gov:questions. Prints what it
+    would open, what waits for Monday and what was already drafted; with --open, on a
+    Monday, opens the drafts and records them in memory/escalations.json; with --list, the
+    open drafts for the Monday check-in. It never reads the owner model."""
+    import episodes
+    import escalation as E
+    import lessons as L
+    say = launcher.out
+    memory = Path(args.memory) if args.memory else launcher.root / "memory"
+    ledger = E.load_ledger(memory)
+    # Refresh each open draft's state, so a closed (vetoed or answered) one is known.
+    for e in ledger:
+        if e.get("state") != "closed" and isinstance(e.get("issue"), int) and repo:
+            st = state_of(repo, e["issue"])
+            if st in ("open", "closed"):
+                e["state"] = st
+    if args.list:
+        rows = [e for e in ledger if e.get("state") != "closed"]
+        if args.as_json:
+            say(json.dumps(rows, indent=2))
+        else:
+            say(f"swarm escalate: {len(rows)} open draft gov:question(s)")
+            for e in rows:
+                say(f"  #{e.get('issue')} {e.get('title')} (evidence: {', '.join(e.get('evidence') or [])})")
+        return 0
+    dirs = [memory / "episodes"] + ([] if args.memory else [episodes.outbox(launcher.home)])
+    try:
+        eps = episodes.load(dirs)
+        ctx = L.Context(trusted=L.trusted_logins(), episodes={e["id"]: e for e in eps},
+                        rulings=L.in_force_rulings(), repo=repo or "", today=None)
+    except (OSError, RuntimeError, ValueError) as e:
+        say(f"swarm escalate: {e}")
+        return 1
+    b = escalation_batch(memory, L.load_all(memory / "lessons"), eps, ctx, launcher.root,
+                         ledger=ledger, commits=commits)
+    say(json.dumps(b.as_json(), indent=2) if args.as_json else E.report(b))
+    if not args.open:
+        return 0
+    if not b.open_now:
+        if b.waiting:
+            say(f"swarm escalate: today isn't Monday: {len(b.waiting)} draft(s) wait for the check-in batch")
+        if ledger:
+            E.save_ledger(memory, ledger)   # the refreshed states
+        return 0
+    if not repo:
+        say("swarm escalate: pass --repo owner/name")
+        return 2
+    try:
+        model = model_for("librarian", args.model, args.manifest)
+    except (manifest.ManifestError, LookupError) as e:
+        say(f"swarm escalate: {e}")
+        return 1
+    code = 0
+    for d in b.open_now:
+        try:
+            n = open_question(repo, d.title, E.body(d, model))
+        except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+            say(f"swarm escalate: couldn't open {d.key}: {e}")
+            code = 1
+            continue
+        E.record(ledger, d, n, b.today)
+        say(f"  opened #{n}: {d.title}")
+    E.save_ledger(memory, ledger)
+    return code
 
 
 # ---------------------------------------------------------------- memory (#1185)
@@ -2754,6 +2876,17 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
     p_dream.add_argument("--json", action="store_true", dest="as_json", help="the plan as JSON")
     p_dream.add_argument("--repo", help="owner/name (default: this checkout's origin)")
     p_dream.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
+    p_esc = sub.add_parser("escalate", help="the dream's draft gov:questions for the owner (#1191): "
+                                            "list, or open on Mondays")
+    emode = p_esc.add_mutually_exclusive_group()
+    emode.add_argument("--open", action="store_true",
+                       help="on a Monday, open the drafts and record them in memory/escalations.json")
+    emode.add_argument("--list", action="store_true", help="the open drafts, for the Monday check-in")
+    p_esc.add_argument("--memory", help="a memory/ directory to read instead; the engine's outbox isn't read then")
+    p_esc.add_argument("--json", action="store_true", dest="as_json")
+    p_esc.add_argument("--repo", help="owner/name (default: this checkout's origin)")
+    p_esc.add_argument("--model", help="the model the drafts' sign-off names (default: the librarian's)")
+    p_esc.add_argument("--manifest", default=str(manifest.DEFAULT_PATH), help="default: swarm.toml")
     p_backup = sub.add_parser("backup", help="copy swarm.db consistently, for the nightly timer")
     p_backup.add_argument("--out", help=f"default: backups/swarm-<UTC time>.db, keeping the newest "
                                         f"{statedb.KEEP_BACKUPS}")
@@ -2764,6 +2897,8 @@ def main(argv: list[str], launcher: Launcher | None = None) -> int:
         return classify_eval().eval_main(args, say=launcher.out)
     if args.cmd == "dream":
         return dream(launcher, args, args.repo or dashboard().default_repo() or "")
+    if args.cmd == "escalate":
+        return escalate(launcher, args, args.repo or dashboard().default_repo() or "")
     if args.cmd == "memory" and args.memory_cmd in LESSON_CMDS:
         repo = getattr(args, "repo", None) or dashboard().default_repo() or ""
         return memory_lessons(launcher, args, repo)
