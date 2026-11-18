@@ -38,6 +38,9 @@ it has none (for example, the role has no spend_cap_usd).
 | conflict| open, non-draft PR a role's App opened, closing one go issue, that      | that role on the PR, |
 |        | GitHub reports CONFLICTING with its base, with no changes requested or  | once per head (#893) |
 |        | overstep at its head                                                    |                      |
+| dream  | a night's window (DREAM_HOURS from [watch] dream_at, local time) with   | librarian on the     |
+|        | new episodes since memory/dream.json's last run, once per night, with   | report issue         |
+|        | dream = true (#1190, FEAT-20)                                           |                      |
 
 [daily] (#588, GOV-0029): with `daily = true` in [watch], once each working day (Monday to
 Friday, in this machine's local time) at or after daily_at, it starts the planner on
@@ -49,6 +52,22 @@ mid-hold) is logged once the next day as missed and isn't caught up. Before the 
 the report issue must exist and be open; it needs no label. Its run is headless like any
 other (GOV-0010, GOV-0012, GOV-0013), and stophook.py lets it stop whenever it likes.
 With daily off (the default) there is no trigger. `swarm inbox` says when it is next due.
+
+[dream] (#1190, FEAT-20): with `dream = true` in [watch], once a night it starts the librarian
+on report_issue to run the dream (#1186), as `swarm dream` would. A night's window opens at
+dream_at (local time) and lasts DREAM_HOURS; its key is `dream:<report_issue>:<the date the
+window opened>`, so it starts at most once a night. It is due only when memory/dream.json's
+last run is followed by new episodes (dream.new_episodes(): what `swarm dream` would dream
+over, in memory/episodes/ and the engine's outbox); a night without starts nothing and makes no model
+call. It runs after the day's last run: it waits while any session the launcher knows of is
+live. It also waits while a `memory: night of` PR is open, since memory/dream.json on main
+moves only when that PR merges, so a second run would dream the same episodes twice. A night
+whose window closes without a start is logged once as missed; the next night's run reads
+every episode since the last run, so it catches the missed night up in one run, not two.
+With the librarian on the planner's model (GOV-0059) the night is skipped with that reason.
+Its run is headless like any other, at the librarian's spend_cap_usd and [watch] max_turns
+(GOV-0053). With dream off (the default) no episodes are read for it and nothing else
+changes.
 
 [ask] (#590, GOV-0029): with `asks = true` in [watch], a comment on report_issue counts as
 an ask when a line of it starts `Ask:` (any case): one role, a colon, then the question,
@@ -332,6 +351,11 @@ RESEARCH_RE = re.compile(r"^[ \t]*Research:[ \t]*([^\n]*?)[ \t]*$", re.IGNORECAS
 RULING = "ruling"             # the owner's ruling on an overstep (#739, #781)
 RULING_MAX = 1500             # characters of the owner's ruling that go into the prompt
 CONFLICT = "conflict"         # a go PR that conflicts with its base (#893)
+DREAM = "dream"               # the librarian's nightly dream (#1190, FEAT-20)
+DREAM_HOURS = 8               # how long a night's [dream] window stays open from dream_at
+MEMORY_PR_RE = re.compile(r"^\s*memory:\s*night of\b", re.IGNORECASE)   # the dream's PR title
+DREAM_WAITS_PR = "held: the dream waits for memory PR"
+DREAM_WAITS_LIVE = "held: the dream waits for the day's last run to end"
 # The roles [respond] and [ruling] start, each on a PR its own App opened: the PR's author
 # role (#738, Option 1 of the owner's answer on #777), from the dashboard's RESPONDERS, which
 # generate.needs_owner reads too; it hands any other PR to the owner. `swarm trouble` reads
@@ -376,6 +400,8 @@ REASONS = {
     "record_first": "held: docs records the ruling first",
     "paused": "held: its repo is paused in swarm.toml",
     "error": "held: failed to start; trying again next check",
+    "dream_pr": "held: the dream waits for the last memory PR to close",
+    "dream_live": "held: the dream waits for the day's last run to end",
     "raised_by": "skipped: \"Raised by\" names no role",
     "no_role": "skipped: the role isn't in swarm.toml",
     "no_cap": "skipped: the role has no spend_cap_usd in swarm.toml",
@@ -389,7 +415,7 @@ ENDINGS = {AT_CAP: "at_cap", ERROR: "error", NO_RESULT: "no_result", LIMITED: "l
 class Trigger:
     key: str                  # identity: a new key is a new trigger
     kind: str                 # review | build | record | answer | respond | call-in | daily | ask
-                              # | research | ruling | conflict
+                              # | research | ruling | conflict | dream
     ref: str                  # "PR #12" or "#49"
     why: str
     role: str | None = None
@@ -412,6 +438,7 @@ class Trigger:
     ruling: str | None = None     # [ruling]: the owner's comment, for the role's prompt (#739)
     ruling_comment: int | None = None   # [ruling]: that comment's id
     conflict: bool = False        # [conflict]: bring the base into the PR's branch (#893)
+    dream: str | None = None      # [dream]: the episodes since this stamp, for the librarian (#1190)
 
     def line(self) -> str:
         if self.held:
@@ -600,7 +627,7 @@ def triggers(w: World, owner: str, started: list, roles: set[str], needs_you: Ca
              report_issue: int | None = None, tz: dt.tzinfo | None = None,
              ask_issue: int | None = None, asks_since: dt.datetime | None = None,
              research_since: dt.datetime | None = None,
-             research_report: int | None = None) -> list[Trigger]:
+             research_report: int | None = None, night: "Night | None" = None) -> list[Trigger]:
     """Every trigger present now, in needs-you order then issue order. Nothing is filtered
     for novelty here; Watch does that. With review_in_actions, each [review] trigger is
     skipped as left to Actions (GOV-0019). A [record], [answer], [build] or [respond]
@@ -612,7 +639,8 @@ def triggers(w: World, owner: str, started: list, roles: set[str], needs_you: Ca
     in tz (default: this machine's local time) on working days (#588, GOV-0029). With
     ask_issue, each owner `Ask:` comment on it posted since asks_since is an [ask] (#590).
     With research_since, each `Research:` line in w.recent is a [research] (#591); one on
-    research_report, the report issue, is skipped."""
+    research_report, the report issue, is skipped. With night, [dream] is due in its window
+    (#1190)."""
     m, out = w.model, []
     items = needs_you(m)
     heads = {p["number"]: p.get("head") for p in m["prs"]}
@@ -754,7 +782,69 @@ def triggers(w: World, owner: str, started: list, roles: set[str], needs_you: Ca
         for t in research(w.recent or [], open_issues, owner, research_report, research_since):
             h = None if t.skipped else held_by(t.issue, m, started, now, stale_minutes, t.role)
             out.append(replace(t, held=h[0], once=h[1]) if h else t)
+
+    # The nightly dream (#1190, FEAT-20): after the day's last run, never over an open memory PR.
+    t = dream_trigger(now, night, tz) if night else None
+    if t:
+        pr = next((p["number"] for p in m["prs"] if MEMORY_PR_RE.match(p.get("title") or "")), None)
+        if night.skip:
+            t = replace(t, skipped=night.skip)
+        elif pr is not None:
+            why = f"{DREAM_WAITS_PR} #{pr} to close, so it never dreams the same episodes twice"
+            t = replace(t, held=why, once=why)
+        elif night.live:
+            why = f"{DREAM_WAITS_LIVE} ({night.live} live)"
+            t = replace(t, held=why, once=DREAM_WAITS_LIVE)
+        out.append(t)
     return out
+
+
+@dataclass(frozen=True)
+class Night:
+    """What [dream] needs from this check (#1190): Watch.night() reads it."""
+    at: dt.time               # [watch] dream_at: when a night's window opens, local time
+    report_issue: int
+    since: str | None         # memory/dream.json's last run; None before the first
+    new: int                  # episodes since then that `swarm dream` would dream over
+    live: int = 0             # live sessions the launcher knows of
+    skip: str | None = None   # why no night can start (the librarian on the planner's model)
+
+
+def dream_night(now: dt.datetime, at: dt.time, tz: dt.tzinfo | None = None) -> dt.date | None:
+    """The date the night's [dream] window opened, if now is inside one (it opens at `at`,
+    local time, and stays open DREAM_HOURS), else None."""
+    local = local_day(now, tz)
+    start = local.replace(hour=at.hour, minute=at.minute, second=0, microsecond=0)
+    if local < start:
+        start -= dt.timedelta(days=1)
+    return start.date() if local - start < dt.timedelta(hours=DREAM_HOURS) else None
+
+
+def dream_trigger(now: dt.datetime | None, night: Night, tz: dt.tzinfo | None = None) -> Trigger | None:
+    """[dream] (#1190): due inside a night's window when there are new episodes. Keyed on the
+    night, so it starts at most once a night however many checks see it."""
+    day = dream_night(now, night.at, tz) if now else None
+    if day is None or night.new < 1:
+        return None
+    since = night.since or swarm.DREAM_FROM_START
+    return Trigger(key=f"{DREAM}:{night.report_issue}:{day}", kind=DREAM, ref=f"#{night.report_issue}",
+                   why=f"night of {day}, {night.new} new episode{'s' * (night.new != 1)} since {since}",
+                   role="librarian", command=f"librarian on #{night.report_issue}, the dream",
+                   issue=night.report_issue, dream=since)
+
+
+def dream_key_night(key: str) -> str | None:
+    """The night in a [dream] key, or None if it isn't one."""
+    parts = key.split(":")
+    return parts[2] if len(parts) == 3 and parts[0] == DREAM else None
+
+
+def dream_text(limits: "manifest.WatchLimits | None") -> str | None:
+    """`swarm inbox`'s [dream] line (#1190), or None while dream is off."""
+    if not (limits and limits.dream and limits.dream_at and limits.report_issue):
+        return None
+    return (f"swarm watch's [dream]: the librarian dreams on #{limits.report_issue} once a night from "
+            f"{limits.dream_at:%H:%M} local time, after the day's last run, when there are new episodes")
 
 
 def local_day(now: dt.datetime, tz: dt.tzinfo | None = None) -> dt.datetime:
@@ -1428,6 +1518,10 @@ def held_code(reason: str) -> str:
     blocked()'s open Waits-on issues."""
     if reason.startswith("stale:"):
         return "stale"
+    if reason.startswith(DREAM_WAITS_PR):
+        return "dream_pr"
+    if reason.startswith(DREAM_WAITS_LIVE):
+        return "dream_live"
     return "waits_on" if reason.startswith("held: waits on ") else "live"
 
 
@@ -1931,7 +2025,8 @@ class Watch:
                         limits.stale_minutes if limits else DEFAULT_STALE, one_way,
                         apps, bool(limits and limits.call_ins), *self.daily(limits),
                         ask_issue=ask_n, asks_since=since, research_since=r_since,
-                        research_report=limits.report_issue if limits else None)
+                        research_report=limits.report_issue if limits else None,
+                        night=self.night(limits, self.launcher.running()))
         others = [t for t, _ in self.other_worlds(limits, now, one_way, apps, paused,
                                                   self.launcher.running())]
         for t in here + others:
@@ -1995,6 +2090,34 @@ class Watch:
         on = bool(limits and limits.daily)
         return ((limits.daily_at, limits.report_issue) if on else (None, None)) + (self.tz,)
 
+    def night(self, limits: "manifest.WatchLimits | None", live: list,
+              sessions: list | None = None) -> Night | None:
+        """triggers()'s night for [dream] (#1190), or None while dream is off. Reads
+        memory/dream.json's last run and the episodes since, as `swarm dream` does: the repo's
+        memory/episodes/ and the engine's outbox."""
+        if not (limits and limits.dream and limits.dream_at and limits.report_issue):
+            return None
+        import dream as D
+        import episodes
+        memory = self.launcher.root / "memory"
+        since = D.last_run(memory)
+        try:
+            eps = episodes.load([memory / "episodes", episodes.outbox(self.launcher.home)])
+        except (OSError, RuntimeError, ValueError) as e:
+            self.once(f"swarm watch: [dream] can't read the episodes ({e}); no dream until it can")
+            return None
+        if sessions is None:
+            try:
+                sessions = manifest.load_all(self.manifest_path)[0]
+            except manifest.ManifestError:
+                sessions = []
+        by_role = {x.role: x for x in sessions}
+        lib, planner = by_role.get("librarian"), by_role.get("planner")
+        skip = (f"the librarian runs on the planner's model ({lib.model}); GOV-0059 puts it on a "
+                f"different one" if lib and planner and lib.model == planner.model else None)
+        return Night(limits.dream_at, limits.report_issue, since, len(D.new_episodes(eps, since)),
+                     len(live), skip)
+
     def asks(self, w: World, limits: "manifest.WatchLimits | None", kept: dict,
              now: dt.datetime) -> tuple[int | None, dt.datetime | None]:
         """[ask] (#590): (the report issue, when asks was first seen on for it), or (None,
@@ -2050,7 +2173,8 @@ class Watch:
                              called_by=t.called_by, call_why=t.call_why, daily=t.daily,
                              ask=t.ask, ask_comment=t.ask_comment, research=t.research,
                              research_comment=t.research_comment, ruling=t.ruling,
-                             ruling_comment=t.ruling_comment, conflict=t.conflict, repo=t.repo)
+                             ruling_comment=t.ruling_comment, conflict=t.conflict, repo=t.repo,
+                             dream=t.dream)
 
     def start_tick(self, now: dt.datetime) -> list[Trigger]:
         """Start a session for each new trigger, within the [watch] limits (GOV-0010)."""
@@ -2095,7 +2219,8 @@ class Watch:
                                     limits.review_in_actions, now, limits.stale_minutes,
                                     one_way, apps, limits.call_ins,
                                     *self.daily(limits), ask_issue=ask_n, asks_since=since,
-                                    research_since=r_since, research_report=limits.report_issue)
+                                    research_since=r_since, research_report=limits.report_issue,
+                                    night=self.night(limits, live, sessions))
                 if t.key not in acted]
         today = local_day(now, self.tz).strftime("%Y-%m-%d")
         for x in st["waiting"]:
@@ -2105,6 +2230,14 @@ class Watch:
                 # "waiting" on this check); not caught up.
                 out(f"[daily] {x['ref']} {day}: no daily report run that day ({x.get('reason')}); "
                     f"not caught up (GOV-0029)")
+        tonight = dream_night(now, limits.dream_at, self.tz) if limits.dream and limits.dream_at else None
+        for x in st["waiting"]:
+            night = dream_key_night(x["key"])
+            if night and night != str(tonight) and x["key"] not in acted:
+                # #1190: a night's window closed without its dream. Logged once; the next
+                # night's run reads every episode since the last run, so it catches this up.
+                out(f"[dream] {x['ref']} night of {night}: no dream that night ({x.get('reason')}); "
+                    f"the next night's run catches it up")
         todo.sort(key=lambda t: before.get(t.key, {}).get("since", iso(now)))  # held longest first
         # #912: other repos' go work starts here too, after this repo's, under the same limits.
         others = [(t, tw) for t, tw in self.other_worlds(limits, now, one_way, apps, paused, live)
@@ -2396,9 +2529,9 @@ class Watch:
             # A pass already running may have listed PRs before this push: wait for it.
             return None, bool(reviewers(hb, in_repo(live, t.repo)))
         issue, events = self.get_issue(repo, t.issue)
-        if t.kind in (DAILY, ASK, RESEARCH):
-            # #588, #590: the report issue needs no label, only to exist and be open; nor
-            # does a [research] line's issue (#591).
+        if t.kind in (DAILY, ASK, RESEARCH, DREAM):
+            # #588, #590, #1190: the report issue needs no label, only to exist and be open;
+            # nor does a [research] line's issue (#591).
             refused = ([f"{ref} doesn't exist"] if issue is None else
                        [f"{ref} is a pull request, not an issue"] if "pull_request" in issue else
                        [f"{ref} is closed"] if issue.get("state") != "open" else [])
@@ -2528,8 +2661,9 @@ def in_repo(live: list, repo: str | None = None) -> list:
 
 def own_role(t: Trigger) -> str | None:
     """The role whose live sessions hold t: only its own for a [call-in] (#520), [daily]
-    (#588), [ask] (#590) or [research] (#591), else any."""
-    return t.role if t.kind in (CALL_IN, DAILY, ASK, RESEARCH) else None
+    (#588), [ask] (#590), [research] (#591) or [dream] (#1190, which triggers() holds for any
+    live session already), else any."""
+    return t.role if t.kind in (CALL_IN, DAILY, ASK, RESEARCH, DREAM) else None
 
 
 def roles_in(root: Path) -> set[str]:

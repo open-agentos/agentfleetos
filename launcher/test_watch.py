@@ -1074,7 +1074,7 @@ class ManifestWatchTest(unittest.TestCase):
         self.assertEqual(c.exception.problems, [
             "watch: unknown key 'ceiling' (allowed: interval_minutes, max_live, max_turns, "
             "review_in_actions, actions_max_reviews, stale_minutes, call_ins, daily, daily_at, "
-            "report_issue, asks, research)",
+            "report_issue, asks, research, dream, dream_at)",
             "watch: interval_minutes must be a positive number, got 0",
             "watch: max_live must be a whole number of at least 1, got 1.5"])
         with self.assertRaises(manifest.ManifestError) as c:
@@ -2853,6 +2853,159 @@ class DailyTest(unittest.TestCase):
         self.assertIn(line, swarm.inbox_text([], NOW, G, daily=line))
         self.manifest()
         self.assertIsNone(watch.daily_text(swarm.manifest.load_watch(self.path), {}, TUE, UTC))
+
+
+DREAM_ON = 'dream = true\ndream_at = "01:00"\nreport_issue = 600\n'
+
+
+class DreamTest(unittest.TestCase):
+    """FEAT-20's [dream] trigger (#1190): the librarian on report issue #600, once a night
+    from dream_at, only with new episodes since memory/dream.json's last run. UTC here."""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        (self.home / "launcher").mkdir()
+        self.fake = Fake(self.home / "launcher")
+        self.lines = []
+        self.l = swarm.Launcher(self.home, run=self.fake.run, proc=self.fake.proc, kill=self.fake.kill,
+                                clock=self.fake.clock, sleep=lambda s: None, out=self.lines.append,
+                                root=self.home / "repo", git=FakeGit(), claude_dir=self.home / "claude")
+        self.memory = self.home / "repo" / "memory"
+        (self.memory / "episodes").mkdir(parents=True)
+        self.scene = Scene()
+        self.scene.issues.append(issue(600, title="Daily report"))
+        self.manifest(DREAM_ON)
+
+    def manifest(self, extra="", librarian="m-librarian"):
+        self.path = write_manifest(self.home, ALL_CAPPED, 10, extra=extra)
+        with self.path.open("a") as f:
+            f.write(f'[[session]]\nrole = "librarian"\ncount = 1\nmodel = "{librarian}"\n'
+                    f'spend_cap_usd = 3\n')
+
+    def episode(self, eid, at, kind="act"):
+        with (self.memory / "episodes" / f"{at[:10]}.jsonl").open("a") as f:
+            f.write(json.dumps({"schema": 1, "id": eid, "type": kind, "at": at, "what": "x"}) + "\n")
+
+    def last_run(self, at):
+        (self.memory / "dream.json").write_text(json.dumps({"last_run": at}))
+
+    def watcher(self, dry_run=False):
+        return watch.Watch(self.l, REPO, OWNER, ROLES | {"librarian"}, dry_run=dry_run,
+                           manifest_path=self.path, read=self.scene.read, get_issue=self.scene.get_issue,
+                           get_heartbeat=self.scene.heartbeat, get_reader=self.scene.get_reader, tz=UTC)
+
+    def tick(self, now, dry_run=False):
+        return [t for t in self.watcher(dry_run).tick(now) if t.kind == "dream"]
+
+    def dreams(self):
+        return [(e.role, e.issue, e.dream) for e in self.l.load() if e.dream]
+
+    def at(self, day, hh, mm=0):
+        return dt.datetime(2026, 11, day, hh, mm, tzinfo=UTC)
+
+    def finish(self):
+        for e in self.l.load():
+            if e.dream:
+                StartTest.exit(self, e.name)
+
+    def test_a_night_with_new_episodes_starts_exactly_one_dream(self):
+        self.last_run("2026-11-02T01:30:00Z")
+        self.episode("e1", "2026-11-02T15:00:00Z")
+        self.assertEqual(self.tick(self.at(3, 0, 59), dry_run=True), [])   # before dream_at
+        self.assertEqual([t.key for t in self.tick(self.at(3, 1))], ["dream:600:2026-11-03"])
+        self.assertEqual(self.dreams(), [("librarian", 600, "2026-11-02T01:30:00Z")])
+        cmd = [c for c in self.fake.commands if "roles/librarian.md" in c][-1]
+        self.assertIn("run the dream over the episodes since 2026-11-02T01:30:00Z", cmd)
+        self.assertIn("--since 2026-11-02T01:30:00Z", cmd)
+        argv = headless_argv(cmd)                                           # GOV-0053's cap
+        self.assertEqual(argv[argv.index("--max-budget-usd") + 1], "3")
+        self.finish()
+        self.assertEqual(self.tick(self.at(3, 4)), [])                      # not twice a night
+        self.assertEqual(len([c for c in self.fake.commands if "roles/librarian.md" in c]), 1)
+
+    def test_a_night_without_new_episodes_starts_none(self):
+        self.last_run("2026-11-02T01:30:00Z")
+        self.episode("e1", "2026-11-01T15:00:00Z")                          # before the last run
+        self.episode("g1", "2026-11-02T15:00:00Z", kind="given")            # given alone isn't new
+        self.assertEqual(self.tick(self.at(3, 1)), [])
+        self.assertEqual(self.tick(self.at(3, 1), dry_run=True), [])
+        self.assertEqual(self.dreams(), [])
+        self.assertFalse(any(x.startswith("[dream]") for x in self.lines))
+
+    def test_only_inside_the_nights_window(self):
+        self.episode("e1", "2026-11-02T15:00:00Z")
+        self.assertEqual(self.tick(self.at(3, 1 + watch.DREAM_HOURS)), [])
+        self.assertEqual(watch.dream_night(self.at(3, 0, 30), dt.time(23, 0), UTC), dt.date(2026, 11, 2))
+        self.assertIsNone(watch.dream_night(self.at(3, 12), dt.time(1, 0), UTC))
+
+    def test_first_run_reads_from_the_start(self):
+        self.episode("e1", "2026-11-02T15:00:00Z")
+        self.tick(self.at(3, 1))
+        self.assertEqual(self.dreams(), [("librarian", 600, swarm.DREAM_FROM_START)])
+        cmd = [c for c in self.fake.commands if "roles/librarian.md" in c][-1]
+        self.assertNotIn("--since", cmd)
+
+    def test_a_live_session_holds_it_and_a_missed_night_is_caught_up_once(self):
+        self.last_run("2026-11-02T01:30:00Z")
+        self.episode("e1", "2026-11-02T15:00:00Z")
+        self.tick(self.at(3, 0, 30))           # before the window: the Scene's other runs start
+        self.assertTrue(self.l.live())
+        self.assertEqual(self.tick(self.at(3, 1)), [])
+        (held,) = [x for x in watch.waiting(self.l)[1] if x["kind"] == "dream"]
+        self.assertEqual(held["code"], "dream_live")
+        self.assertEqual(self.tick(self.at(3, 12)), [])                     # the window closed
+        missed = [x for x in self.lines if "no dream that night" in x]
+        self.assertEqual(len(missed), 1)
+        self.assertIn("the next night's run catches it up", missed[0])
+        for e in self.l.live():                # the day's last run ends
+            StartTest.exit(self, e.name)
+        self.episode("e2", "2026-11-03T15:00:00Z")
+        self.assertEqual([t.key for t in self.tick(self.at(4, 2))], ["dream:600:2026-11-04"])
+        # One run covers both nights: it reads every episode since the last run.
+        self.assertEqual(self.dreams(), [("librarian", 600, "2026-11-02T01:30:00Z")])
+        self.assertEqual(len([x for x in self.lines if "no dream that night" in x]), 1)
+
+    def test_an_open_memory_pr_holds_it(self):
+        self.episode("e1", "2026-11-02T15:00:00Z")
+        self.scene.prs.append({**pr(90), "title": "memory: night of 2026-11-02"})
+        self.assertEqual(self.tick(self.at(3, 1)), [])
+        (held,) = [x for x in watch.waiting(self.l)[1] if x["kind"] == "dream"]
+        self.assertEqual(held["code"], "dream_pr")
+        self.assertIn("memory PR #90", held["reason"])
+        self.scene.prs.pop()
+        for e in self.l.live():                # the Scene's other runs end
+            StartTest.exit(self, e.name)
+        self.assertEqual([t.key for t in self.tick(self.at(3, 2))], ["dream:600:2026-11-03"])
+
+    def test_the_librarian_on_the_planners_model_is_skipped(self):
+        self.manifest(DREAM_ON, librarian="m-planner")
+        self.episode("e1", "2026-11-02T15:00:00Z")
+        self.tick(self.at(3, 1))
+        self.assertEqual(self.dreams(), [])
+        self.assertTrue(any("GOV-0059" in x and x.startswith("[dream]") for x in self.lines))
+
+    def test_switch_off_stops_it_and_nothing_else_changes(self):
+        self.episode("e1", "2026-11-02T15:00:00Z")
+        on = [t.key for t in self.watcher(dry_run=True).tick(self.at(3, 1))]
+        self.manifest('dream = false\ndream_at = "01:00"\nreport_issue = 600\n')
+        self.lines.clear()
+        off = [t.key for t in self.watcher(dry_run=True).tick(self.at(3, 1))]
+        self.assertEqual([k for k in on if not k.startswith("dream:")], off)
+        self.assertIn("dream:600:2026-11-03", on)
+        self.assertEqual(self.tick(self.at(3, 1)), [])
+        self.assertIsNone(watch.dream_text(swarm.manifest.load_watch(self.path)))
+
+    def test_dream_needs_dream_at_and_report_issue(self):
+        self.manifest("dream = true\n")
+        with self.assertRaises(RuntimeError) as c:
+            self.watcher().tick(self.at(3, 1))
+        self.assertIn("dream = true needs 'dream_at'", str(c.exception))
+        self.assertIn("dream = true needs 'report_issue'", str(c.exception))
+
+    def test_inbox_line(self):
+        line = watch.dream_text(swarm.manifest.load_watch(self.path))
+        self.assertEqual(line, "swarm watch's [dream]: the librarian dreams on #600 once a night from "
+                               "01:00 local time, after the day's last run, when there are new episodes")
 
 
 ASKS_ON = "asks = true\nreport_issue = 600\n"

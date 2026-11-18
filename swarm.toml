@@ -48,6 +48,16 @@
 # daily = true
 # daily_at = "08:30"
 # report_issue = <the pinned report issue>
+#
+#   dream             optional, true or false, default false (#1190, FEAT-20). When true,
+#                     swarm watch starts the librarian's dream on report_issue once a night,
+#                     in the DREAM_HOURS (8) from dream_at, local time, after the day's last
+#                     run and only if there are new episodes since memory/dream.json's last
+#                     run. A missed night is caught up by the next one. Needs dream_at and
+#                     report_issue. Turning it on is a `spend` decision for the owner.
+#   dream_at          local time the night's window opens, "HH:MM" (24-hour), e.g. "01:00"
+# dream = true
+# dream_at = "01:00"
 [watch]
 interval_minutes = 5
 max_live = 4

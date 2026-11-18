@@ -219,7 +219,7 @@ def opener(role: str, issue: int | None = None, pr: int | None = None,
         # every episode, as it did here.
         since = "" if dream == DREAM_FROM_START else f" --since {dream}"
         then = (f"run the dream over the episodes since {dream}, as roles/{role}.md says, and report on "
-                f"issue #{issue}. swarm dream started this run (#1186). Run launcher/swarm dream "
+                f"issue #{issue}. swarm dream, or swarm watch's nightly [dream] (#1190), started this run. Run launcher/swarm dream "
                 f"--dry-run{since} for each phase's plan (it makes no model call), then "
                 f"launcher/swarm dream --apply{since} to make its decays, status changes, "
                 f"merges and episode deletions in memory/. Write each proposed lesson you agree with "
@@ -231,8 +231,9 @@ def opener(role: str, issue: int | None = None, pr: int | None = None,
                 f"escalate --open: on a Monday it opens the week's draft gov:questions (#1191) and "
                 f"records them in memory/escalations.json; other days the drafts wait. Then open one PR "
                 f"titled 'memory: night of <today>' that touches only memory/, with the dream report "
-                f"(learned, forgot, proposing) as its body. It closes #{issue}, but if #{issue} is the "
-                f"pinned report issue it says Refs #{issue} instead. Post the same report as one comment on "
+                f"(learned, forgot, proposing, with lesson ids and the rehearsal results) as its body. "
+                f"It closes #{issue}, but if #{issue} is the pinned report issue it says Refs #{issue} "
+                f"instead. Post the same report as one comment on "
                 f"#{issue}, and stop")
     elif issue and research:
         # As for an ask: "issue #M" in the question would give the heartbeat two issues.
@@ -1315,7 +1316,7 @@ def inbox(launcher: Launcher, repo: str, idle_minutes: int,
         acted = watch.load_state(launcher)["acted"]
     except RuntimeError:
         acted = {}
-    daily = watch.daily_text(limits, acted, now)
+    daily = "\n".join(x for x in (watch.daily_text(limits, acted, now), watch.dream_text(limits)) if x)
     launcher.out(inbox_text(items, now, g, watch.waiting(launcher), watch.runs(launcher),
                             review_in_actions(manifest_path), daily))
     return 0

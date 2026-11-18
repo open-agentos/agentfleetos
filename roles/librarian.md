@@ -17,7 +17,7 @@ Memory lives in this repo, all public (GOV-0052): episodes in `memory/episodes/`
 
 ## The dream
 
-One run, over the episodes since your last run. `swarm dream` starts it once FEAT-16 (#1186) lands. Until then, the planner or the owner starts it by hand and names the issue it reports on. If there are no new episodes, say so in one comment on that issue, open no PR, and stop.
+One run, over the episodes since your last run. `swarm watch`'s `[dream]` starts it once a night, after the day's last run, while its switch (`dream` in `swarm.toml`'s `[watch]`) is on (#1190); the owner or the planner can also start it with `swarm dream`. The planner's daily report copies its Memory section from your PR, so keep the report's lesson ids and rehearsal results in the PR body. If there are no new episodes, say so in one comment on that issue, open no PR, and stop.
 
 Work in these phases, and record in the report what each one did:
 
