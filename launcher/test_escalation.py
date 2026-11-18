@@ -199,6 +199,53 @@ class Counts(Base):
         self.assertIn("week of 2026-11-16: 2, week of 2026-11-09: 1", E.report(b))
 
 
+class Retirement(Base):
+    """A ruling the repo's own files cite is never offered for retirement (#1247 review)."""
+    def batch(self, files, commits=(), git=None):
+        eps = self.eps(("answer:3",))
+        c = ctx(eps)
+        c.today = WEDNESDAY
+        les = L.load_all(self.mem / "lessons")
+        with mock.patch.object(swarm, "_git", git or (lambda *a: None)):
+            return swarm.escalation_batch(self.mem, les, eps, c, self.tmp, ledger=[],
+                                          commits=None if git else list(commits), files=files)
+
+    def write(self, rel, text):
+        (self.tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.tmp / rel).write_text(text)
+
+    def test_a_ruling_cited_only_in_a_tracked_file_isnt_offered_for_retirement(self):
+        self.write("roles/builder.md", "Heartbeats stay small (per GOV-0071).")
+        self.assertEqual([d.key for d in self.batch(files=[]).waiting], ["retirement:GOV-0071"])
+        self.assertEqual(self.batch(files=["roles/builder.md"]).waiting, [])
+
+    def test_its_own_record_the_index_and_memory_dont_count_as_citing(self):
+        self.write("governance/decisions/GOV-0071-heartbeats.md", "# GOV-0071\nSee GOV-0070.")
+        self.write("memory/escalations.json", '{"drafts": [{"key": "retirement:GOV-0071"}]}')
+        files = ["governance/decisions/GOV-0071-heartbeats.md", "governance/INDEX.md",
+                 "memory/escalations.json", "missing.md"]
+        self.assertEqual(E.cited_in_files(self.tmp, files), {"GOV-0070"})
+        (d,) = self.batch(files=files).waiting
+        self.assertEqual(d.key, "retirement:GOV-0071")
+        self.assertIn("no tracked file", d.context)
+        self.assertNotIn("nothing on record uses it", d.recommendation)
+
+    def test_unlisted_files_offer_nothing_for_retirement_and_say_why(self):
+        with mock.patch.object(swarm, "tracked_files", lambda root: None):
+            b = self.batch(files=None)
+        self.assertEqual(b.waiting, [])
+        self.assertIn("warning: couldn't list the repo's tracked files", E.report(b))
+
+    def test_a_shallow_history_is_reported_not_hidden(self):
+        def git(root, *argv):
+            return "true\n" if argv[0] == "rev-parse" else ""
+        b = self.batch(files=[], git=git)
+        self.assertIn("warning: this checkout's history is shallow", E.report(b))
+        self.assertIn("shallow", " ".join(b.as_json()["warnings"]))
+        b = self.batch(files=[], git=lambda root, *argv: "false\n" if argv[0] == "rev-parse" else "")
+        self.assertEqual(b.warnings, [])
+
+
 class Command(Base):
     def run_swarm(self, *argv, today=WEDNESDAY, states=None):
         out, opened = [], []
@@ -224,7 +271,7 @@ class Command(Base):
              mock.patch.object(L, "today", lambda: today), \
              mock.patch("swarm.owner_login", lambda *a: OWNER), \
              mock.patch("manifest._roles_dir", lambda d: self.tmp / "roles"):
-            code = swarm.escalate(launcher, args, "open-agentos/agentfleetos", commits=["GOV-0071"],
+            code = swarm.escalate(launcher, args, "open-agentos/agentfleetos", commits=["GOV-0071"], files=[],
                                   state_of=lambda repo, n: (states or {}).get(n),
                                   open_question=open_question)
         return code, "\n".join(out), opened

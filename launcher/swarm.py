@@ -2474,24 +2474,55 @@ def dream(launcher: Launcher, args, repo: str) -> int:
 CITE_DAYS = 90      # commits this recent count as citing a ruling
 
 
-def recent_commit_text(root: Path, days: int = CITE_DAYS) -> list[str]:
-    """Commit messages from the last `days` days, for which rulings are still cited."""
+def _git(root: Path, *argv: str) -> str | None:
+    """git's stdout in root, or None if it fails."""
     try:
-        r = subprocess.run(["git", "-C", str(root), "log", f"--since={days} days ago", "--format=%B"],
-                           capture_output=True, text=True, timeout=60)
+        r = subprocess.run(["git", "-C", str(root), *argv], capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
-        return []
-    return [r.stdout] if r.returncode == 0 else []
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def recent_commit_text(root: Path, days: int = CITE_DAYS) -> tuple[list[str], str | None]:
+    """(commit messages from the last `days` days, for which rulings are still cited; a warning
+    when that history is missing or shallow, so the signal is incomplete)."""
+    out = _git(root, "log", f"--since={days} days ago", "--format=%B")
+    if out is None:
+        return [], "couldn't read the git log, so no commit counts as citing a ruling"
+    if (_git(root, "rev-parse", "--is-shallow-repository") or "").strip() == "true":
+        return [out], ("this checkout's history is shallow, so commits that cite a ruling may be "
+                       "missing; tracked files are still read")
+    return [out], None
+
+
+def tracked_files(root: Path) -> list[str] | None:
+    """The repo's tracked files, relative to root, or None if git can't list them."""
+    out = _git(root, "ls-files", "-z")
+    return None if out is None else [f for f in out.split("\0") if f]
 
 
 def escalation_batch(memory: Path, all_lessons: list, eps: list[dict], ctx, root: Path,
-                     ledger: list[dict] | None = None, commits: list[str] | None = None):
+                     ledger: list[dict] | None = None, commits: list[str] | None = None,
+                     files: list[str] | None = None):
     """The drafts the Promote phase would open, wait on or skip today (escalation.py)."""
     import escalation as E
+    warnings: list[str] = []
     rules = E.rulings(root / "governance" / "INDEX.md") or E.rulings()
-    cited = E.cited_rulings(all_lessons, eps, recent_commit_text(root) if commits is None else commits)
+    if commits is None:
+        commits, warn = recent_commit_text(root)
+        warnings += [warn] if warn else []
+    cited = E.cited_rulings(all_lessons, eps, commits)
+    if files is None:
+        files = tracked_files(root)
+    if files is None:
+        # Without the repo's files, any ruling may still be cited: offer none for retirement.
+        warnings.append("couldn't list the repo's tracked files, so no ruling is offered for retirement")
+        cited |= set(rules)
+    else:
+        cited |= E.cited_in_files(root, files)
     drafts, held = E.find(all_lessons, eps, ctx, rules, cited)
-    return E.batch(drafts, held, E.load_ledger(memory) if ledger is None else ledger, ctx.today)
+    return E.batch(drafts, held, E.load_ledger(memory) if ledger is None else ledger, ctx.today,
+                   warnings)
 
 
 def gh_issue_state(repo: str, n: int) -> str | None:
@@ -2514,7 +2545,8 @@ def gh_open_question(repo: str, title: str, body: str) -> int:
 
 
 def escalate(launcher: Launcher, args, repo: str, *, state_of: Callable = gh_issue_state,
-             open_question: Callable = gh_open_question, commits: list[str] | None = None) -> int:
+             open_question: Callable = gh_open_question, commits: list[str] | None = None,
+             files: list[str] | None = None) -> int:
     """`swarm escalate` (#1191): the Promote phase's draft gov:questions. Prints what it
     would open, what waits for Monday and what was already drafted; with --open, on a
     Monday, opens the drafts and records them in memory/escalations.json; with --list, the
@@ -2549,7 +2581,7 @@ def escalate(launcher: Launcher, args, repo: str, *, state_of: Callable = gh_iss
         say(f"swarm escalate: {e}")
         return 1
     b = escalation_batch(memory, L.load_all(memory / "lessons"), eps, ctx, launcher.root,
-                         ledger=ledger, commits=commits)
+                         ledger=ledger, commits=commits, files=files)
     say(json.dumps(b.as_json(), indent=2) if args.as_json else E.report(b))
     if not args.open:
         return 0

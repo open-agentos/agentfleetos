@@ -15,7 +15,10 @@ Patterns, each a kind of draft:
   amendment       a mature lesson outcomes keep confirming (confidence at least CONFIRMED) that
                   pulls against an in-force ruling it names: an amendment to that ruling.
   retirement      an in-force ruling within NEAR_REVIEW days of its review_by that no lesson,
-                  episode or recent commit cites: retire it, or renew it.
+                  episode, recent commit or tracked file cites: retire it, or renew it. A
+                  tracked file is any file in the repo outside memory/ (read as lessons and
+                  episodes) and governance/INDEX.md (which lists every ruling); a record in
+                  governance/decisions/ doesn't count as citing itself.
   role prompt     ROLE_CLUSTER or more mature lessons for one role alone: a change to that
                   role's prompt. GOV-0059 keeps the librarian out of roles/, so this one is never
                   opened: it is listed for the dream report, which proposes it to the owner.
@@ -158,6 +161,26 @@ def cited_rulings(lessons: list[L.Lesson], episodes: list[dict], texts: list[str
     return out
 
 
+def cited_in_files(root: Path, files: list[str]) -> set[str]:
+    """Ruling ids the repo's tracked files name (paths relative to root), such as role prompts,
+    launcher code, PRODUCT.md and other rulings' records. memory/ is left out: its lessons and
+    episodes are counted on their own terms, and its escalation ledger names the very rulings
+    it drafted. governance/INDEX.md names every ruling, and a record doesn't cite itself."""
+    out: set[str] = set()
+    for rel in files:
+        if rel.startswith("memory/") or rel == "governance/INDEX.md":
+            continue
+        try:
+            text = (root / rel).read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
+        ids = set(GOV_ID.findall(text))
+        if rel.startswith("governance/decisions/"):
+            ids -= set(GOV_ID.findall(Path(rel).name))
+        out |= ids
+    return out
+
+
 def _lesson_links(les: L.Lesson, ctx: L.Context) -> list[str]:
     return [str(e.get("source")) for s in les.meta.get("sources") or []
             if (e := ctx.episodes.get(str(s))) and e.get("source")]
@@ -271,14 +294,17 @@ def find(lessons: list[L.Lesson], episodes: list[dict], ctx: L.Context, rules: d
             continue
         drafts.append(Draft(
             kind="retirement", key=f"retirement:{r.id}", domain=r.domain,
-            title=f"GOV-Q (draft): Retire {r.id}? Nothing cites it, and its review is due {r.review_by.isoformat()}",
+            title=f"GOV-Q (draft): Retire {r.id}? Nothing in the repo or memory cites it, and its review is due {r.review_by.isoformat()}",
             evidence=[r.id, f"review_by {r.review_by.isoformat()}"],
             context=(f"{r.id} ({r.summary}) is due for review on {r.review_by.isoformat()}. No lesson, "
-                     f"no episode in memory and no commit the dream read cites it."),
+                     f"no episode in memory, no commit from the last 90 days and no tracked file "
+                     f"in the repo (outside its own record and governance/INDEX.md) cites it. "
+                     f"Something may still rely on it without naming it."),
             options=[f"**Retire {r.id}.** It lapses at its review date.",
                      f"**Renew {r.id}** with a new review_by.",
                      f"**Replace {r.id}** with a narrower ruling the owner describes."],
-            recommendation=f"Option 1, unless the owner still relies on it: nothing on record uses it.",
+            recommendation=(f"Option 1, unless the owner still relies on it: nothing in the repo or "
+                            f"memory names it."),
             default=f"Option 2 in effect: {r.id} stays in force until the owner reviews it.",
             precedent=f"{r.id} itself; GOV-0056 lets the librarian draft this."))
 
@@ -336,6 +362,7 @@ class Batch:
     proposals: list[Draft]          # role prompt: for the dream report only (GOV-0059)
     held: list[dict]
     weeks: list[tuple[str, int]]    # (Monday, drafts opened that week), newest first
+    warnings: list[str] = field(default_factory=list)   # e.g. a shallow history, unread files
 
     def as_json(self) -> dict:
         return {"today": self.today.isoformat(),
@@ -343,7 +370,8 @@ class Batch:
                 "waiting": [asdict(d) for d in self.waiting],
                 "blocked": [{"key": d.key, "by": e.get("issue")} for d, e in self.blocked],
                 "proposals": [asdict(d) for d in self.proposals],
-                "held": self.held, "weeks": [{"week_of": w, "opened": n} for w, n in self.weeks]}
+                "held": self.held, "weeks": [{"week_of": w, "opened": n} for w, n in self.weeks],
+                "warnings": self.warnings}
 
 
 def weekly_counts(ledger: list[dict], today: dt.date, weeks: int = 4) -> list[tuple[str, int]]:
@@ -356,7 +384,8 @@ def weekly_counts(ledger: list[dict], today: dt.date, weeks: int = 4) -> list[tu
     return out
 
 
-def batch(drafts: list[Draft], held: list[dict], ledger: list[dict], today: dt.date) -> Batch:
+def batch(drafts: list[Draft], held: list[dict], ledger: list[dict], today: dt.date,
+          warnings: list[str] = ()) -> Batch:
     """Sort the drafts into opened today (Mondays only), waiting and blocked."""
     open_now, waiting, blocked, proposals = [], [], [], []
     for d in drafts:
@@ -366,7 +395,8 @@ def batch(drafts: list[Draft], held: list[dict], ledger: list[dict], today: dt.d
             blocked.append((d, e))
         else:
             (open_now if today.weekday() == 0 else waiting).append(d)
-    return Batch(today, open_now, waiting, blocked, proposals, held, weekly_counts(ledger, today))
+    return Batch(today, open_now, waiting, blocked, proposals, held, weekly_counts(ledger, today),
+                 list(warnings))
 
 
 def record(ledger: list[dict], d: Draft, issue: int, today: dt.date) -> None:
@@ -418,6 +448,7 @@ def report(b: Batch) -> str:
     out += [f"   - propose in the dream report (GOV-0059: the librarian doesn't edit roles/): {d.title}"
             for d in b.proposals]
     out += [f"   - held: {h['id']} {'; '.join(h['why'])}" for h in b.held]
+    out += [f"   - warning: {w}" for w in b.warnings]
     out.append("   Drafts opened per week: " + ", ".join(f"week of {w}: {n}" for w, n in b.weeks)
                + f" (this week {this_week}; no weekly cap, GOV-0056).")
     return "\n".join(out)
