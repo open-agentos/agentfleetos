@@ -6,10 +6,11 @@ static/fonts/LICENSE.txt), self-hosted: generate.py copies them beside the pages
 public page loads nothing from a third party. Only the Latin-1 subset of the four faces the
 CSS uses is shipped; other characters (arrows, for one) fall back to the system font.
 
-Stdlib only. Every page carries a Content-Security-Policy. Two pages load a script, each a
+Stdlib only. Every page carries a Content-Security-Policy. Three pages load a script, each a
 same-origin file in js/ beside the pages (#1106, option 3 of #1102) that the CSP allows by its
-hash and the <script> tag pins with the same hash as its integrity: the live refresh on Crew
-and Governance (live.py, #411) and the Work map's treemap (workmap.js, #1082).
+hash and the <script> tag pins with the same hash as its integrity: Crew's (crew.js, #1139),
+Governance's (governance.js, #1140) and the Work map's (workmap.js, #1082). Each draws its page
+and refreshes it in place from same-origin JSON (GOV-0051).
 
 Third-party libraries (#1107, GOV-0051) are vendored in static/vendor/, each pinned in
 static/vendor/manifest.json with its sha256. vendored() checks every file against its entry
@@ -37,8 +38,6 @@ VENDOR_MANIFEST = "manifest.json"
 VENDOR_FIELDS = ("file", "library", "version", "licence", "source", "sha256")
 EXACT_VERSION = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")   # 7.9.0, never ^7 or 7.x
 SHA256_HEX = re.compile(r"[0-9a-f]{64}")
-REFRESH_SECONDS = 300        # an open page reloads itself, script or not (#351); Crew and Governance also poll (#411)
-
 # (family, weight, file). Only the faces the CSS below uses.
 FONTS = (
     ("IBM Plex Sans", 400, "IBMPlexSans-Regular-Latin1.woff2"),
@@ -511,7 +510,8 @@ def nav(current: str) -> str:
 
 def built_mark(built: dt.datetime) -> str:
     """The red LIVE mark and the build time (#402). A static page can't know how old it is
-    when viewed; the `datetime` attribute is there for the state.json poll (#411)."""
+    when viewed; the page's script reads the `datetime` attribute to grey the mark once the data
+    is stale."""
     t = built.astimezone(dt.timezone.utc)
     return (f'<span class="live">LIVE</span><span class="muted">built <time class="stamp" '
             f'datetime="{t.strftime("%Y-%m-%dT%H:%M:%SZ")}" title="{t.strftime("%Y-%m-%d %H:%M UTC")}">'
@@ -521,13 +521,13 @@ def built_mark(built: dt.datetime) -> str:
 
 def mast_live(built: dt.datetime, owner: str = "") -> str:
     """The masthead's changing part: the LIVE mark and build time, and `owner`, the owner's last
-    act as HTML (#402). The live refresh redraws it (#411); the page name around it stays."""
+    act as HTML (#402). The page's script redraws it; the page name around it stays."""
     return f"{built_mark(built)}{owner}"
 
 
 def masthead(current: str, repo: str, built: dt.datetime, owner: str = "", live_box: bool = False) -> str:
     """What's inside the page's <header>: the page name, the repo, then mast_live(). With
-    `live_box`, that part is the `data-panel="mast"` box the live refresh redraws."""
+    `live_box`, that part is the `data-panel="mast"` box the page's script redraws."""
     bits = mast_live(built, owner)
     if live_box:
         bits = f'<span class="bits" data-panel="mast">{bits}</span>'
@@ -536,22 +536,19 @@ def masthead(current: str, repo: str, built: dt.datetime, owner: str = "", live_
 
 
 def page(current: str, title: str, repo: str, built: dt.datetime, body: str, owner: str = "",
-         live_refresh: bool = False, script: tuple[str, str] | None = None,
-         libs: dict[str, bytes] | None = None, live_mast: bool = False) -> str:
-    """One whole page in the shared shell: head (noindex, CSP, refresh, CSS), masthead (#402),
-    the nav (Map · Crew · Governance, #1113), then the body. With `live_refresh`, the page also
-    loads the live refresh script, js/poll.js, which polls state.json and redraws the page's
-    `data-panel` boxes (#411); Crew and Governance do. `script`
-    is another page's own script as (file name, text), e.g. the Work map's (#1082). The page
-    loads it from js/ (write_scripts puts it there) and the CSP allows it by its hash. `libs` are
+         script: tuple[str, str] | None = None, libs: dict[str, bytes] | None = None,
+         live_mast: bool = False) -> str:
+    """One whole page in the shared shell: head (noindex, CSP, CSS), masthead (#402), the nav
+    (Map · Crew · Governance, #1113), then the body. `script` is the page's own script as (file
+    name, text), e.g. the Work map's (#1082). The page loads it from js/ (write_scripts puts it
+    there) and the CSP allows it by its hash. No page reloads itself (#1135): the Work map,
+    Crew and Governance redraw in place from same-origin JSON, and effort.html, which has no
+    script, shows the build it came with. `libs` are
     vendored libraries the page loads before its own script, as layout.libs() returns them
     (#1107): each is served from js/ too and allowed by its hash. With `live_mast`, the
     masthead's changing part is a `data-panel="mast"` box for the page's own script to redraw
     (Governance's, #1140)."""
-    built_at = built.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if live_refresh else None
     name = NAMES[current]
-    if built_at:
-        script = (live.FILE, live.script())
     js = script[1] if script else None
     libs = libs or {}
     return "\n".join(part for part in [
@@ -559,10 +556,9 @@ def page(current: str, title: str, repo: str, built: dt.datetime, body: str, own
         f'<meta http-equiv="Content-Security-Policy" content="{live.csp(js, tuple(libs.values()))}">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         '<meta name="robots" content="noindex, nofollow">',  # published publicly; see #33
-        f'<meta http-equiv="refresh" content="{REFRESH_SECONDS}">',
         f"<title>{esc(name)} · {esc(title)} · {esc(repo)}</title><style>{CSS}</style></head>"
-        + (f'<body data-built-at="{esc(built_at)}">' if built_at else "<body>"),
-        f'<header class="mast">{masthead(current, repo, built, owner, live_box=bool(built_at) or live_mast)}</header>',
+        + "<body>",
+        f'<header class="mast">{masthead(current, repo, built, owner, live_box=live_mast)}</header>',
         f'<nav class="top" aria-label="Pages">{nav(current)}</nav>',
         f"<main>{body}</main>",
         *(script_tag(f, b) for f, b in libs.items()),

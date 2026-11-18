@@ -1,15 +1,12 @@
-"""Tests for the desk's live refresh: dashboard/live.py and poll.js (#411), which no page loads
-since #1139 (#1135 removes them), and the pages' own scripts, crew.js (#1139) and
-governance.js (#1140), which draw and refresh from plain fields.
+"""Tests for the Desk's live refresh: dashboard/live.py's shared settings and CSP, and the pages'
+own scripts, crew.js (#1139) and governance.js (#1140), which draw and refresh from plain
+fields. poll.js and its node trees retired with #1135.
 Run: python3 -m unittest discover -s dashboard"""
 import base64
 import hashlib
 import json
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -20,6 +17,7 @@ import crewpage  # noqa: E402
 import generate as g  # noqa: E402
 import govdraw  # noqa: E402
 import govpage  # noqa: E402
+import layout  # noqa: E402
 import live  # noqa: E402
 import state as st  # noqa: E402
 from test_floor import model as floor_model  # noqa: E402
@@ -45,44 +43,8 @@ def csp_of(page: str) -> dict[str, list[str]]:
     return {d.split()[0]: d.split()[1:] for d in content.split("; ")}
 
 
-class TreeTest(unittest.TestCase):
-    def test_elements_text_and_svg(self):
-        t = live.tree('<p class="x">a &amp; <a href="https://github.com/o/r/issues/1">#1</a>'
-                      '<br></p><svg viewBox="0 0 2 2" width="2"><rect x="1" y="0"/><title>t</title></svg>')
-        self.assertEqual(t, [
-            ["p", {"class": "x"}, "a & ", ["a", {"href": "https://github.com/o/r/issues/1"}, "#1"],
-             ["br", {}]],
-            ["svg", {"viewBox": "0 0 2 2", "width": "2"}, ["rect", {"x": "1", "y": "0"}],
-             ["title", {}, "t"]]])
-
-    def test_text_stays_text(self):
-        # Escaped markup in repo text comes back as the characters, never as an element.
-        self.assertEqual(live.tree("<span>&lt;script&gt;x&lt;/script&gt;</span>"),
-                         [["span", {}, "<script>x</script>"]])
-
-    def test_boolean_attribute_and_local_links(self):
-        self.assertEqual(live.tree('<details open><summary>s</summary></details>'
-                                   '<a href="decisions.html#x">d</a><a href="#y">y</a>'),
-                         [["details", {"open": ""}, ["summary", {}, "s"]],
-                          ["a", {"href": "decisions.html#x"}, "d"], ["a", {"href": "#y"}, "y"]])
-
-    def test_refuses_what_isnt_allowed(self):
-        for bad in ("<script>x</script>", "<img src=x>", "<iframe></iframe>", "<style>p{}</style>",
-                    '<p onclick="x()">p</p>', '<a href="javascript:x()">a</a>',
-                    '<a href="//evil.example/">a</a>', '<a href="http://x/">a</a>',
-                    '<svg><foreignObject></foreignObject></svg>', "<rect></rect>",
-                    "<p><b></p></b>", "<p>open", "<!DOCTYPE html>"):
-            with self.subTest(bad=bad), self.assertRaises(ValueError):
-                live.tree(bad)
-
-    def test_a_bad_panel_is_none_not_a_failed_build(self):
-        self.assertEqual(live.trees({"ok": "<p>a</p>", "bad": "<script></script>", "empty": ""}),
-                         {"ok": [["p", {}, "a"]], "bad": None, "empty": []})
-
-
 class PageTest(unittest.TestCase):
-    """No page loads poll.js since Crew (#1139) and Governance (#1140) draw themselves; #1135
-    removes it. Until then its script keeps #396's rules."""
+    """poll.js retired (#1135): each page draws itself and redraws in place; no page reloads itself."""
 
     def setUp(self):
         self.m = desk_model()
@@ -92,6 +54,9 @@ class PageTest(unittest.TestCase):
         for name, page in self.pages.items():
             self.assertNotIn("poll.js", page, name)
             self.assertNotIn("data-built-at", page, name)
+        self.assertNotIn("poll.js", g.scripts())
+        self.assertFalse(hasattr(live, "tree"))
+        self.assertNotIn("desk", st.state(self.m))   # the node trees went with it
         self.assertNotIn("<script", self.pages["effort.html"].lower())
         self.assertEqual(csp_of(self.pages["effort.html"])["script-src"], ["'none'"])
 
@@ -100,26 +65,24 @@ class PageTest(unittest.TestCase):
             head = self.pages[name].split("</head>")[0]
             self.assertLess(head.index("Content-Security-Policy"), head.index("<style>"), name)
 
-    def test_poll_js_builds_nodes_never_markup_or_code(self):
-        js = live.script()
-        for bad in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval",
-                    "Function(", "DOMParser", "createContextualFragment", "srcdoc", "import(",
-                    "XMLHttpRequest", "localStorage", "cookie"):
-            self.assertNotIn(bad, js, bad)
-        self.assertEqual(re.findall(r'fetch\("([^"?]*)', js), ["state.json"])
-        self.assertNotRegex(js, r"/\*[A-Z_]+\*/")   # every placeholder filled in
+    def test_no_page_reloads_itself(self):
+        # The Work map, Crew and Governance redraw in place (#1138-#1140, #1135); effort.html has
+        # no script and shows the build it came with.
+        for name, page in self.pages.items():
+            self.assertNotIn('http-equiv="refresh"', page, name)
+        self.assertFalse(hasattr(layout, "REFRESH_SECONDS"))
+
+    def test_state_json_carries_the_work_maps_other_parts(self):
+        # What map.json doesn't carry, so workmap.js can redraw it from state.json (#1135).
+        d = st.state(self.m)["workmap"]
+        self.assertEqual(set(d), {"strip", "needs_extra", "scopes", "roles", "briefing", "tape"})
+        self.assertEqual(json.loads(json.dumps(d)), d)   # plain JSON
 
     def test_the_masthead_keeps_its_page_name(self):
         # Only the mark, build time and owner line redraw, so each page keeps its own name.
-        for name, title in (("crew.html", "Crew"), ("governance.html", "Governance")):
+        for name, title in (("crew.html", "Crew"), ("governance.html", "Governance"), ("workmap.html", "Map")):
             head = self.pages[name].split('<header class="mast">')[1].split("</header>")[0]
             self.assertIn(f"AgentFleetOS · {title}</span>", head.split('data-panel="mast"')[0], name)
-        self.assertNotIn("AgentFleetOS", json.dumps(st.state(self.m)["desk"]["mast"]))
-
-    def test_state_desk_carries_only_the_mast(self):
-        s = st.state(self.m)
-        self.assertEqual(sorted(s["desk"]), ["mast"])   # Crew's panels left the trees (#1139)
-        self.assertEqual(json.loads(json.dumps(s)), s)
 
 
 class CrewPageTest(unittest.TestCase):
@@ -138,7 +101,7 @@ class CrewPageTest(unittest.TestCase):
         self.assertEqual(csp["script-src"], ["'self'", f"'sha256-{digest}'"])
         self.assertEqual(csp["default-src"], ["'none'"])
         self.assertEqual(csp["connect-src"], ["'self'"])
-        self.assertIn('<meta http-equiv="refresh" content="300">', self.page)   # until #1135
+        self.assertNotIn('http-equiv="refresh"', self.page)   # it redraws in place (#1135)
 
     def test_carries_plain_data_not_trees_or_html(self):
         block = re.search(r'<script type="application/json" id="crew-data">(.*?)</script>', self.page, re.S)[1]
@@ -268,7 +231,7 @@ class GovernancePageTest(unittest.TestCase):
                       f'<a href="https://github.com/{REPO}/tree/main/governance">GitHub</a>', self.page)   # GOV-0051
         head = self.page.split('<header class="mast">')[1].split("</header>")[0]
         self.assertIn("AgentFleetOS · Governance</span>", head.split('data-panel="mast"')[0])
-        self.assertNotIn("data-built-at", self.page)   # that's poll.js's
+        self.assertNotIn("data-built-at", self.page)   # poll.js's, retired (#1135)
 
 
 @unittest.skipUnless(govdraw.NODE, "node isn't installed")
@@ -319,101 +282,6 @@ class GovernanceScriptTest(unittest.TestCase):
         self.assertTrue(got["after"]["stale"])
         got = govdraw.run(page, served=self.served("2026-11-05T10:19:00Z"), clock="2026-11-05T10:20:00Z")
         self.assertFalse(got["after"]["stale"])
-
-
-NODE = shutil.which("node")
-
-# A fake DOM just big enough for poll.js: elements, text, fragments, two selectors,
-# a fetch that serves whatever `served` holds, and a hand-cranked clock and interval.
-HARNESS = r"""
-const fs = require("fs");
-const [scriptPath, casesPath] = process.argv.slice(2);
-const js = fs.readFileSync(scriptPath, "utf8");
-const cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
-function el(tag, ns) {
-  return { tag, ns: ns || null, attrs: {}, children: [], classes: new Set(),
-    setAttribute(k, v) { this.attrs[k] = String(v); },
-    getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
-    appendChild(c) { if (c.frag) { this.children.push(...c.children); } else { this.children.push(c); } return c; },
-    removeChild(c) { this.children.splice(this.children.indexOf(c), 1); },
-    get firstChild() { return this.children[0] || null; },
-    classList: null };
-}
-function dump(n) { return n.text !== undefined ? n.text : [n.tag, n.attrs, ...n.children.map(dump)]; }
-(async () => {
-  const out = [];
-  for (const c of cases) {
-    const body = el("body"); body.attrs["data-built-at"] = c.page_built_at;
-    const live = el("span"); live.classList = { toggle(k, on) { on ? live.classes.add(k) : live.classes.delete(k); } };
-    const panel = el("div"); panel.attrs["data-panel"] = "floor"; panel.children.push({ text: "static" });
-    let now = Date.parse(c.clock), tick = null, fetched = [];
-    global.Date = class extends Date { static now() { return now; } };
-    global.document = {
-      body, hidden: false,
-      createElement: (t) => el(t), createElementNS: (ns, t) => el(t, ns),
-      createTextNode: (t) => ({ text: t }), createDocumentFragment: () => Object.assign(el("#frag"), { frag: true }),
-      querySelectorAll: (s) => s === "[data-panel]" ? [panel] : s === "header.mast .live" ? [live] : [],
-    };
-    global.fetch = (url, opts) => { fetched.push([url.split("?")[0], opts.cache]);
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(c.served) }); };
-    global.setInterval = (fn, ms) => { tick = fn; out.interval = ms; };
-    new Function(js)();
-    const staleAtLoad = live.classes.has("stale");
-    now += c.advance_ms; tick();
-    await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0));
-    out.push({ name: c.name, staleAtLoad, stale: live.classes.has("stale"), fetched,
-      panel: panel.children.map(dump), built_at: body.attrs["data-built-at"] });
-  }
-  console.log(JSON.stringify(out));
-})();
-"""
-
-
-@unittest.skipUnless(NODE, "node isn't installed")
-class ScriptBehaviourTest(unittest.TestCase):
-    """poll.js itself, run in node against a fake DOM."""
-
-    def run_cases(self, cases):
-        with tempfile.TemporaryDirectory() as d:
-            (Path(d) / "poll.js").write_text(live.script(), encoding="utf-8")
-            (Path(d) / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
-            (Path(d) / "harness.js").write_text(HARNESS, encoding="utf-8")
-            r = subprocess.run([NODE, str(Path(d) / "harness.js"), str(Path(d) / "poll.js"),
-                                str(Path(d) / "cases.json")], capture_output=True, text=True, timeout=30)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        return {c["name"]: c for c in json.loads(r.stdout)}
-
-    def state(self, built_at, floor_tree):
-        return {"schema": 1, "built_at": built_at, "desk": {"floor": floor_tree}}
-
-    def test_refresh(self):
-        new = [["h2", {}, "On the floor"], ["p", {"class": "x"}, "<b>not markup</b>"],
-               ["svg", {"viewBox": "0 0 1 1"}, ["rect", {"x": "0"}]]]
-        evil = [["p", {}, "ok"], ["script", {}, "alert(1)"]]
-        bad_link = [["a", {"href": "javascript:alert(1)"}, "x"]]
-        base = {"page_built_at": "2026-11-05T10:00:00Z", "clock": "2026-11-05T10:01:00Z",
-                "advance_ms": 15000}
-        got = self.run_cases([
-            {**base, "name": "newer", "served": self.state("2026-11-05T10:01:00Z", new)},
-            {**base, "name": "older", "served": self.state("2026-11-05T09:00:00Z", new)},
-            {**base, "name": "script", "served": self.state("2026-11-05T10:01:00Z", evil)},
-            {**base, "name": "link", "served": self.state("2026-11-05T10:01:00Z", bad_link)},
-            {**base, "name": "stale", "clock": "2026-11-05T10:20:00Z",
-             "served": self.state("2026-11-05T09:00:00Z", new)},
-            {**base, "name": "fresh_again", "clock": "2026-11-05T10:20:00Z",
-             "served": self.state("2026-11-05T10:19:00Z", new)},
-        ])
-        n = got["newer"]
-        self.assertEqual(n["fetched"], [["state.json", "no-store"]])
-        self.assertEqual(n["panel"], new)                     # redrawn as nodes; text stays text
-        self.assertEqual(n["built_at"], "2026-11-05T10:01:00Z")
-        self.assertFalse(n["stale"])
-        self.assertEqual(got["older"]["panel"], ["static"])   # never moves backwards
-        self.assertEqual(got["script"]["panel"], ["static"])  # a refused node keeps the panel
-        self.assertEqual(got["link"]["panel"], ["static"])
-        self.assertTrue(got["stale"]["staleAtLoad"])          # 20 minutes old: greyed
-        self.assertTrue(got["stale"]["stale"])
-        self.assertFalse(got["fresh_again"]["stale"])         # new data brings it back
 
 
 if __name__ == "__main__":

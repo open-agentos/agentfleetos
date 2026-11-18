@@ -5,6 +5,8 @@
 // share as a percentage: no amount is ever summed across issues for display (GOV-0033).
 // Since #1138 an open map also fetches same-origin map.json while the tab is visible, and redraws
 // in place when it carries a newer build, keeping the view and selection (see "live refresh").
+// Since #1135 it fetches same-origin state.json too, for what map.json doesn't carry: the strip,
+// Briefing, tape, masthead, and the Goals, roles and decisions waiting. The page never reloads.
 // The Selected panel (#1083) shows one issue: its 14-day cost is that issue's own sum, a
 // per-issue figure, not a sum across issues. The lists (#1084) under the Briefing show issues
 // one per row; a heading's count is a number of issues, not an amount.
@@ -951,34 +953,206 @@
 
   // The strip (#1114): picking "flagged" or "decisions waiting" sets Group by to Goal and
   // outlines the matching boxes; picking it again clears the outline. Nothing is resized.
+  // One listener on the page, since the strip is redrawn from each newer state.json (#1135).
   var ms = document.querySelectorAll(".sp-pick[data-mark]");
-  for (var mi = 0; mi < ms.length; mi++) {
-    ms[mi].disabled = false;
-    ms[mi].addEventListener("click", function (ev) {
-      var v = ev.currentTarget.getAttribute("data-mark");
-      if (st.mark === v) { st.mark = null; draw(); return; }
-      st.mark = v;
-      if (st.group !== "goal") { st.group = "goal"; st.zoom = null; save(); writeUrl(false); }
-      draw();
-    });
-  }
+  for (var mi = 0; mi < ms.length; mi++) ms[mi].disabled = false;
+  document.addEventListener("click", function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest(".sp-pick[data-mark]") : null;
+    if (!b) return;
+    var v = b.getAttribute("data-mark");
+    if (st.mark === v) { st.mark = null; draw(); return; }
+    st.mark = v;
+    if (st.group !== "goal") { st.group = "goal"; st.zoom = null; save(); writeUrl(false); }
+    draw();
+  });
 
   // Back and Forward: the URL's view and selection, as on opening it.
   window.addEventListener("popstate", function () { readUrl(); draw(); });
 
-  // ------------------------------------------------------------ live refresh (#1138)
+  // ------------------------------------------------------------ the strip, Briefing, tape, masthead (#1135)
 
-  // Every LIVE.every ms while the tab is visible, fetch same-origin map.json (GOV-0051) and, when
-  // it carries a newer build, redraw from it in place: the controls, zoom and selection stay, as
-  // do the page's Goals, roles and strip, which map.json doesn't carry. As poll.js does with
-  // state.json, it only moves forward, and the masthead's LIVE mark greys once the data shown is
-  // older than LIVE.stale. The page's 300-second meta refresh stays until #1135.
+  // What map.json doesn't carry, drawn from state.json's `workmap` and `owner_last_acted` as
+  // workmap_page.py and strip.py draw it at build time. Each part is built whole, then swapped
+  // in, so one that fails to draw keeps what it showed.
+  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+
+  function stripNode(s) {
+    var f = (s.flagged || []).length, sec = el("section", "sp");
+    sec.setAttribute("aria-label", "Counts");
+    function pickBtn(mark, cls, text) {
+      var b = el("button", "sp-i sp-pick" + cls, text);
+      b.type = "button";
+      b.setAttribute("data-mark", mark);
+      b.setAttribute("aria-pressed", st.mark === mark ? "true" : "false");
+      return b;
+    }
+    sec.appendChild(pickBtn("flagged", f ? " sp-red" : "", f + " of " + s.scopes + " Goals and Areas flagged"));
+    sec.appendChild(pickBtn("decisions", s.waiting ? " sp-owner" : "",
+      plural(s.waiting, "decision") + " waiting" + (s.oldest ? ", oldest " + s.oldest : "")));
+    sec.appendChild(el("span", "sp-i", s.working + " agents working of " + s.agents + " live"));
+    sec.appendChild(el("span", "sp-i", s.authority + " uses of your authority, last " + s.authority_hours + "h"));
+    if (s.error) sec.appendChild(el("span", "sp-i sp-red", "trouble report not read: counts may be low"));
+    return sec;
+  }
+
+  // A line of report Markdown: `code` and **bold** kept, the rest text (report.inline's rule).
+  var INLINE = /`([^`]+)`|\*\*(.+?)\*\*/g;
+  function inline(p, text) {
+    var i = 0, m;
+    text = String(text || "");
+    INLINE.lastIndex = 0;
+    while ((m = INLINE.exec(text)) !== null) {
+      if (m.index > i) p.appendChild(document.createTextNode(text.slice(i, m.index)));
+      p.appendChild(m[1] !== undefined ? el("code", "", m[1]) : el("b", "", m[2]));
+      i = INLINE.lastIndex;
+    }
+    if (i < text.length) p.appendChild(document.createTextNode(text.slice(i)));
+    return p;
+  }
+
+  function colHead(sec, title, line) {
+    var h = el("div", "br-colh");
+    h.appendChild(el("h2", "br-h", title));
+    if (line) h.appendChild(line);
+    sec.appendChild(h);
+  }
+
+  function briefingNode(br) {
+    var sec = el("section", "br-brief wm-brief");
+    sec.setAttribute("aria-label", "Briefing");
+    if (!br) {
+      colHead(sec, "Briefing");
+      sec.appendChild(el("p", "muted", "No briefing from the lead in the last few days."));
+      return sec;
+    }
+    var line = el("span", "muted", "from the lead · ");
+    line.appendChild(br.url ? link(br.url, br.stamp) : document.createTextNode(br.stamp));
+    colHead(sec, "Briefing", line);
+    if (br.old) sec.appendChild(el("p", "muted", "None yet today; this is the newest."));
+    var body = el("div", "br-briefbody");
+    (br.paras || []).forEach(function (x) { body.appendChild(inline(el("p"), x)); });
+    sec.appendChild(body);
+    return sec;
+  }
+
+  function onMap(ref) {
+    var ws = (data && data.windows) || {};
+    return Object.keys(ws).some(function (w) {
+      return (ws[w] || []).some(function (r) { return r.ref === ref && r.issue !== null && r.issue !== undefined; });
+    });
+  }
+
+  function tapeNode(items) {
+    var sec = el("section", "tp");
+    sec.setAttribute("aria-label", "Tape");
+    colHead(sec, "Tape", el("span", "muted", "reports, merges, your acts and governance, newest first"));
+    var box = el("div", "tp-box");
+    sec.appendChild(box);
+    if (!items.length) { box.appendChild(el("p", "muted tp-none", "Nothing on the tape yet.")); return sec; }
+    var ol = el("ol", "tp-ol");
+    items.forEach(function (x) {
+      var li = el("li", "tp-i"), meta = el("span", "tp-m"), text;
+      if (x.time) {
+        var t = el("time", "mono muted", x.when);
+        t.setAttribute("datetime", x.time.slice(0, 19) + "Z");
+        meta.appendChild(t);
+      } else meta.appendChild(el("span", "mono muted", "?"));
+      meta.appendChild(el("span", "tp-w", x.who));
+      meta.appendChild(el("span", "tp-k" + (x.flag ? " sp-red" : ""), x.kind));
+      li.appendChild(meta);
+      if (x.ref && onMap(x.ref)) {
+        text = el("button", "tp-t wm-pick", x.text);
+        text.type = "button";
+        text.setAttribute("data-wm-sel", x.ref);
+        text.setAttribute("aria-controls", "wm-sel");
+        text.title = "Show " + x.ref + " in the Selected panel";
+      } else text = el("span", "tp-t", x.text);
+      li.appendChild(text);
+      var l = el("span", "tp-l");
+      l.appendChild(x.url ? link(x.url, "on GitHub") : el("span", "muted", "no link"));
+      li.appendChild(l);
+      ol.appendChild(li);
+    });
+    box.appendChild(ol);
+    return sec;
+  }
+
+  // The masthead's changing part (#402), as Crew's and Governance's scripts draw it.
+  function utc(t) { return t ? t.slice(0, 10) + " " + t.slice(11, 16) + " UTC" : ""; }
+  function ago(t, now) {
+    if (!t) return "never";
+    var sec = Math.max(0, Math.floor((Date.parse(now) - Date.parse(t)) / 1000));
+    var units = [["d", 86400], ["h", 3600], ["m", 60]];
+    for (var i = 0; i < units.length; i++) {
+      if (sec >= units[i][1]) return Math.floor(sec / units[i][1]) + units[i][0] + " ago";
+    }
+    return "just now";
+  }
+  function mastNodes(d) {
+    var t = d.built_at, o = d.owner_last_acted || { status: "unknown" }, owner = el("span", "owner");
+    if (o.status === "acted") {
+      owner.appendChild(document.createTextNode("Owner last acted "));
+      var a = el("span", "", ago(o.time, t)); a.title = utc(o.time);
+      owner.appendChild(a);
+      owner.appendChild(document.createTextNode(": "));
+      if (o.ref || o.extra) {
+        owner.appendChild(document.createTextNode(o.verb));
+        if (o.ref) { owner.appendChild(document.createTextNode(" ")); owner.appendChild(link(o.link, o.ref)); }
+        if (o.extra) {
+          owner.appendChild(document.createTextNode(" "));
+          var code = el("code", "", o.extra);
+          if (o.ref || !(typeof o.link === "string" && o.link.indexOf("https://github.com/") === 0)) owner.appendChild(code);
+          else { var ca = el("a"); ca.href = o.link; ca.appendChild(code); owner.appendChild(ca); }
+        }
+      } else owner.appendChild(link(o.link, o.verb));
+    } else if (o.status === "none") {
+      owner.appendChild(document.createTextNode("Owner: no activity in the last " + plural(o.days, "day")));
+    } else owner.appendChild(document.createTextNode("Owner: unknown"));
+    var built = el("span", "muted", "built ");
+    var tm = el("time", "stamp", t.slice(11, 16) + " UTC");
+    tm.setAttribute("datetime", t); tm.title = utc(t);
+    built.appendChild(tm);
+    return [el("span", "live", "LIVE"), built, owner];
+  }
+
+  function swap(sel, make) {
+    var old = document.querySelector(sel);
+    if (!old) return;
+    try { var next = make(); old.parentNode.replaceChild(next, old); } catch (e) { /* keep it */ }
+  }
+
+  function drawState(s) {
+    var w = s.workmap;
+    swap("section.sp", function () { return stripNode(w.strip); });
+    swap("section.wm-brief", function () { return briefingNode(w.briefing); });
+    swap("section.tp", function () { return tapeNode(w.tape || []); });
+    var box = document.querySelector('header.mast [data-panel="mast"]');
+    if (box) {
+      try {
+        var nodes = mastNodes(s);   // built whole first, so a failure keeps the masthead
+        clear(box);
+        nodes.forEach(function (n) { box.appendChild(n); });
+      } catch (e) { /* keep the masthead */ }
+    }
+  }
+
+  // ------------------------------------------------------------ live refresh (#1138, #1135)
+
+  // Every LIVE.every ms while the tab is visible, fetch same-origin map.json and state.json
+  // (GOV-0051). A newer map.json redraws the map, lists and Selected panel; a newer state.json
+  // the strip, Briefing, tape, masthead and the Goals, roles and decisions waiting the map and
+  // panel use. The controls, zoom and selection stay. As Crew and Governance do, each only moves
+  // forward, and the masthead's LIVE mark greys once the older of the two is older than
+  // LIVE.stale. No part of the page waits for a reload.
   var LIVE = data && data.live;
-  var stampEl = document.querySelector("header.mast time.stamp");
-  var builtAt = (data && data.built_at) || (stampEl && stampEl.getAttribute("datetime")) || "";
+  function stampEl() { return document.querySelector("header.mast time.stamp"); }
+  var pageAt = (stampEl() && stampEl().getAttribute("datetime")) || "";
+  var mapAt = (data && data.built_at) || pageAt;
+  var stateAt = pageAt;
+  function shownAt() { return Date.parse(mapAt) < Date.parse(stateAt) ? mapAt : stateAt; }
 
   function fresh() {
-    var old = !(Date.now() - Date.parse(builtAt) <= LIVE.stale);
+    var old = !(Date.now() - Date.parse(shownAt()) <= LIVE.stale);
     var marks = document.querySelectorAll("header.mast .live");
     for (var i = 0; i < marks.length; i++) marks[i].classList.toggle("stale", old);
   }
@@ -1006,37 +1180,61 @@
     return { built_at: m.built_at, method: m.method, windows: windows, days: { dates: dates, of: of }, lists: m.lists };
   }
 
-  function stamp(t) {
-    if (!stampEl) return;
+  // The masthead shows the older build of what's on screen.
+  function stamp() {
+    var e = stampEl(), t = Date.parse(shownAt());
+    if (!e || isNaN(t)) return;
     var iso = new Date(t).toISOString();
-    stampEl.setAttribute("datetime", iso.slice(0, 19) + "Z");
-    stampEl.title = iso.slice(0, 10) + " " + iso.slice(11, 16) + " UTC";
-    stampEl.textContent = iso.slice(11, 16) + " UTC";
+    e.setAttribute("datetime", iso.slice(0, 19) + "Z");
+    e.title = iso.slice(0, 10) + " " + iso.slice(11, 16) + " UTC";
+    e.textContent = iso.slice(11, 16) + " UTC";
   }
 
-  var FIELDS = ["built_at", "method", "windows", "days", "lists", "error"];
-  function apply(m) {
+  // Redraw from data with `next`'s fields in it; if it can't be drawn, put the last ones back.
+  function redraw(fields, next) {
+    var before = {};
+    fields.forEach(function (k) { before[k] = data[k]; data[k] = next[k]; });
+    try { draw(); } catch (e) {
+      fields.forEach(function (k) { data[k] = before[k]; });
+      draw();
+      return false;
+    }
+    return true;
+  }
+
+  var MAP_FIELDS = ["built_at", "method", "windows", "days", "lists", "error"];
+  function applyMap(m) {
     var next = fromMap(m), t = next ? Date.parse(next.built_at) : NaN;
     // A cache can serve a map.json older than the page; only ever move forward.
-    if (isNaN(t) || t <= Date.parse(builtAt)) return;
-    var before = {};
-    FIELDS.forEach(function (k) { before[k] = data[k]; data[k] = next[k]; });
-    try { draw(); } catch (e) {   // a map.json it can't draw: put the last one back
-      FIELDS.forEach(function (k) { data[k] = before[k]; });
-      draw();
-      return;
-    }
-    builtAt = next.built_at;
-    stamp(t);
+    if (isNaN(t) || t <= Date.parse(mapAt)) return;
+    if (redraw(MAP_FIELDS, next)) mapAt = next.built_at;
+  }
+
+  var STATE_FIELDS = ["strip", "needs_extra", "scopes", "roles"];
+  function applyState(s) {
+    var w = s && s.workmap;
+    if (!s || s.schema !== 1 || typeof s.built_at !== "string" || !w || typeof w !== "object" ||
+        !w.strip || !Array.isArray(w.strip.flagged) || !Array.isArray(w.strip.decisions) ||
+        !Array.isArray(w.needs_extra) || !w.scopes || !w.roles || !Array.isArray(w.tape)) return;
+    if (!(Date.parse(s.built_at) > Date.parse(stateAt))) return;
+    var was = STRIP;
+    STRIP = w.strip;
+    if (!redraw(STATE_FIELDS, w)) { STRIP = was; return; }
+    drawState(s);
+    stateAt = s.built_at;
+  }
+
+  var GET = { cache: "no-store", credentials: "same-origin" };
+  function body(req) {
+    return req.then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
   }
 
   function poll() {
     if (document.hidden) { fresh(); return; }
-    fetch("map.json?t=" + Date.now(), { cache: "no-store", credentials: "same-origin" })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(apply)
+    Promise.all([body(fetch("map.json?t=" + Date.now(), GET)), body(fetch("state.json?t=" + Date.now(), GET))])
+      .then(function (both) { applyMap(both[0]); applyState(both[1]); })
       .catch(function () {})
-      .then(fresh);
+      .then(function () { stamp(); fresh(); });
   }
 
   if (LIVE && typeof LIVE.every === "number" && LIVE.every >= 1000 && typeof LIVE.stale === "number" &&

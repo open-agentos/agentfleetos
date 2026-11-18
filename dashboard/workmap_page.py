@@ -31,7 +31,9 @@ per issue may be shown on both Desks (GOV-0049).
 
 The map's rows are in the page itself, in a JSON block, so the page draws on GitHub Pages and the
 live Desk alike as soon as it loads. Since #1138 workmap.js also fetches same-origin map.json
-while the tab is visible and redraws in place from a newer build (GOV-0051). One script, `workmap.js`, draws it: generate.py writes it to
+while the tab is visible and redraws in place from a newer build (GOV-0051), and since #1135
+state.json's `workmap` (live_data()) for the strip, Briefing, tape, Goals and roles, so the page
+never reloads itself. One script, `workmap.js`, draws it: generate.py writes it to
 js/ beside the pages and the page's CSP allows it by its hash (#1106). It builds nodes with createElement and text nodes, never innerHTML or eval.
 With JavaScript off the page says the map needs it, and the Briefing still shows. Each row's
 14-day series is the same in every window, so the page carries it once per issue, under `days`:
@@ -88,8 +90,8 @@ def script() -> str:
 
 
 def live_settings() -> dict:
-    """How often an open map fetches map.json and when its LIVE mark greys, in ms: poll.js's
-    (live.py), so every Desk page refreshes and goes stale alike (#1138)."""
+    """How often an open map fetches map.json and when its LIVE mark greys, in ms: live.py's,
+    so every Desk page refreshes and goes stale alike (#1138)."""
     return {"every": live.EVERY_SECONDS * 1000, "stale": live.STALE_MINUTES * 60 * 1000}
 
 
@@ -245,23 +247,65 @@ def lists_html() -> str:
     return f'<div class="wm-lists" id="wm-lists" aria-label="Lists">{"".join(out)}</div>'
 
 
+def briefing_data(briefing: dict | None, now) -> dict | None:
+    """The lead's newest briefing as plain fields: its link, its stamp ("Tue 11-17, 09:05"), whether
+    it's from before today, and its paragraphs as report Markdown (`code` and **bold**)."""
+    br = briefing
+    if not br:
+        return None
+    today = now.astimezone(br["posted"].tzinfo).date() if br.get("posted") else None
+    return {"url": br.get("url") if br.get("url") and strip.GH_RE.fullmatch(br["url"]) else None,
+            "stamp": f'{br["day"]:%a %m-%d}' + (f', {br["posted"]:%H:%M}' if br.get("posted") else ""),
+            "old": bool(today and br["day"] < today), "paras": [str(x) for x in br.get("paras") or []]}
+
+
 def briefing_html(briefing: dict | None, now) -> str:
     """The lead's newest briefing, whole, moved from the Bridge (M8, #1069): one paragraph per
-    chapter, a link to its comment, and a note when it's from before today."""
-    br = briefing
+    chapter, a link to its comment, and a note when it's from before today. workmap.js draws
+    the same from briefing_data() (#1135)."""
+    br = briefing_data(briefing, now)
     if not br:
         return ('<section class="br-brief wm-brief" aria-label="Briefing"><div class="br-colh">'
                 '<h2 class="br-h">Briefing</h2></div>'
                 '<p class="muted">No briefing from the lead in the last few days.</p></section>')
-    today = now.astimezone(br["posted"].tzinfo).date() if br.get("posted") else None
-    stamp = f'{br["day"]:%a %m-%d}' + (f', {br["posted"]:%H:%M}' if br.get("posted") else "")
-    old = ('<p class="muted">None yet today; this is the newest.</p>'
-           if today and br["day"] < today else "")
-    body = "".join(f"<p>{inline(p)}</p>" for p in br.get("paras") or [])
+    old = '<p class="muted">None yet today; this is the newest.</p>' if br["old"] else ""
+    body = "".join(f"<p>{inline(p)}</p>" for p in br["paras"])
     return ('<section class="br-brief wm-brief" aria-label="Briefing"><div class="br-colh">'
             '<h2 class="br-h">Briefing</h2>'
-            f'<span class="muted">from the lead · {strip.a(br.get("url"), esc(stamp))}</span></div>'
+            f'<span class="muted">from the lead · {strip.a(br["url"], esc(br["stamp"]))}</span></div>'
             f'{old}<div class="br-briefbody">{body}</div></section>')
+
+
+def strip_data(sp: dict) -> dict:
+    """The counts strip as the page's block and state.json carry it: `flagged` (Goal and Area
+    numbers) and `decisions` (the map refs they are about) for the map's outline, and the counts
+    strip.strip_html() shows, so workmap.js can redraw it (#1135). Counts only (GOV-0033)."""
+    return {"flagged": sp["flagged"], "decisions": sp["decision_refs"], "scopes": sp["scopes"],
+            "waiting": sp["decisions"], "oldest": sp["oldest"], "working": sp["working"],
+            "agents": sp["agents"], "authority": sp["authority"],
+            "authority_hours": sp["authority_hours"], "error": bool(sp.get("error"))}
+
+
+def tape_data(items: list[dict], now) -> list[dict]:
+    """The tape's items as plain fields, each time also as tape_html() shows it (`when`), and a
+    link only when it is a GitHub URL, as tape_html() links."""
+    return [{"time": _iso(x["time"].astimezone(dt.timezone.utc).replace(microsecond=0)) if x["time"] else None,
+             "when": strip.when(x["time"], now) if x["time"] else None,
+             "who": x["who"], "kind": x["kind"], "text": x["text"],
+             "url": x["url"] if x["url"] and strip.GH_RE.fullmatch(x["url"]) else None,
+             "ref": x["ref"], "flag": bool(x["flag"])} for x in items]
+
+
+def live_data(m: dict, owner: str | None = None) -> dict:
+    """What the Work map shows that map.json doesn't carry: the counts strip, the decisions
+    waiting the Needs you list adds, each Goal, Area and role the Selected panel can show, the
+    Briefing and the tape. The page carries it in its block; state.json carries it as `workmap`,
+    and workmap.js redraws those parts from each newer state.json (#1135). The masthead's owner
+    line comes from state.json's `owner_last_acted`, as on Crew and Governance."""
+    return {"strip": strip_data(strip.strip(m)), "needs_extra": strip.needs_extra(m),
+            "scopes": scope_data(m), "roles": role_data(m),
+            "briefing": briefing_data((m.get("report") or {}).get("briefing"), m["now"]),
+            "tape": tape_data(strip.tape(m, owner), m["now"])}
 
 
 def render(m: dict, owner: str | None = None) -> str:
@@ -269,9 +313,9 @@ def render(m: dict, owner: str | None = None) -> str:
     pd = page_data(m.get("workmap"))
     on_map = {r.get("ref") for rows in (pd.get("windows") or {}).values() for r in rows if r.get("issue") is not None}
     sp = strip.strip(m)
-    d = {**pd, "repo": m["repo"], "scopes": scope_data(m), "roles": role_data(m),
-         "strip": {"flagged": sp["flagged"], "decisions": sp["decision_refs"]},
-         "needs_extra": strip.needs_extra(m), "live": live_settings()}
+    d = {**pd, "repo": m["repo"],
+         **{k: v for k, v in live_data(m, owner).items() if k not in ("tape", "briefing")},
+         "live": live_settings()}
     method = (f'<p class="muted method">Cost: {esc(d["method"])}</p>' if d.get("method") else "")
     return (f'<div class="br-main wm-main"><div class="br-titlebar"><h1>Work map</h1></div>'
             f'{strip.strip_html(sp)}'
@@ -292,4 +336,5 @@ def render(m: dict, owner: str | None = None) -> str:
 
 def page(m: dict, title: str, owner_line: str, owner: str | None = None) -> str:
     """workmap.html, in the shared page shell, with workmap.js as its one script."""
-    return layout.page(FILE, title, m["repo"], m["now"], render(m, owner), owner_line, script=(JS.name, script()))
+    return layout.page(FILE, title, m["repo"], m["now"], render(m, owner), owner_line, script=(JS.name, script()),
+                       live_mast=True)

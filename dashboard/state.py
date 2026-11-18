@@ -20,13 +20,12 @@ import effort
 import grants
 import floor as floor_mod
 import generate
-import layout
-import live
 import plan
 import precedent
 import report
 import reviewer_runs as reviewer_runs_mod
 import wire
+import workmap_page
 
 SCHEMA = 1
 
@@ -105,13 +104,6 @@ def watcher(w: dict | None) -> dict | None:
     return None if w is None else pick(w, WATCHER_FIELDS)
 
 
-def desk(m: dict) -> dict:
-    """The masthead's changing part as a node tree, for poll.js (#411). No page loads poll.js
-    since Crew (#1139) and Governance (#1140) draw themselves from plain fields; #1135 removes
-    both."""
-    return live.trees({"mast": layout.mast_live(m["now"], generate.owner_line(m))})
-
-
 def state(m: dict) -> dict:
     gov = {k: v for k, v in m["governance"].items() if k != "questions"}
     return plain({
@@ -143,5 +135,6 @@ def state(m: dict) -> dict:
         "effort": effort.state(m.get("effort")),   # #1013: PRs by kind of work per open Goal, and the trend
         "authority": m.get("authority") or authority.build(None, []),   # #410, #1140: Governance's authority map
         "crew_roles": agents.state(m),   # #1139: Crew's role rows
-        "desk": desk(m),   # #411: the masthead only, read by no page since #1139 (#1135 removes it)
+        # #1135: the Work map's strip, tape, Goals and roles, which map.json doesn't carry
+        "workmap": workmap_page.live_data(m, committees.owner_login()),
     })

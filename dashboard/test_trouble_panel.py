@@ -52,7 +52,6 @@ class FetchTest(unittest.TestCase):
         r = json.loads(json.dumps(REPORT))
         r["scopes"][0]["spend_usd"] = 98.76
         s = st.state(desk_model() | {"trouble": r})
-        self.assertNotIn("trouble", s["desk"])
         self.assertNotIn("trouble", s)
         self.assertNotIn("98.76", json.dumps(s))   # GOV-0014: no cost in state.json
 
