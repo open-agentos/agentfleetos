@@ -18,7 +18,7 @@ What's outside productswarm: similar, competitive and adjacent products, and the
 ### <Product or change> (YYYY-MM-DD)
 
 - **What:** one or two sentences.
-- **Status:** announced | shipped | in use · **Confidence:** high | medium | low
+- **Status:** announced | shipped | in use | discontinued · **Confidence:** high | medium | low
 - **So what:** threat | opening | copy | avoid. One sentence on what it means for productswarm.
 - **Sources:**
   - [title](url) (vendor | independent, read YYYY-MM-DD)
